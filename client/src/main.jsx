@@ -1,3 +1,4 @@
+// Redeploy trigger: refresh the production domain alias after consecutive skipped builds.
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
