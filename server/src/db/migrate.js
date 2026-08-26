@@ -323,6 +323,24 @@ async function migrate() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_campaign ON broadcast_recipients(campaign_id);`);
 
+    // ── Landing page builder (impl-11) — one branded marketing site per tenant ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS landing_pages (
+        id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id               UUID NOT NULL UNIQUE REFERENCES tenants(id) ON DELETE CASCADE,
+        template_id             VARCHAR(50) NOT NULL,
+        subdomain               VARCHAR(63) UNIQUE NOT NULL,
+        custom_domain           VARCHAR(255) UNIQUE,
+        custom_domain_verified  BOOLEAN NOT NULL DEFAULT false,
+        published               BOOLEAN NOT NULL DEFAULT false,
+        content                 JSONB NOT NULL DEFAULT '{}',
+        theme                   JSONB NOT NULL DEFAULT '{}',
+        created_at              TIMESTAMPTZ DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_landing_pages_subdomain ON landing_pages(subdomain);`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

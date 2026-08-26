@@ -100,6 +100,13 @@ export const api = {
   addRecipients: (id) => request(`/campaigns/${id}/recipients`, { method: 'POST' }),
   sendCampaign: (id) => request(`/campaigns/${id}/send`, { method: 'POST' }),
   getCampaignStatus: (id) => request(`/campaigns/${id}/status`),
+
+  // Landing page builder
+  getLandingPage: () => request('/landing-page'),
+  saveLandingPage: (body) => request('/landing-page', { method: 'PUT', body: JSON.stringify(body) }),
+  checkSubdomain: (value) => request(`/landing-page/subdomain-check?value=${encodeURIComponent(value)}`),
+  publishLandingPage: (published = true) =>
+    request('/landing-page/publish', { method: 'POST', body: JSON.stringify({ published }) }),
 };
 
 // Public customer ordering endpoints — unauthenticated, no tenant JWT
@@ -127,6 +134,11 @@ export const publicApi = {
   // In-app AI assistant
   getRecommendation: (slug, message) =>
     request(`/public/${slug}/recommendations`, { method: 'POST', body: JSON.stringify({ message }) }),
+};
+
+// Published landing pages — unauthenticated, resolved by subdomain
+export const sitesApi = {
+  getSite: (subdomain) => request(`/sites/${subdomain}`),
 };
 
 // Dine-in table session endpoints — unauthenticated, scanned via QR

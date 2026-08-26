@@ -17,6 +17,8 @@ import tableSessionRoutes from './routes/table-sessions.js';
 import reservationRoutes from './routes/reservations.js';
 import inventoryRoutes from './routes/inventory.js';
 import campaignRoutes from './routes/campaigns.js';
+import landingPageRoutes from './routes/landing-page.js';
+import sitesRoutes from './routes/sites.js';
 
 const app = express();
 
@@ -67,6 +69,10 @@ const displayBoardLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 600 });
 app.use('/api/branches/:id/token-board', displayBoardLimiter);
 app.use('/api/branches/:id/menu-board', displayBoardLimiter);
 
+// Public landing-site pages are unauthenticated, same ceiling as other public reads.
+const sitesLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+app.use('/api/sites', sitesLimiter);
+
 // ── Health check ──
 // Verifies DB connectivity too, so a deployment issue (e.g. bad DATABASE_URL)
 // is visible here rather than only surfacing on the first real request.
@@ -91,6 +97,8 @@ app.use('/api/table-sessions', tableSessionRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/campaigns', campaignRoutes);
+app.use('/api/landing-page', landingPageRoutes);
+app.use('/api/sites', sitesRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

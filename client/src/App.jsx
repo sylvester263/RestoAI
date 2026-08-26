@@ -18,6 +18,8 @@ import Tables from './pages/Tables';
 import Reservations from './pages/Reservations';
 import Inventory from './pages/Inventory';
 import Campaigns from './pages/Campaigns';
+import LandingPageEditor from './pages/LandingPageEditor';
+import PublicSite from './pages/public/PublicSite';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
 
@@ -37,6 +39,7 @@ export default function App() {
       <Route path="/table/:qrToken" element={<TableOrder />} />
       <Route path="/order/:tenantSlug/reserve" element={<Reservation />} />
       <Route path="/order/:tenantSlug/loyalty" element={<Loyalty />} />
+      <Route path="/site/:subdomain" element={<PublicSite />} />
       <Route path="/display/token-board/:branchId" element={<TokenBoard />} />
       <Route path="/display/menu-board/:branchId" element={<MenuBoard />} />
       <Route path="/kitchen" element={<ProtectedRoute><Kitchen /></ProtectedRoute>} />
@@ -53,6 +56,7 @@ export default function App() {
                 <Route path="/reservations" element={<Reservations />} />
                 <Route path="/inventory" element={<Inventory />} />
                 <Route path="/campaigns" element={<Campaigns />} />
+                <Route path="/website" element={<LandingPageEditor />} />
                 <Route path="/insights" element={<Insights />} />
                 <Route path="/whatsapp" element={<WhatsAppDemo />} />
               </Routes>
