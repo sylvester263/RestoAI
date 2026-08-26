@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
-  MessageCircle, LogOut, ChefHat, QrCode,
+  MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
 } from 'lucide-react';
 
 const navItems = [
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/orders', icon: ShoppingBag, label: 'Orders' },
   { to: '/tables', icon: QrCode, label: 'Tables' },
+  { to: '/reservations', icon: CalendarCheck, label: 'Reservations' },
   { to: '/insights', icon: BarChart3, label: 'Insights' },
   { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp Demo' },
 ];

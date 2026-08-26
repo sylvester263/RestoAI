@@ -97,6 +97,8 @@ export async function processWhatsAppMessage(tenantId, message) {
     } else if (parsed.intent === 'recommendation') {
       // Feature 3: AI-powered menu recommendations (read-only, no order created)
       reply = await generateRecommendation(text, menuItems, conversationContext);
+    } else if (parsed.intent === 'reservation') {
+      reply = await handleReservationRequest(tenantId, customer, parsed);
     }
     // For greeting/question/chitchat/menu_request — reply is already set from parsed.reply_message
   }
@@ -135,6 +137,30 @@ async function getOrCreateConversation(tenantId, phone) {
   }
 
   return res.rows[0];
+}
+
+// ── Helper: Book a table from a conversationally-parsed reservation request ──
+async function handleReservationRequest(tenantId, customer, parsed) {
+  if (!parsed.party_size || !parsed.reserved_for) {
+    return "I'd love to book that for you — could you confirm the number of people and the date/time?";
+  }
+  const reservedFor = new Date(parsed.reserved_for);
+  if (Number.isNaN(reservedFor.getTime()) || reservedFor <= new Date()) {
+    return "That date/time doesn't look right — could you tell me the day and time again?";
+  }
+
+  const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [tenantId]);
+  const branchId = branchRes.rows[0]?.id;
+  if (!branchId) return "Sorry, I can't book a table right now — please call the restaurant directly.";
+
+  await query(
+    `INSERT INTO reservations (tenant_id, branch_id, customer_name, customer_phone, party_size, reserved_for)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [tenantId, branchId, customer.name || 'Guest', customer.phone, parsed.party_size, reservedFor],
+  );
+
+  const when = reservedFor.toLocaleString('en-PK', { timeZone: 'Asia/Karachi', dateStyle: 'medium', timeStyle: 'short' });
+  return `✅ Table booked for ${parsed.party_size} on ${when}. See you then!`;
 }
 
 // ── Helper: Build a draft order from parsed AI output (not yet saved to DB) ──
@@ -191,7 +217,7 @@ async function finalizeOrder(tenantId, customer, draft) {
 }
 
 // ── Helper: Send reply via WhatsApp Cloud API ──
-async function sendReply(phone, text) {
+export async function sendReply(phone, text) {
   // In demo mode (no token or placeholder), log to console instead of sending
   const token = config.whatsapp.token;
   if (!token || token.startsWith('your-')) {

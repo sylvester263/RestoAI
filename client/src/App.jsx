@@ -12,7 +12,9 @@ import PublicMenu from './pages/public/PublicMenu';
 import Checkout from './pages/public/Checkout';
 import TrackOrder from './pages/public/TrackOrder';
 import TableOrder from './pages/public/TableOrder';
+import Reservation from './pages/public/Reservation';
 import Tables from './pages/Tables';
+import Reservations from './pages/Reservations';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -28,6 +30,7 @@ export default function App() {
       <Route path="/order/:tenantSlug/checkout" element={<Checkout />} />
       <Route path="/order/:tenantSlug/track/:orderId" element={<TrackOrder />} />
       <Route path="/table/:qrToken" element={<TableOrder />} />
+      <Route path="/order/:tenantSlug/reserve" element={<Reservation />} />
       <Route path="/kitchen" element={<ProtectedRoute><Kitchen /></ProtectedRoute>} />
       <Route
         path="/*"
@@ -39,6 +42,7 @@ export default function App() {
                 <Route path="/menu" element={<Menu />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/tables" element={<Tables />} />
+                <Route path="/reservations" element={<Reservations />} />
                 <Route path="/insights" element={<Insights />} />
                 <Route path="/whatsapp" element={<WhatsAppDemo />} />
               </Routes>

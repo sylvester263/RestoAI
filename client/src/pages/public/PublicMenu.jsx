@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getCart, addToCart, updateCartQuantity } from '../../lib/publicOrderStore';
-import { ShoppingCart, Plus, Minus } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, CalendarCheck } from 'lucide-react';
 
 export default function PublicMenu() {
   const { tenantSlug } = useParams();
@@ -64,8 +64,15 @@ export default function PublicMenu() {
   return (
     <div className="min-h-screen bg-gray-50 pb-28">
       <div className="border-b border-gray-200 bg-white px-4 py-6">
-        <h1 className="text-2xl font-bold text-gray-900">{restaurant?.name}</h1>
-        {restaurant?.address && <p className="text-sm text-gray-500">{restaurant.address}</p>}
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{restaurant?.name}</h1>
+            {restaurant?.address && <p className="text-sm text-gray-500">{restaurant.address}</p>}
+          </div>
+          <button onClick={() => navigate(`/order/${tenantSlug}/reserve`)} className="btn-secondary shrink-0 text-sm">
+            <CalendarCheck className="h-4 w-4" /> Book a Table
+          </button>
+        </div>
       </div>
 
       <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">

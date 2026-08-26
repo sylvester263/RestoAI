@@ -64,6 +64,11 @@ export const api = {
     request(`/branches/${branchId}/tables`, { method: 'POST', body: JSON.stringify({ table_number: tableNumber }) }),
   closeTableSession: (sessionId) => request(`/table-sessions/${sessionId}/close`, { method: 'POST' }),
 
+  // Reservations
+  getReservations: (branchId, date) => request(`/branches/${branchId}/reservations${date ? `?date=${date}` : ''}`),
+  updateReservationStatus: (id, status) =>
+    request(`/reservations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+
   // Insights
   getDashboard: () => request('/insights/dashboard'),
   queryInsights: (question) =>
@@ -81,6 +86,8 @@ export const publicApi = {
   createOrder: (slug, body) => request(`/public/${slug}/orders`, { method: 'POST', body: JSON.stringify(body) }),
   getOrderStatus: (slug, orderId, phone) =>
     request(`/public/${slug}/orders/${orderId}?phone=${encodeURIComponent(phone)}`),
+  createReservation: (slug, body) =>
+    request(`/public/${slug}/reservations`, { method: 'POST', body: JSON.stringify(body) }),
 };
 
 // Dine-in table session endpoints — unauthenticated, scanned via QR

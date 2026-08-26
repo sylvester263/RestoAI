@@ -61,13 +61,18 @@ RULES:
 6. Set "reply_message" to a natural, friendly response in the same language the customer used.
 7. If the message is not a food order (e.g., greeting, question), set "intent" accordingly.
 8. If the customer is asking for menu RECOMMENDATIONS or suggestions (e.g. "kya acha hai?", "what do you recommend?", "something spicy under 500"), set "intent" to "recommendation" and return empty items. The system will handle recommendation separately.
+9. If the customer is asking to BOOK A TABLE (e.g. "book a table for 4 tonight at 8", "reservation for 2 people tomorrow 7pm"), set "intent" to "reservation", fill "party_size" and resolve "reserved_for" to an exact ISO 8601 datetime using the current date/time given below — do not return items for a reservation request.
+
+Current date/time (Asia/Karachi): {{NOW}}
 
 Always respond in valid JSON with this schema:
 {
-  "intent": "order" | "recommendation" | "greeting" | "question" | "chitchat" | "menu_request",
+  "intent": "order" | "recommendation" | "reservation" | "greeting" | "question" | "chitchat" | "menu_request",
   "items": [{"name": "string", "quantity": number}],
   "delivery_address": "string or null",
   "payment_method": "cash" | "jazzcash" | "easypaisa" | "card" | null,
+  "party_size": "number or null",
+  "reserved_for": "ISO 8601 datetime string or null",
   "needs_confirmation": boolean,
   "reply_message": "string",
   "confidence": number
@@ -85,8 +90,12 @@ export async function parseOrderMessage(message, menuItems, conversationContext 
     .map((item) => `- ${item.name} (${item.name_urdu || ''}): Rs. ${item.price}`)
     .join('\n');
 
+  const systemPrompt = ORDER_SYSTEM_PROMPT.replace(
+    '{{NOW}}',
+    new Date().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' }),
+  );
   const messages = [
-    { role: 'system', content: ORDER_SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt },
   ];
 
   // Include conversation history for multi-turn context

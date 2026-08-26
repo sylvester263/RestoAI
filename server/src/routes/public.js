@@ -8,6 +8,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
+import { sendReply } from '../services/whatsapp.js';
 
 const router = Router({ mergeParams: true });
 
@@ -149,6 +150,54 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
     const { customer_phone, ...orderFields } = order;
     res.json({ order: { ...orderFields, items: itemsRes.rows } });
   } catch (err) {
+    next(err);
+  }
+});
+
+const reservationSchema = z.object({
+  customer_name: z.string().min(1).max(100),
+  customer_phone: z.string().min(7).max(20),
+  party_size: z.number().int().min(1).max(50),
+  reserved_for: z.string().datetime({ offset: true }).or(z.string().datetime()),
+  notes: z.string().max(500).optional(),
+});
+
+// ── POST /api/public/:tenantSlug/reservations ──
+// Book a table in advance. Branch is resolved as the tenant's first branch,
+// matching the same "single default branch" precedent used for orders.
+router.post('/:tenantSlug/reservations', async (req, res, next) => {
+  try {
+    const data = reservationSchema.parse(req.body);
+
+    const reservedFor = new Date(data.reserved_for);
+    if (Number.isNaN(reservedFor.getTime()) || reservedFor <= new Date()) {
+      return res.status(400).json({ error: { message: 'reserved_for must be a valid future date/time' } });
+    }
+
+    const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [req.tenant.id]);
+    const branchId = branchRes.rows[0]?.id;
+    if (!branchId) {
+      return res.status(400).json({ error: { message: 'This restaurant has no branches configured' } });
+    }
+
+    const result = await query(
+      `INSERT INTO reservations (tenant_id, branch_id, customer_name, customer_phone, party_size, reserved_for, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [req.tenant.id, branchId, data.customer_name, data.customer_phone, data.party_size, reservedFor, data.notes || null],
+    );
+    const reservation = result.rows[0];
+
+    const when = reservedFor.toLocaleString('en-PK', { timeZone: 'Asia/Karachi', dateStyle: 'medium', timeStyle: 'short' });
+    sendReply(
+      data.customer_phone,
+      `✅ Table booked at ${req.tenant.name} for ${data.party_size} on ${when}. See you then!`,
+    ).catch(() => {});
+
+    res.status(201).json({ reservation });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
     next(err);
   }
 });

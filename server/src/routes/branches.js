@@ -102,6 +102,26 @@ router.get('/:id/tables', async (req, res, next) => {
   }
 });
 
+// ── GET /api/branches/:id/reservations?date=YYYY-MM-DD ──
+// Day view of reservations for staff (impl-06)
+router.get('/:id/reservations', async (req, res, next) => {
+  try {
+    if (!(await assertBranchOwnedByTenant(req.user.tenant_id, req.params.id))) {
+      return res.status(404).json({ error: { message: 'Branch not found' } });
+    }
+    const date = req.query.date || new Date().toISOString().slice(0, 10);
+    const result = await query(
+      `SELECT * FROM reservations
+       WHERE branch_id = $1 AND reserved_for >= $2::date AND reserved_for < $2::date + INTERVAL '1 day'
+       ORDER BY reserved_for`,
+      [req.params.id, date],
+    );
+    res.json({ reservations: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── POST /api/branches/:id/tables ──
 router.post('/:id/tables', authorize('owner', 'manager'), async (req, res, next) => {
   try {

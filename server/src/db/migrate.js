@@ -178,6 +178,24 @@ async function migrate() {
     // Link orders back to the dine-in session that placed them (nullable — most orders aren't dine-in)
     await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS table_session_id UUID REFERENCES table_sessions(id);`);
 
+    // ── Reservations ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reservations (
+        id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id         UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        customer_name     VARCHAR(100) NOT NULL,
+        customer_phone    VARCHAR(20) NOT NULL,
+        party_size        SMALLINT NOT NULL,
+        reserved_for      TIMESTAMPTZ NOT NULL,
+        status            VARCHAR(20) NOT NULL DEFAULT 'confirmed' CHECK (status IN ('confirmed','seated','completed','cancelled','no_show')),
+        notes             TEXT,
+        table_session_id  UUID REFERENCES table_sessions(id),
+        created_at        TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_reservations_branch_time ON reservations(branch_id, reserved_for);`);
+
     // ── Conversations (WhatsApp session state) ──
     await client.query(`
       CREATE TABLE IF NOT EXISTS conversations (

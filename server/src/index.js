@@ -14,6 +14,7 @@ import insightsRoutes from './routes/insights.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import publicRoutes from './routes/public.js';
 import tableSessionRoutes from './routes/table-sessions.js';
+import reservationRoutes from './routes/reservations.js';
 
 const app = express();
 
@@ -78,6 +79,7 @@ app.use('/api/insights', insightsRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/table-sessions', tableSessionRoutes);
+app.use('/api/reservations', reservationRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);
