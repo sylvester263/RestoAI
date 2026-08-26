@@ -5,6 +5,7 @@
  * server-side from the slug, never trusted from client input).
  */
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
@@ -14,6 +15,14 @@ import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.
 import config from '../config.js';
 
 const router = Router({ mergeParams: true });
+
+// Rate limiter for public reservations — max 10 per 15 min per IP
+const reservationLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req) => req.ip,
+  message: { error: { message: 'Too many reservation requests, try again later' } },
+});
 
 async function resolveTenant(req, res, next) {
   try {
@@ -176,7 +185,7 @@ const reservationSchema = z.object({
 // ── POST /api/public/:tenantSlug/reservations ──
 // Book a table in advance. Branch is resolved as the tenant's first branch,
 // matching the same "single default branch" precedent used for orders.
-router.post('/:tenantSlug/reservations', async (req, res, next) => {
+router.post('/:tenantSlug/reservations', reservationLimiter, async (req, res, next) => {
   try {
     const data = reservationSchema.parse(req.body);
 

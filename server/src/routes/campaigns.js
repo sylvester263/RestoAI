@@ -4,9 +4,10 @@
  * console when no real WhatsApp token is configured).
  */
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { waitUntil } from '@vercel/functions';
 import { authenticate, authorize } from '../middleware/auth.js';
-import { query } from '../db/pool.js';
+import { query, withTransaction } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
 import { z } from 'zod';
 
@@ -88,24 +89,40 @@ router.post('/:id/recipients', authorize('owner', 'manager'), async (req, res, n
   }
 });
 
+// Rate limiter for campaign send — max 5 sends per 15 min per user
+const campaignSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: { message: 'Too many campaign send requests, try again later' } },
+});
+
 // ── POST /api/campaigns/:id/send ──
 // Send the campaign to all pending recipients with a delay between messages
-router.post('/:id/send', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/:id/send', authorize('owner', 'manager'), campaignSendLimiter, async (req, res, next) => {
   try {
-    const campRes = await query(
-      'SELECT * FROM broadcast_campaigns WHERE id = $1 AND tenant_id = $2',
-      [req.params.id, req.user.tenant_id],
-    );
-    if (campRes.rows.length === 0) {
-      return res.status(404).json({ error: { message: 'Campaign not found' } });
-    }
-    const campaign = campRes.rows[0];
-    if (campaign.status === 'sending' || campaign.status === 'completed') {
-      return res.status(400).json({ error: { message: 'Campaign already sent or in progress' } });
-    }
-
-    // Mark as sending
-    await query("UPDATE broadcast_campaigns SET status = 'sending' WHERE id = $1", [req.params.id]);
+    // Atomic check-and-lock: SELECT FOR UPDATE inside a transaction prevents
+    // two concurrent send clicks from both passing the status guard.
+    const campaign = await withTransaction(async (client) => {
+      const campRes = await client.query(
+        'SELECT * FROM broadcast_campaigns WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
+        [req.params.id, req.user.tenant_id],
+      );
+      if (campRes.rows.length === 0) {
+        const err = new Error('Campaign not found');
+        err.status = 404;
+        throw err;
+      }
+      const camp = campRes.rows[0];
+      if (camp.status === 'sending' || camp.status === 'completed') {
+        const err = new Error('Campaign already sent or in progress');
+        err.status = 400;
+        throw err;
+      }
+      // Mark as sending inside the same transaction
+      await client.query("UPDATE broadcast_campaigns SET status = 'sending' WHERE id = $1", [req.params.id]);
+      return camp;
+    });
 
     // Get pending recipients with their phone numbers and names
     const recipients = await query(
@@ -147,6 +164,9 @@ router.post('/:id/send', authorize('owner', 'manager'), async (req, res, next) =
       await query("UPDATE broadcast_campaigns SET status = 'completed' WHERE id = $1", [req.params.id]);
     })());
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: { message: err.message } });
+    }
     next(err);
   }
 });

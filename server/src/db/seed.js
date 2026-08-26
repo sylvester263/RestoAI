@@ -82,14 +82,25 @@ async function seed() {
       `, [tenantId, branchId, catIds[cat], name, urdu, desc, price, [cat.toLowerCase()]]);
     }
 
+    // ── Loyalty config (enable for demo) ──
+    await client.query(`
+      INSERT INTO loyalty_config (tenant_id, points_per_currency_unit, redemption_rate, enabled)
+      VALUES ($1, 1.0, 0.01, true)
+      ON CONFLICT (tenant_id) DO UPDATE SET enabled = true;
+    `, [tenantId]);
+
     // ── Demo customers ──
     const cust1 = await client.query(`
       INSERT INTO customers (tenant_id, phone, name, address, order_count, total_spent)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (tenant_id, phone) DO UPDATE SET name = EXCLUDED.name, address = EXCLUDED.address
+      RETURNING id;
     `, [tenantId, '+923001111111', 'Usman Tariq', 'House 12, Block D, DHA Phase 5', 8, 9600]);
     const cust2 = await client.query(`
       INSERT INTO customers (tenant_id, phone, name, address, order_count, total_spent)
-      VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (tenant_id, phone) DO UPDATE SET name = EXCLUDED.name, address = EXCLUDED.address
+      RETURNING id;
     `, [tenantId, '+923221234567', 'Fatima Noor', 'Flat 4B, Gulberg Centre', 3, 3450]);
 
     // ── Demo orders (last 7 days) ──

@@ -112,7 +112,7 @@ export default function Kitchen() {
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t border-gray-200 pt-3">
                   <div className="text-xs text-gray-500">
-                    {order.delivery_address ? 'Delivery' : 'Pickup'} • {order.payment_method}
+                    {order.table_session_id ? 'Dine-in' : order.delivery_address ? 'Delivery' : 'Pickup'} • {order.payment_method}
                   </div>
                   {NEXT_STATUS[order.status] && (
                     <button
