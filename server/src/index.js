@@ -60,8 +60,12 @@ app.use('/api/public', publicRoutes);
 // ── Global error handler ──
 app.use(errorHandler);
 
-app.listen(config.port, () => {
-  console.log(`[server] running on http://localhost:${config.port} (${config.nodeEnv})`);
-});
+// Vercel imports this module as a serverless function handler and never needs
+// a bound port — only listen when running as a standalone Node process.
+if (!process.env.VERCEL) {
+  app.listen(config.port, () => {
+    console.log(`[server] running on http://localhost:${config.port} (${config.nodeEnv})`);
+  });
+}
 
 export default app;
