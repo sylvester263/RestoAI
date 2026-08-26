@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import config from './config.js';
+import { query } from './db/pool.js';
 import { errorHandler } from './middleware/error-handler.js';
 import authRoutes from './routes/auth.js';
 import menuRoutes from './routes/menu.js';
@@ -46,7 +47,16 @@ const publicLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/public', publicLimiter);
 
 // ── Health check ──
-app.get('/health', (_req, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
+// Verifies DB connectivity too, so a deployment issue (e.g. bad DATABASE_URL)
+// is visible here rather than only surfacing on the first real request.
+app.get('/health', async (_req, res) => {
+  try {
+    await query('SELECT 1');
+    res.json({ status: 'ok', db: 'ok', time: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({ status: 'ok', db: 'unreachable', error: err.message, time: new Date().toISOString() });
+  }
+});
 
 // ── API routes ──
 app.use('/api/auth', authRoutes);
