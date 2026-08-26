@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Package, AlertTriangle, Plus, Edit2, Trash2, RefreshCw, X } from 'lucide-react';
 
 export default function Inventory() {
+  const [searchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showLowOnly, setShowLowOnly] = useState(false);
+  const [showLowOnly, setShowLowOnly] = useState(searchParams.get('low_stock') === 'true');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState({ name: '', unit: 'kg', current_qty: 0, min_qty: 0 });

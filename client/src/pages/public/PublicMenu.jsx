@@ -19,20 +19,17 @@ export default function PublicMenu() {
     setCart(getCart(tenantSlug));
     Promise.all([publicApi.getRestaurant(tenantSlug), publicApi.getMenu(tenantSlug)])
       .then(([r, m]) => {
-        window.__debug = window.__debug || [];
-        window.__debug.push('effect fired items=' + m.items.length);
         setRestaurant(r.restaurant);
         setItems(m.items);
         Promise.all(
           m.items.map((item) =>
             publicApi.getItemReviews(tenantSlug, item.id)
               .then((res) => [item.id, res])
-              .catch((err) => { window.__debug.push('item ' + item.id + ' failed: ' + err.message); return [item.id, null]; }),
+              .catch(() => [item.id, null]),
           ),
         ).then((pairs) => {
           const map = {};
           for (const [id, res] of pairs) if (res && res.count > 0) map[id] = res;
-          window.__debug.push('pairs=' + JSON.stringify(pairs) + ' map=' + JSON.stringify(map));
           setRatings(map);
         });
       })

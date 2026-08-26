@@ -20,7 +20,13 @@ async function request(path, options = {}) {
     throw new Error('Session expired');
   }
 
-  const data = await res.json();
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    if (res.status === 429) throw new Error('Too many requests — please wait a moment and try again.');
+    throw new Error(`Request failed (${res.status})`);
+  }
   if (!res.ok) {
     throw new Error(data.error?.message || 'Request failed');
   }

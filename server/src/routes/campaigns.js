@@ -4,6 +4,7 @@
  * console when no real WhatsApp token is configured).
  */
 import { Router } from 'express';
+import { waitUntil } from '@vercel/functions';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
@@ -115,31 +116,36 @@ router.post('/:id/send', authorize('owner', 'manager'), async (req, res, next) =
       [req.params.id],
     );
 
-    let sent = 0;
-    let failed = 0;
+    // Respond immediately — sending N messages with a throttling delay between
+    // each can take well past a request's timeout window. The client polls
+    // GET /:id/status for progress instead of waiting on this response.
+    // waitUntil keeps the send loop running past the response on Vercel's
+    // serverless runtime, where a handler can otherwise be frozen once its
+    // response is flushed; it's a no-op wrapper (runs the promise normally)
+    // outside that environment, so local dev is unaffected.
+    res.json({ started: true, total: recipients.rows.length });
 
-    for (const recipient of recipients.rows) {
-      const message = campaign.message_template.replace(/\{\{name\}\}/g, recipient.name || 'Valued Customer');
-      try {
-        await sendReply(recipient.phone, message);
-        await query(
-          "UPDATE broadcast_recipients SET status = 'sent', sent_at = NOW() WHERE id = $1",
-          [recipient.id],
-        );
-        sent++;
-      } catch {
-        await query(
-          "UPDATE broadcast_recipients SET status = 'failed' WHERE id = $1",
-          [recipient.id],
-        );
-        failed++;
+    waitUntil((async () => {
+      for (const recipient of recipients.rows) {
+        const message = campaign.message_template.replace(/\{\{name\}\}/g, recipient.name || 'Valued Customer');
+        try {
+          await sendReply(recipient.phone, message);
+          await query(
+            "UPDATE broadcast_recipients SET status = 'sent', sent_at = NOW() WHERE id = $1",
+            [recipient.id],
+          );
+        } catch {
+          await query(
+            "UPDATE broadcast_recipients SET status = 'failed' WHERE id = $1",
+            [recipient.id],
+          );
+        }
+        // Small delay between messages to avoid rate limiting (500ms)
+        await new Promise((r) => setTimeout(r, 500));
       }
-      // Small delay between messages to avoid rate limiting (500ms)
-      await new Promise((r) => setTimeout(r, 500));
-    }
 
-    await query("UPDATE broadcast_campaigns SET status = 'completed' WHERE id = $1", [req.params.id]);
-    res.json({ sent, failed, total: recipients.rows.length });
+      await query("UPDATE broadcast_campaigns SET status = 'completed' WHERE id = $1", [req.params.id]);
+    })());
   } catch (err) {
     next(err);
   }

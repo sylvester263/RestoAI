@@ -3,7 +3,7 @@
  * the public checkout flow, the order-status-update hook, and the WhatsApp
  * agent, so there is exactly one implementation of the points math.
  */
-import { query } from '../db/pool.js';
+import { query, withTransaction } from '../db/pool.js';
 import { OrderError } from './orders.js';
 
 // ── Get a tenant's loyalty config, or null if not opted in ──
@@ -43,19 +43,34 @@ export async function awardPointsForOrder(tenantId, orderId) {
 }
 
 // ── Redeem points for a discount amount, validated against the current balance ──
+// Locks the customer row for the duration of the check+insert so two
+// concurrent redemptions (double-click, multiple tabs) can't both pass the
+// balance check against the same pre-redemption balance and over-redeem.
 export async function redeemPoints(tenantId, customerId, pointsToRedeem) {
   const config = await getLoyaltyConfig(tenantId);
   if (!config) throw new OrderError(400, 'Loyalty is not enabled for this restaurant');
 
-  const balance = await getBalance(tenantId, customerId);
-  if (pointsToRedeem <= 0 || pointsToRedeem > balance) {
+  if (pointsToRedeem <= 0) {
     throw new OrderError(400, 'Not enough points for that redemption');
   }
 
-  const discount = Math.round(pointsToRedeem * parseFloat(config.redemption_rate) * 100) / 100;
-  await query(
-    `INSERT INTO loyalty_points (tenant_id, customer_id, points_change, reason) VALUES ($1, $2, $3, 'redeemed')`,
-    [tenantId, customerId, -pointsToRedeem],
-  );
-  return discount;
+  return withTransaction(async (client) => {
+    await client.query('SELECT id FROM customers WHERE id = $1 FOR UPDATE', [customerId]);
+
+    const balanceRes = await client.query(
+      `SELECT COALESCE(SUM(points_change), 0) as balance FROM loyalty_points WHERE tenant_id = $1 AND customer_id = $2`,
+      [tenantId, customerId],
+    );
+    const balance = parseInt(balanceRes.rows[0].balance, 10);
+    if (pointsToRedeem > balance) {
+      throw new OrderError(400, 'Not enough points for that redemption');
+    }
+
+    const discount = Math.round(pointsToRedeem * parseFloat(config.redemption_rate) * 100) / 100;
+    await client.query(
+      `INSERT INTO loyalty_points (tenant_id, customer_id, points_change, reason) VALUES ($1, $2, $3, 'redeemed')`,
+      [tenantId, customerId, -pointsToRedeem],
+    );
+    return discount;
+  });
 }

@@ -62,14 +62,31 @@ export default function Campaigns() {
     if (!confirm('Send this campaign to all recipients?')) return;
     setActionLoading('send-' + id);
     try {
-      const res = await api.sendCampaign(id);
-      alert(`Sent: ${res.sent}, Failed: ${res.failed} (of ${res.total} recipients)`);
+      await api.sendCampaign(id);
       load();
+      pollCampaignStatus(id);
     } catch (err) {
       alert(err.message);
-    } finally {
       setActionLoading('');
     }
+  }
+
+  // Sending happens in the background on the server, so poll until the
+  // campaign leaves the 'sending' state instead of waiting on one long request.
+  function pollCampaignStatus(id) {
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.getCampaignStatus(id);
+        load();
+        if (res.campaign.status !== 'sending') {
+          clearInterval(interval);
+          setActionLoading('');
+        }
+      } catch {
+        clearInterval(interval);
+        setActionLoading('');
+      }
+    }, 3000);
   }
 
   async function handleViewStatus(campaign) {
