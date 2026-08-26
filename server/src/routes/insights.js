@@ -36,7 +36,7 @@ router.get('/dashboard', async (req, res, next) => {
   try {
     const tenantId = req.user.tenant_id;
 
-    const [todayOrders, weekRevenue, topItems, statusBreakdown, recentCustomers] = await Promise.all([
+    const [todayOrders, weekRevenue, topItems, statusBreakdown, recentCustomers, reviewStats, lowStockCount] = await Promise.all([
       // Today's order count and revenue
       query(`
         SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as revenue
@@ -80,6 +80,20 @@ router.get('/dashboard', async (req, res, next) => {
         ORDER BY c.updated_at DESC
         LIMIT 10
       `, [tenantId]),
+
+      // Review ratings summary (last 30 days)
+      query(`
+        SELECT COUNT(*) as count, COALESCE(AVG(rating), 0) as average
+        FROM reviews
+        WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
+      `, [tenantId]),
+
+      // Low-stock inventory items count
+      query(`
+        SELECT COUNT(*) as count
+        FROM inventory_items
+        WHERE tenant_id = $1 AND current_qty <= min_qty
+      `, [tenantId]),
     ]);
 
     res.json({
@@ -91,6 +105,11 @@ router.get('/dashboard', async (req, res, next) => {
       top_items: topItems.rows,
       status_breakdown: statusBreakdown.rows,
       recent_customers: recentCustomers.rows,
+      reviews: {
+        count: parseInt(reviewStats.rows[0].count, 10),
+        average: Math.round(parseFloat(reviewStats.rows[0].average) * 10) / 10,
+      },
+      low_stock_count: parseInt(lowStockCount.rows[0].count, 10),
     });
   } catch (err) {
     next(err);

@@ -107,6 +107,11 @@ export default function Orders() {
                   <span className={`badge ${STATUS_COLORS[order.status]}`}>{order.status}</span>
                   <span className="text-sm font-semibold">Rs. {Number(order.total).toLocaleString()}</span>
                   <span className="text-xs text-gray-400 uppercase">{order.channel}</span>
+                  {order.payment && (
+                    <span className={`badge ${order.payment.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                      {order.payment.method.toUpperCase()} · {order.payment.status}
+                    </span>
+                  )}
                   {expanded === order.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
                 </div>
               </div>
@@ -121,7 +126,11 @@ export default function Orders() {
                     </div>
                     <div>
                       <p className="font-medium text-gray-700">Payment</p>
-                      <p className="text-gray-600 capitalize">{order.payment_method}</p>
+                      <p className="text-gray-600 capitalize">
+                        {order.payment
+                          ? `${order.payment.method} — ${order.payment.status} (Rs. ${Number(order.payment.amount).toLocaleString()})`
+                          : order.payment_method}
+                      </p>
                     </div>
                     <div>
                       <p className="font-medium text-gray-700">Breakdown</p>

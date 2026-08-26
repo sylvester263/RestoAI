@@ -15,6 +15,8 @@ import whatsappRoutes from './routes/whatsapp.js';
 import publicRoutes from './routes/public.js';
 import tableSessionRoutes from './routes/table-sessions.js';
 import reservationRoutes from './routes/reservations.js';
+import inventoryRoutes from './routes/inventory.js';
+import campaignRoutes from './routes/campaigns.js';
 
 const app = express();
 
@@ -87,6 +89,8 @@ app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/table-sessions', tableSessionRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/campaigns', campaignRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
-import { notifyStatusChange } from '../services/whatsapp.js';
+import { notifyStatusChange, STATUS_MESSAGES } from '../services/whatsapp.js';
+import { awardPointsForOrder } from '../services/loyalty.js';
+import { sendPushToCustomer } from '../services/push.js';
+import { markCodPaidOnDelivery, getPaymentsForOrders } from '../services/payments.js';
 
 const router = Router();
 router.use(authenticate);
@@ -57,8 +60,16 @@ router.get('/', async (req, res, next) => {
       listParams,
     );
 
+    // Attach payment status to each order (batch lookup, no N+1)
+    const orderIds = result.rows.map((o) => o.id);
+    const paymentMap = await getPaymentsForOrders(orderIds);
+    const ordersWithPayment = result.rows.map((o) => ({
+      ...o,
+      payment: paymentMap[o.id] || null,
+    }));
+
     res.json({
-      orders: result.rows,
+      orders: ordersWithPayment,
       total: parseInt(countResult.rows[0].count, 10),
     });
   } catch (err) {
@@ -108,8 +119,9 @@ router.get('/:id', async (req, res, next) => {
       'SELECT * FROM order_items WHERE order_id = $1',
       [req.params.id],
     );
+    const paymentMap = await getPaymentsForOrders([req.params.id]);
 
-    res.json({ order: { ...orderRes.rows[0], items: itemsRes.rows } });
+    res.json({ order: { ...orderRes.rows[0], items: itemsRes.rows, payment: paymentMap[req.params.id] || null } });
   } catch (err) {
     next(err);
   }
@@ -134,8 +146,18 @@ router.patch('/:id/status', async (req, res, next) => {
     }
     res.json({ order: result.rows[0] });
 
-    // Feature 1: Fire-and-forget WhatsApp status notification
+    // Fire-and-forget: WhatsApp + push notification (parallel channels, both best-effort)
     notifyStatusChange(req.params.id, req.user.tenant_id, status).catch(() => {});
+    if (STATUS_MESSAGES[status] && result.rows[0].customer_id) {
+      sendPushToCustomer(result.rows[0].customer_id, { title: 'Order update', body: STATUS_MESSAGES[status] }).catch(() => {});
+    }
+
+    // Award loyalty points once an order is delivered (idempotent, opt-in per tenant)
+    if (status === 'delivered') {
+      awardPointsForOrder(req.user.tenant_id, req.params.id).catch((err) => console.error('[loyalty] award failed:', err.message));
+      // Mark COD payment as paid on delivery (idempotent)
+      markCodPaidOnDelivery(req.user.tenant_id, req.params.id).catch((err) => console.error('[payments] COD mark-paid failed:', err.message));
+    }
   } catch (err) {
     next(err);
   }

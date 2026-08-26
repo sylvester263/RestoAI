@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getCart, addToCart, updateCartQuantity } from '../../lib/publicOrderStore';
-import { ShoppingCart, Plus, Minus, CalendarCheck } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, CalendarCheck, Star, Gift } from 'lucide-react';
+import AIAssistantWidget from './AIAssistantWidget';
 
 export default function PublicMenu() {
   const { tenantSlug } = useParams();
@@ -12,13 +13,28 @@ export default function PublicMenu() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [cart, setCart] = useState([]);
+  const [ratings, setRatings] = useState({});
 
   useEffect(() => {
     setCart(getCart(tenantSlug));
     Promise.all([publicApi.getRestaurant(tenantSlug), publicApi.getMenu(tenantSlug)])
       .then(([r, m]) => {
+        window.__debug = window.__debug || [];
+        window.__debug.push('effect fired items=' + m.items.length);
         setRestaurant(r.restaurant);
         setItems(m.items);
+        Promise.all(
+          m.items.map((item) =>
+            publicApi.getItemReviews(tenantSlug, item.id)
+              .then((res) => [item.id, res])
+              .catch((err) => { window.__debug.push('item ' + item.id + ' failed: ' + err.message); return [item.id, null]; }),
+          ),
+        ).then((pairs) => {
+          const map = {};
+          for (const [id, res] of pairs) if (res && res.count > 0) map[id] = res;
+          window.__debug.push('pairs=' + JSON.stringify(pairs) + ' map=' + JSON.stringify(map));
+          setRatings(map);
+        });
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
@@ -69,9 +85,14 @@ export default function PublicMenu() {
             <h1 className="text-2xl font-bold text-gray-900">{restaurant?.name}</h1>
             {restaurant?.address && <p className="text-sm text-gray-500">{restaurant.address}</p>}
           </div>
-          <button onClick={() => navigate(`/order/${tenantSlug}/reserve`)} className="btn-secondary shrink-0 text-sm">
-            <CalendarCheck className="h-4 w-4" /> Book a Table
-          </button>
+          <div className="flex shrink-0 gap-2">
+            <button onClick={() => navigate(`/order/${tenantSlug}/loyalty`)} className="btn-secondary text-sm">
+              <Gift className="h-4 w-4" /> Points
+            </button>
+            <button onClick={() => navigate(`/order/${tenantSlug}/reserve`)} className="btn-secondary text-sm">
+              <CalendarCheck className="h-4 w-4" /> Book a Table
+            </button>
+          </div>
         </div>
       </div>
 
@@ -87,9 +108,17 @@ export default function PublicMenu() {
                     <div className="flex-1">
                       <p className="font-medium text-gray-900">{item.name}</p>
                       {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
-                      <p className="mt-1 text-sm font-semibold text-brand-600">
-                        Rs. {Number(item.price).toLocaleString()}
-                      </p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-sm font-semibold text-brand-600">
+                          Rs. {Number(item.price).toLocaleString()}
+                        </p>
+                        {ratings[item.id] && (
+                          <span className="flex items-center gap-0.5 text-xs text-gray-500">
+                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                            {ratings[item.id].average} ({ratings[item.id].count})
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {qty === 0 ? (
                       <button onClick={() => handleAdd(item)} className="btn-primary shrink-0">
@@ -136,6 +165,8 @@ export default function PublicMenu() {
           </button>
         </div>
       )}
+
+      <AIAssistantWidget tenantSlug={tenantSlug} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import {
   TrendingUp, ShoppingBag, Users, DollarSign,
-  ArrowUpRight, Package,
+  ArrowUpRight, Package, Star, AlertTriangle,
 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -36,12 +36,28 @@ export default function Dashboard() {
       </div>
 
       {/* KPI Cards */}
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard icon={ShoppingBag} label="Today's Orders" value={data.today.orders} color="text-blue-600" bg="bg-blue-50" />
         <KpiCard icon={DollarSign} label="Today's Revenue" value={`Rs. ${data.today.revenue.toLocaleString()}`} color="text-green-600" bg="bg-green-50" />
         <KpiCard icon={Users} label="Customers" value={data.recent_customers.length} color="text-purple-600" bg="bg-purple-50" />
         <KpiCard icon={TrendingUp} label="Top Item" value={data.top_items[0]?.name || 'N/A'} color="text-orange-600" bg="bg-orange-50" />
+        <KpiCard
+          icon={Star}
+          label="Avg Rating (30d)"
+          value={data.reviews?.count ? `${data.reviews.average} ★ (${data.reviews.count})` : 'No reviews yet'}
+          color="text-yellow-600"
+          bg="bg-yellow-50"
+        />
       </div>
+
+      {/* Low-stock alert */}
+      {data.low_stock_count > 0 && (
+        <a href="/inventory?low_stock=true" className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 hover:bg-red-100 transition-colors">
+          <AlertTriangle className="h-5 w-5 shrink-0" />
+          <span>{data.low_stock_count} inventory item{data.low_stock_count > 1 ? 's' : ''} below minimum stock level</span>
+          <ArrowUpRight className="ml-auto h-4 w-4" />
+        </a>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {/* Weekly Trend */}

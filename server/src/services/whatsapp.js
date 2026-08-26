@@ -9,6 +9,7 @@ import config from '../config.js';
 import { query } from '../db/pool.js';
 import { parseOrderMessage, generateRecommendation } from './ai-agent.js';
 import { getOrCreateCustomer, calculatePricing, createOrder } from './orders.js';
+import { getBalance } from './loyalty.js';
 
 /**
  * Process an incoming WhatsApp message through the order agent pipeline.
@@ -68,7 +69,7 @@ export async function processWhatsAppMessage(tenantId, message) {
       [conversation.id, orderResult.id],
     );
   }
-  // 5b. If pending draft and customer sends a correction, re-parse with context
+  // 5b. If pending draft and customer sends a non-affirmative message
   else if (pendingDraft && !isAffirm) {
     delete conversationContext.pending_draft;
     parsed = await parseOrderMessage(text, menuItems, conversationContext);
@@ -80,6 +81,13 @@ export async function processWhatsAppMessage(tenantId, message) {
         conversationContext.pending_draft = draft;
         reply = buildConfirmationMessage(draft);
       }
+    } else if (parsed.intent === 'recommendation') {
+      reply = await generateRecommendation(text, menuItems, conversationContext);
+    } else if (parsed.intent === 'reservation') {
+      reply = await handleReservationRequest(tenantId, customer, parsed);
+    } else if (parsed.intent === 'loyalty_balance') {
+      const balance = await getBalance(tenantId, customer.id);
+      reply = `You have ${balance} loyalty points! 🎉`;
     }
   }
   // 5c. No pending draft — classify and handle normally
@@ -99,6 +107,9 @@ export async function processWhatsAppMessage(tenantId, message) {
       reply = await generateRecommendation(text, menuItems, conversationContext);
     } else if (parsed.intent === 'reservation') {
       reply = await handleReservationRequest(tenantId, customer, parsed);
+    } else if (parsed.intent === 'loyalty_balance') {
+      const balance = await getBalance(tenantId, customer.id);
+      reply = `You have ${balance} loyalty points! 🎉`;
     }
     // For greeting/question/chitchat/menu_request — reply is already set from parsed.reply_message
   }
@@ -247,7 +258,7 @@ export async function sendReply(phone, text) {
 }
 
 // ── Feature 1: Order status change notification (fire-and-forget) ──
-const STATUS_MESSAGES = {
+export const STATUS_MESSAGES = {
   confirmed: "Order confirmed ✅ We're getting started!",
   preparing: 'Your order is being prepared 🍳',
   ready: 'Your order is ready! 🎉',

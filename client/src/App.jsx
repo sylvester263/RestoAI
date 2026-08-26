@@ -13,8 +13,11 @@ import Checkout from './pages/public/Checkout';
 import TrackOrder from './pages/public/TrackOrder';
 import TableOrder from './pages/public/TableOrder';
 import Reservation from './pages/public/Reservation';
+import Loyalty from './pages/public/Loyalty';
 import Tables from './pages/Tables';
 import Reservations from './pages/Reservations';
+import Inventory from './pages/Inventory';
+import Campaigns from './pages/Campaigns';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
 
@@ -33,6 +36,7 @@ export default function App() {
       <Route path="/order/:tenantSlug/track/:orderId" element={<TrackOrder />} />
       <Route path="/table/:qrToken" element={<TableOrder />} />
       <Route path="/order/:tenantSlug/reserve" element={<Reservation />} />
+      <Route path="/order/:tenantSlug/loyalty" element={<Loyalty />} />
       <Route path="/display/token-board/:branchId" element={<TokenBoard />} />
       <Route path="/display/menu-board/:branchId" element={<MenuBoard />} />
       <Route path="/kitchen" element={<ProtectedRoute><Kitchen /></ProtectedRoute>} />
@@ -47,6 +51,8 @@ export default function App() {
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/tables" element={<Tables />} />
                 <Route path="/reservations" element={<Reservations />} />
+                <Route path="/inventory" element={<Inventory />} />
+                <Route path="/campaigns" element={<Campaigns />} />
                 <Route path="/insights" element={<Insights />} />
                 <Route path="/whatsapp" element={<WhatsAppDemo />} />
               </Routes>

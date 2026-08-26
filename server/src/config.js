@@ -46,6 +46,10 @@ const config = {
     estimatedPrepMin: 25,
     estimatedPrepMax: 30,
   },
+  vapid: {
+    publicKey: process.env.VAPID_PUBLIC_KEY || '',
+    privateKey: process.env.VAPID_PRIVATE_KEY || '',
+  },
 };
 
 export default config;

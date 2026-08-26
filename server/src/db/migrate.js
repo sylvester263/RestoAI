@@ -196,6 +196,60 @@ async function migrate() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_reservations_branch_time ON reservations(branch_id, reserved_for);`);
 
+    // ── Loyalty ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS loyalty_config (
+        tenant_id                 UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+        points_per_currency_unit  NUMERIC(6,2) NOT NULL DEFAULT 1.0,
+        redemption_rate           NUMERIC(6,2) NOT NULL DEFAULT 0.01,
+        enabled                   BOOLEAN NOT NULL DEFAULT true
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS loyalty_points (
+        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        customer_id   UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        points_change INTEGER NOT NULL,
+        reason        VARCHAR(20) NOT NULL CHECK (reason IN ('earned','redeemed','adjusted')),
+        order_id      UUID REFERENCES orders(id) ON DELETE SET NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_loyalty_points_customer ON loyalty_points(customer_id);`);
+
+    // ── Reviews ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS reviews (
+        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        order_id      UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        menu_item_id  UUID REFERENCES menu_items(id) ON DELETE SET NULL,
+        customer_id   UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        rating        SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment       TEXT,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_reviews_tenant ON reviews(tenant_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_reviews_menu_item ON reviews(menu_item_id);`);
+
+    // ── Push Notification Subscriptions ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        customer_id   UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        endpoint      TEXT NOT NULL,
+        keys          JSONB NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(customer_id, endpoint)
+      );
+    `);
+
+    // Orders need a discount column so loyalty-point redemption can reduce
+    // the total without forking a second order-creation path.
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount DECIMAL(10,2) DEFAULT 0;`);
+
     // ── Conversations (WhatsApp session state) ──
     await client.query(`
       CREATE TABLE IF NOT EXISTS conversations (
@@ -226,6 +280,48 @@ async function migrate() {
         updated_at    TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // ── Payments (impl-01) — tracks every payment regardless of channel/method ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payments (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        order_id          UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        method            VARCHAR(20) NOT NULL CHECK (method IN ('jazzcash','easypaisa','card','cod')),
+        status            VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','paid','failed','refunded')),
+        amount            NUMERIC(10,2) NOT NULL,
+        gateway_reference VARCHAR(255),
+        gateway_response  JSONB,
+        created_at        TIMESTAMPTZ DEFAULT NOW(),
+        updated_at        TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_tenant ON payments(tenant_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);`);
+
+    // ── Broadcast campaigns (impl-07) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS broadcast_campaigns (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        name              VARCHAR(150) NOT NULL,
+        message_template  TEXT NOT NULL,
+        status            VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','scheduled','sending','completed','failed')),
+        scheduled_for     TIMESTAMPTZ,
+        created_by        UUID REFERENCES users(id),
+        created_at        TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS broadcast_recipients (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id       UUID NOT NULL REFERENCES broadcast_campaigns(id) ON DELETE CASCADE,
+        customer_id       UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        status            VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed','skipped_no_window')),
+        sent_at           TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_broadcast_recipients_campaign ON broadcast_recipients(campaign_id);`);
 
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);

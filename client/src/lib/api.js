@@ -77,6 +77,23 @@ export const api = {
   // WhatsApp simulation
   simulateWhatsApp: (phone, message) =>
     request('/whatsapp/simulate', { method: 'POST', body: JSON.stringify({ phone, message }) }),
+
+  // Inventory
+  getInventory: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/inventory${qs ? `?${qs}` : ''}`);
+  },
+  createInventoryItem: (body) => request('/inventory', { method: 'POST', body: JSON.stringify(body) }),
+  updateInventoryItem: (id, body) => request(`/inventory/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteInventoryItem: (id) => request(`/inventory/${id}`, { method: 'DELETE' }),
+  restockItem: (id, quantity) => request(`/inventory/${id}/restock`, { method: 'POST', body: JSON.stringify({ quantity }) }),
+
+  // Campaigns
+  getCampaigns: () => request('/campaigns'),
+  createCampaign: (body) => request('/campaigns', { method: 'POST', body: JSON.stringify(body) }),
+  addRecipients: (id) => request(`/campaigns/${id}/recipients`, { method: 'POST' }),
+  sendCampaign: (id) => request(`/campaigns/${id}/send`, { method: 'POST' }),
+  getCampaignStatus: (id) => request(`/campaigns/${id}/status`),
 };
 
 // Public customer ordering endpoints — unauthenticated, no tenant JWT
@@ -88,6 +105,22 @@ export const publicApi = {
     request(`/public/${slug}/orders/${orderId}?phone=${encodeURIComponent(phone)}`),
   createReservation: (slug, body) =>
     request(`/public/${slug}/reservations`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // Loyalty
+  getLoyaltyBalance: (slug, phone) => request(`/public/${slug}/loyalty/balance?phone=${encodeURIComponent(phone)}`),
+
+  // Reviews
+  submitReview: (slug, body) => request(`/public/${slug}/reviews`, { method: 'POST', body: JSON.stringify(body) }),
+  getItemReviews: (slug, menuItemId) => request(`/public/${slug}/reviews/item/${menuItemId}`),
+
+  // Push notifications
+  getVapidKey: (slug) => request(`/public/${slug}`).then((r) => r.vapidPublicKey),
+  subscribePush: (slug, body) =>
+    request(`/public/${slug}/notifications/subscribe`, { method: 'POST', body: JSON.stringify(body) }),
+
+  // In-app AI assistant
+  getRecommendation: (slug, message) =>
+    request(`/public/${slug}/recommendations`, { method: 'POST', body: JSON.stringify({ message }) }),
 };
 
 // Dine-in table session endpoints — unauthenticated, scanned via QR

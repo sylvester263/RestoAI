@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getIdentity } from '../../lib/publicOrderStore';
-import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle } from 'lucide-react';
+import { subscribeToPush, pushSupported } from '../../lib/push';
+import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell } from 'lucide-react';
 
 const STEPS = [
   { key: 'new', label: 'Order received', icon: AlertCircle },
@@ -81,6 +82,8 @@ export default function TrackOrder() {
         <h1 className="mb-1 text-2xl font-bold text-gray-900">Order #{order.order_number}</h1>
         <p className="mb-6 text-sm text-gray-500">Tracking your order</p>
 
+        <NotifyBanner tenantSlug={tenantSlug} phone={phone} status={order.status} />
+
         <div className="card mb-4">
           <div className="space-y-4">
             {STEPS.map((step, i) => {
@@ -114,7 +117,115 @@ export default function TrackOrder() {
           </div>
           <p className="mt-3 text-xs text-gray-500">Delivering to: {order.delivery_address}</p>
         </div>
+
+        {order.status === 'delivered' && (
+          <ReviewPrompt tenantSlug={tenantSlug} orderId={order.id} phone={phone} />
+        )}
       </div>
+    </div>
+  );
+}
+
+function NotifyBanner({ tenantSlug, phone, status }) {
+  const [dismissed, setDismissed] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+
+  const alreadyDecided = !pushSupported() || (typeof Notification !== 'undefined' && Notification.permission !== 'default');
+  if (dismissed || alreadyDecided || ['delivered', 'cancelled'].includes(status)) return null;
+
+  async function handleEnable() {
+    setSubscribing(true);
+    try {
+      await subscribeToPush(tenantSlug, phone);
+    } catch {
+      // permission denied or unsupported — fail silently, banner just closes
+    } finally {
+      setSubscribing(false);
+      setDismissed(true);
+    }
+  }
+
+  return (
+    <div className="card mb-4 flex items-center justify-between gap-3 bg-brand-50 border-brand-200">
+      <div className="flex items-center gap-2 text-sm text-brand-800">
+        <Bell className="h-4 w-4 shrink-0" />
+        Get notified the moment your order status changes.
+      </div>
+      <div className="flex shrink-0 gap-2">
+        <button onClick={() => setDismissed(true)} className="text-xs text-gray-500 hover:text-gray-700">Not now</button>
+        <button onClick={handleEnable} disabled={subscribing} className="btn-primary px-3 py-1.5 text-xs">
+          {subscribing ? 'Enabling...' : 'Enable'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ReviewPrompt({ tenantSlug, orderId, phone }) {
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [err, setErr] = useState('');
+
+  async function handleSubmit() {
+    if (!rating) return;
+    setSubmitting(true);
+    setErr('');
+    try {
+      await publicApi.submitReview(tenantSlug, { order_id: orderId, phone, rating, comment: comment || undefined });
+      setSubmitted(true);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (submitted) {
+    return (
+      <div className="card mt-4 text-center text-sm text-gray-600">
+        Thanks for your feedback! 🎉
+      </div>
+    );
+  }
+
+  return (
+    <div className="card mt-4">
+      <h2 className="mb-3 text-sm font-semibold text-gray-600">How was your order?</h2>
+      <div className="mb-3 flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => setRating(n)}
+            onMouseEnter={() => setHover(n)}
+            onMouseLeave={() => setHover(0)}
+            className="p-0.5"
+          >
+            <Star
+              className={`h-7 w-7 ${(hover || rating) >= n ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`}
+            />
+          </button>
+        ))}
+      </div>
+      <textarea
+        className="input mb-3 w-full"
+        rows={2}
+        placeholder="Leave a comment (optional)"
+        value={comment}
+        onChange={(e) => setComment(e.target.value)}
+      />
+      {err && <p className="mb-2 text-xs text-red-600">{err}</p>}
+      <button
+        type="button"
+        onClick={handleSubmit}
+        disabled={!rating || submitting}
+        className="btn-primary w-full justify-center"
+      >
+        {submitting ? 'Submitting...' : 'Submit review'}
+      </button>
     </div>
   );
 }

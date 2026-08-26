@@ -62,12 +62,13 @@ RULES:
 7. If the message is not a food order (e.g., greeting, question), set "intent" accordingly.
 8. If the customer is asking for menu RECOMMENDATIONS or suggestions (e.g. "kya acha hai?", "what do you recommend?", "something spicy under 500"), set "intent" to "recommendation" and return empty items. The system will handle recommendation separately.
 9. If the customer is asking to BOOK A TABLE (e.g. "book a table for 4 tonight at 8", "reservation for 2 people tomorrow 7pm"), set "intent" to "reservation", fill "party_size" and resolve "reserved_for" to an exact ISO 8601 datetime using the current date/time given below — do not return items for a reservation request.
+10. If the customer is asking about their LOYALTY POINTS balance (e.g. "how many points do I have", "mere kitne points hain"), set "intent" to "loyalty_balance" and return empty items.
 
 Current date/time (Asia/Karachi): {{NOW}}
 
 Always respond in valid JSON with this schema:
 {
-  "intent": "order" | "recommendation" | "reservation" | "greeting" | "question" | "chitchat" | "menu_request",
+  "intent": "order" | "recommendation" | "reservation" | "loyalty_balance" | "greeting" | "question" | "chitchat" | "menu_request",
   "items": [{"name": "string", "quantity": number}],
   "delivery_address": "string or null",
   "payment_method": "cash" | "jazzcash" | "easypaisa" | "card" | null,
