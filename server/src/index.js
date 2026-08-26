@@ -16,6 +16,11 @@ import publicRoutes from './routes/public.js';
 
 const app = express();
 
+// Vercel's edge sits in front of this function and sets X-Forwarded-For to the
+// real client IP (not spoofable by external requests) — trust that one hop so
+// express-rate-limit keys on the actual client, not Vercel's proxy.
+app.set('trust proxy', 1);
+
 // ── Global middleware ──
 app.use(helmet());
 app.use(cors({
