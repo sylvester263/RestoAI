@@ -6,6 +6,52 @@ import { query } from '../db/pool.js';
 import { z } from 'zod';
 
 const router = Router();
+
+// ── Public display boards (impl-09) — must be registered BEFORE the
+// authenticate middleware below, since these run unattended on an in-store
+// screen with no login. Token board exposes only order numbers + wait time.
+router.get('/:id/token-board', async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT order_number, created_at FROM orders
+       WHERE branch_id = $1 AND status = 'ready'
+       ORDER BY created_at`,
+      [req.params.id],
+    );
+    res.json({
+      tokens: result.rows.map((o) => ({
+        token_number: o.order_number,
+        waiting_minutes: Math.max(0, Math.round((Date.now() - new Date(o.created_at).getTime()) / 60000)),
+      })),
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/menu-board', async (req, res, next) => {
+  try {
+    const branchRes = await query('SELECT tenant_id FROM branches WHERE id = $1', [req.params.id]);
+    if (branchRes.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Branch not found' } });
+    }
+    const tenantId = branchRes.rows[0].tenant_id;
+
+    const result = await query(
+      `SELECT mi.id, mi.name, mi.name_urdu, mi.price, mi.is_available,
+              mc.name as category_name, mc.sort_order
+       FROM menu_items mi
+       LEFT JOIN menu_categories mc ON mi.category_id = mc.id
+       WHERE mi.tenant_id = $1 AND (mi.branch_id = $2 OR mi.branch_id IS NULL)
+       ORDER BY mc.sort_order, mi.name`,
+      [tenantId, req.params.id],
+    );
+    res.json({ items: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.use(authenticate);
 
 const branchSchema = z.object({

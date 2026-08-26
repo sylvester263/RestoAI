@@ -15,6 +15,8 @@ import TableOrder from './pages/public/TableOrder';
 import Reservation from './pages/public/Reservation';
 import Tables from './pages/Tables';
 import Reservations from './pages/Reservations';
+import TokenBoard from './pages/display/TokenBoard';
+import MenuBoard from './pages/display/MenuBoard';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -31,6 +33,8 @@ export default function App() {
       <Route path="/order/:tenantSlug/track/:orderId" element={<TrackOrder />} />
       <Route path="/table/:qrToken" element={<TableOrder />} />
       <Route path="/order/:tenantSlug/reserve" element={<Reservation />} />
+      <Route path="/display/token-board/:branchId" element={<TokenBoard />} />
+      <Route path="/display/menu-board/:branchId" element={<MenuBoard />} />
       <Route path="/kitchen" element={<ProtectedRoute><Kitchen /></ProtectedRoute>} />
       <Route
         path="/*"

@@ -58,6 +58,13 @@ app.use('/api/public', publicLimiter);
 const tableSessionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 150 });
 app.use('/api/table-sessions', tableSessionLimiter);
 
+// In-store display boards (impl-09) are public and poll continuously from a
+// single unattended screen, so they get a higher per-IP ceiling than a normal
+// public endpoint rather than the standard publicLimiter.
+const displayBoardLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 600 });
+app.use('/api/branches/:id/token-board', displayBoardLimiter);
+app.use('/api/branches/:id/menu-board', displayBoardLimiter);
+
 // ── Health check ──
 // Verifies DB connectivity too, so a deployment issue (e.g. bad DATABASE_URL)
 // is visible here rather than only surfacing on the first real request.

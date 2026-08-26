@@ -98,3 +98,9 @@ export const tableApi = {
   requestBill: (sessionId) => request(`/table-sessions/${sessionId}/request-bill`, { method: 'POST' }),
   getBill: (sessionId) => request(`/table-sessions/${sessionId}/bill`),
 };
+
+// In-store display boards — unauthenticated, meant to run unattended on a TV
+export const displayApi = {
+  getTokenBoard: (branchId) => request(`/branches/${branchId}/token-board`),
+  getMenuBoard: (branchId) => request(`/branches/${branchId}/menu-board`),
+};
