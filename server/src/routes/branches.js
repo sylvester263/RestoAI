@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import crypto from 'crypto';
 import { authenticate } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
@@ -69,6 +70,59 @@ router.put('/:id', authorize('owner', 'manager'), async (req, res, next) => {
     }
     res.json({ branch: result.rows[0] });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ── Dine-in tables (impl-02) ──
+const tableSchema = z.object({ table_number: z.string().min(1).max(20) });
+
+async function assertBranchOwnedByTenant(tenantId, branchId) {
+  const res = await query('SELECT id FROM branches WHERE id = $1 AND tenant_id = $2', [branchId, tenantId]);
+  return res.rows.length > 0;
+}
+
+// ── GET /api/branches/:id/tables ──
+router.get('/:id/tables', async (req, res, next) => {
+  try {
+    if (!(await assertBranchOwnedByTenant(req.user.tenant_id, req.params.id))) {
+      return res.status(404).json({ error: { message: 'Branch not found' } });
+    }
+    const result = await query(
+      `SELECT t.*, s.id as open_session_id, s.status as session_status
+       FROM restaurant_tables t
+       LEFT JOIN table_sessions s ON s.table_id = t.id AND s.status != 'closed'
+       WHERE t.branch_id = $1
+       ORDER BY t.table_number`,
+      [req.params.id],
+    );
+    res.json({ tables: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/branches/:id/tables ──
+router.post('/:id/tables', authorize('owner', 'manager'), async (req, res, next) => {
+  try {
+    if (!(await assertBranchOwnedByTenant(req.user.tenant_id, req.params.id))) {
+      return res.status(404).json({ error: { message: 'Branch not found' } });
+    }
+    const data = tableSchema.parse(req.body);
+    const qrToken = crypto.randomBytes(24).toString('hex');
+    const result = await query(
+      `INSERT INTO restaurant_tables (tenant_id, branch_id, table_number, qr_code_token)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [req.user.tenant_id, req.params.id, data.table_number, qrToken],
+    );
+    res.status(201).json({ table: result.rows[0] });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    if (err.code === '23505') {
+      return res.status(409).json({ error: { message: 'That table number already exists for this branch' } });
+    }
     next(err);
   }
 });

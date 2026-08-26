@@ -13,6 +13,7 @@ import branchRoutes from './routes/branches.js';
 import insightsRoutes from './routes/insights.js';
 import whatsappRoutes from './routes/whatsapp.js';
 import publicRoutes from './routes/public.js';
+import tableSessionRoutes from './routes/table-sessions.js';
 
 const app = express();
 
@@ -52,6 +53,10 @@ app.use('/api/whatsapp/webhook', webhookLimiter);
 const publicLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/public', publicLimiter);
 
+// Dine-in table sessions are unauthenticated for the customer-facing paths too.
+const tableSessionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 150 });
+app.use('/api/table-sessions', tableSessionLimiter);
+
 // ── Health check ──
 // Verifies DB connectivity too, so a deployment issue (e.g. bad DATABASE_URL)
 // is visible here rather than only surfacing on the first real request.
@@ -72,6 +77,7 @@ app.use('/api/branches', branchRoutes);
 app.use('/api/insights', insightsRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/table-sessions', tableSessionRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

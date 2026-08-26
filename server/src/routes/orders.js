@@ -71,14 +71,16 @@ router.get('/', async (req, res, next) => {
 router.get('/kitchen', async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT o.*,
+      `SELECT o.*, rt.table_number,
         COALESCE(json_agg(json_build_object(
           'name', oi.name, 'quantity', oi.quantity, 'notes', oi.notes
         )) FILTER (WHERE oi.id IS NOT NULL), '[]') as items
        FROM orders o
        LEFT JOIN order_items oi ON o.id = oi.order_id
+       LEFT JOIN table_sessions ts ON o.table_session_id = ts.id
+       LEFT JOIN restaurant_tables rt ON ts.table_id = rt.id
        WHERE o.tenant_id = $1 AND o.status IN ('new', 'confirmed', 'preparing')
-       GROUP BY o.id
+       GROUP BY o.id, rt.table_number
        ORDER BY o.created_at ASC`,
       [req.user.tenant_id],
     );

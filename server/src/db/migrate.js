@@ -148,6 +148,36 @@ async function migrate() {
       );
     `);
 
+    // ── Restaurant Tables (persistent per-physical-table QR code) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS restaurant_tables (
+        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id     UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        table_number  VARCHAR(20) NOT NULL,
+        qr_code_token VARCHAR(64) UNIQUE NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(branch_id, table_number)
+      );
+    `);
+
+    // ── Table Sessions (one open dining session per table at a time) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS table_sessions (
+        id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        table_id      UUID NOT NULL REFERENCES restaurant_tables(id) ON DELETE CASCADE,
+        status        VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','bill_requested','closed')),
+        opened_at     TIMESTAMPTZ DEFAULT NOW(),
+        closed_at     TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_table_sessions_one_open ON table_sessions(table_id) WHERE status != 'closed';`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_table_sessions_table ON table_sessions(table_id);`);
+
+    // Link orders back to the dine-in session that placed them (nullable — most orders aren't dine-in)
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS table_session_id UUID REFERENCES table_sessions(id);`);
+
     // ── Conversations (WhatsApp session state) ──
     await client.query(`
       CREATE TABLE IF NOT EXISTS conversations (

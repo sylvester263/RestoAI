@@ -83,6 +83,9 @@ export default function Kitchen() {
                   <div className="flex items-center gap-2">
                     <StatusIcon className="h-5 w-5" />
                     <span className="font-bold text-gray-900">#{order.order_number}</span>
+                    {order.table_number && (
+                      <span className="badge bg-purple-100 text-purple-700">Table {order.table_number}</span>
+                    )}
                     <span className="badge bg-white/50 text-gray-700">{config.label}</span>
                   </div>
                   <span className="flex items-center gap-1 text-xs text-gray-500">

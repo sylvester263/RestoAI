@@ -58,6 +58,12 @@ export const api = {
   createBranch: (body) => request('/branches', { method: 'POST', body: JSON.stringify(body) }),
   updateBranch: (id, body) => request(`/branches/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
 
+  // Dine-in tables
+  getTables: (branchId) => request(`/branches/${branchId}/tables`),
+  createTable: (branchId, tableNumber) =>
+    request(`/branches/${branchId}/tables`, { method: 'POST', body: JSON.stringify({ table_number: tableNumber }) }),
+  closeTableSession: (sessionId) => request(`/table-sessions/${sessionId}/close`, { method: 'POST' }),
+
   // Insights
   getDashboard: () => request('/insights/dashboard'),
   queryInsights: (question) =>
@@ -75,4 +81,13 @@ export const publicApi = {
   createOrder: (slug, body) => request(`/public/${slug}/orders`, { method: 'POST', body: JSON.stringify(body) }),
   getOrderStatus: (slug, orderId, phone) =>
     request(`/public/${slug}/orders/${orderId}?phone=${encodeURIComponent(phone)}`),
+};
+
+// Dine-in table session endpoints — unauthenticated, scanned via QR
+export const tableApi = {
+  getSession: (qrToken) => request(`/table-sessions/${qrToken}`),
+  placeOrder: (sessionId, body) =>
+    request(`/table-sessions/${sessionId}/orders`, { method: 'POST', body: JSON.stringify(body) }),
+  requestBill: (sessionId) => request(`/table-sessions/${sessionId}/request-bill`, { method: 'POST' }),
+  getBill: (sessionId) => request(`/table-sessions/${sessionId}/bill`),
 };

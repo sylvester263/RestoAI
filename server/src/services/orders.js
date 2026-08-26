@@ -71,34 +71,39 @@ export async function resolveOrderItems(tenantId, cartItems) {
 }
 
 // ── Compute subtotal/tax/delivery/total from resolved order items ──
-export function calculatePricing(orderItems) {
+// deliveryFee defaults to the existing flat fee; dine-in orders pass 0.
+export function calculatePricing(orderItems, { deliveryFee = 100 } = {}) {
   const subtotal = orderItems.reduce((sum, i) => sum + i.total_price, 0);
   const tax = Math.round(subtotal * 0.05);
-  const deliveryFee = 100;
   const total = subtotal + tax + deliveryFee;
   return { subtotal, tax, delivery_fee: deliveryFee, total };
 }
 
 // ── Persist a finalized order ──
-export async function createOrder({ tenantId, customer, items, pricing, deliveryAddress, paymentMethod, channel, notes }) {
-  const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [tenantId]);
+export async function createOrder({ tenantId, customer, items, pricing, deliveryAddress, paymentMethod, channel, notes, branchId, tableSessionId }) {
+  let resolvedBranchId = branchId;
+  if (!resolvedBranchId) {
+    const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [tenantId]);
+    resolvedBranchId = branchRes.rows[0]?.id;
+  }
 
   const orderRes = await query(
-    `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, total, delivery_address, payment_method, notes)
-     VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, total, delivery_address, payment_method, notes, table_session_id)
+     VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING *`,
     [
       tenantId,
-      branchRes.rows[0]?.id,
+      resolvedBranchId,
       customer.id,
       channel,
       pricing.subtotal,
       pricing.tax,
       pricing.delivery_fee,
       pricing.total,
-      deliveryAddress || customer.address,
+      tableSessionId ? null : (deliveryAddress || customer.address),
       paymentMethod,
       notes || null,
+      tableSessionId || null,
     ],
   );
 
@@ -112,10 +117,12 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
     );
   }
 
-  await query(
-    `UPDATE customers SET order_count = order_count + 1, total_spent = total_spent + $2, updated_at = NOW() WHERE id = $1`,
-    [customer.id, pricing.total],
-  );
+  if (customer?.id) {
+    await query(
+      `UPDATE customers SET order_count = order_count + 1, total_spent = total_spent + $2, updated_at = NOW() WHERE id = $1`,
+      [customer.id, pricing.total],
+    );
+  }
 
   return { ...order, items };
 }

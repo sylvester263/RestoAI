@@ -2,13 +2,14 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
-  MessageCircle, LogOut, ChefHat,
+  MessageCircle, LogOut, ChefHat, QrCode,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/orders', icon: ShoppingBag, label: 'Orders' },
+  { to: '/tables', icon: QrCode, label: 'Tables' },
   { to: '/insights', icon: BarChart3, label: 'Insights' },
   { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp Demo' },
 ];
