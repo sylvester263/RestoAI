@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { notifyStatusChange, STATUS_MESSAGES } from '../services/whatsapp.js';
@@ -8,6 +9,20 @@ import { markCodPaidOnDelivery, getPaymentsForOrders } from '../services/payment
 
 const router = Router();
 router.use(authenticate);
+
+// Side effects fired whenever an order's status changes — shared by the
+// kitchen-flow status PATCH below and the rider delivery-status endpoint
+// (riders.js), so there is exactly one place this logic lives.
+export function fireStatusChangeSideEffects(tenantId, order, status) {
+  notifyStatusChange(order.id, tenantId, status).catch(() => {});
+  if (STATUS_MESSAGES[status] && order.customer_id) {
+    sendPushToCustomer(order.customer_id, { title: 'Order update', body: STATUS_MESSAGES[status] }).catch(() => {});
+  }
+  if (status === 'delivered') {
+    awardPointsForOrder(tenantId, order.id).catch((err) => console.error('[loyalty] award failed:', err.message));
+    markCodPaidOnDelivery(tenantId, order.id).catch((err) => console.error('[payments] COD mark-paid failed:', err.message));
+  }
+}
 
 // ── GET /api/orders ──
 // List orders for the current tenant with filtering & pagination
@@ -101,6 +116,30 @@ router.get('/kitchen', async (req, res, next) => {
   }
 });
 
+// ── GET /api/orders/deliveries/unassigned ── (impl-05)
+// Delivery orders (has an address, no table session) with no rider yet,
+// filtered to statuses staff would actually act on. Declared before the
+// generic GET /:id below — a literal 2-segment path never collides with
+// it (different segment count), but keeping specific-before-generic
+// matches this file's existing /kitchen convention.
+router.get('/deliveries/unassigned', async (req, res, next) => {
+  try {
+    const result = await query(
+      `SELECT o.*, c.name as customer_name, c.phone as customer_phone
+       FROM orders o
+       LEFT JOIN customers c ON c.id = o.customer_id
+       LEFT JOIN rider_assignments ra ON ra.order_id = o.id
+       WHERE o.tenant_id = $1 AND o.delivery_address IS NOT NULL AND o.table_session_id IS NULL
+         AND ra.id IS NULL AND o.status IN ('confirmed', 'preparing', 'ready')
+       ORDER BY o.created_at ASC`,
+      [req.user.tenant_id],
+    );
+    res.json({ orders: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ── GET /api/orders/:id ──
 router.get('/:id', async (req, res, next) => {
   try {
@@ -146,19 +185,126 @@ router.patch('/:id/status', async (req, res, next) => {
     }
     res.json({ order: result.rows[0] });
 
-    // Fire-and-forget: WhatsApp + push notification (parallel channels, both best-effort)
-    notifyStatusChange(req.params.id, req.user.tenant_id, status).catch(() => {});
-    if (STATUS_MESSAGES[status] && result.rows[0].customer_id) {
-      sendPushToCustomer(result.rows[0].customer_id, { title: 'Order update', body: STATUS_MESSAGES[status] }).catch(() => {});
+    // Fire-and-forget: WhatsApp/push notification, loyalty, COD payment mark-paid
+    fireStatusChangeSideEffects(req.user.tenant_id, result.rows[0], status);
+  } catch (err) {
+    next(err);
+  }
+});
+
+const assignRiderSchema = z.object({ rider_id: z.string().uuid().optional() });
+
+// ── POST /api/orders/:id/assign-rider ── (impl-05)
+router.post('/:id/assign-rider', async (req, res, next) => {
+  try {
+    const orderRes = await query('SELECT * FROM orders WHERE id = $1 AND tenant_id = $2', [req.params.id, req.user.tenant_id]);
+    const order = orderRes.rows[0];
+    if (!order) {
+      return res.status(404).json({ error: { message: 'Order not found' } });
+    }
+    if (!order.delivery_address || order.table_session_id) {
+      return res.status(400).json({ error: { message: 'Only delivery orders can be assigned to a rider' } });
+    }
+    const existing = await query('SELECT id FROM rider_assignments WHERE order_id = $1', [order.id]);
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ error: { message: 'This order is already assigned to a rider' } });
     }
 
-    // Award loyalty points once an order is delivered (idempotent, opt-in per tenant)
-    if (status === 'delivered') {
-      awardPointsForOrder(req.user.tenant_id, req.params.id).catch((err) => console.error('[loyalty] award failed:', err.message));
-      // Mark COD payment as paid on delivery (idempotent)
-      markCodPaidOnDelivery(req.user.tenant_id, req.params.id).catch((err) => console.error('[payments] COD mark-paid failed:', err.message));
+    const data = assignRiderSchema.parse(req.body);
+    let riderId = data.rider_id;
+    if (riderId) {
+      const riderRes = await query(
+        `SELECT id FROM riders WHERE id = $1 AND tenant_id = $2 AND branch_id = $3 AND status = 'active'`,
+        [riderId, req.user.tenant_id, order.branch_id],
+      );
+      if (riderRes.rows.length === 0) {
+        return res.status(400).json({ error: { message: 'Invalid or inactive rider for this branch' } });
+      }
+    } else {
+      // No GPS/location tracking exists — approximate "nearest rider" with
+      // the active rider carrying the fewest currently-undelivered assignments.
+      const pick = await query(
+        `SELECT r.id
+         FROM riders r
+         LEFT JOIN rider_assignments ra ON ra.rider_id = r.id AND ra.delivered_at IS NULL
+         WHERE r.tenant_id = $1 AND r.branch_id = $2 AND r.status = 'active'
+         GROUP BY r.id
+         ORDER BY COUNT(ra.id) ASC, r.created_at ASC
+         LIMIT 1`,
+        [req.user.tenant_id, order.branch_id],
+      );
+      if (pick.rows.length === 0) {
+        return res.status(400).json({ error: { message: 'No active riders available for this branch' } });
+      }
+      riderId = pick.rows[0].id;
     }
+
+    const assignRes = await query(
+      `INSERT INTO rider_assignments (tenant_id, order_id, rider_id) VALUES ($1, $2, $3) RETURNING *`,
+      [req.user.tenant_id, order.id, riderId],
+    );
+    res.status(201).json({ assignment: assignRes.rows[0] });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    next(err);
+  }
+});
+
+const deliveryStatusSchema = z.object({
+  status: z.enum(['picked_up', 'delivered']),
+  cash_collected: z.number().min(0).optional(),
+});
+
+// ── POST /api/orders/:id/delivery-status ── (impl-05)
+router.post('/:id/delivery-status', async (req, res, next) => {
+  try {
+    const data = deliveryStatusSchema.parse(req.body);
+    const assignRes = await query(
+      `SELECT ra.*, o.payment_method, o.total, o.customer_id, o.status as order_status
+       FROM rider_assignments ra
+       JOIN orders o ON o.id = ra.order_id
+       WHERE ra.order_id = $1 AND o.tenant_id = $2`,
+      [req.params.id, req.user.tenant_id],
+    );
+    const assignment = assignRes.rows[0];
+    if (!assignment) {
+      return res.status(404).json({ error: { message: 'No rider assignment found for this order' } });
+    }
+
+    if (data.status === 'picked_up') {
+      const updated = await query(
+        `UPDATE rider_assignments SET picked_up_at = COALESCE(picked_up_at, NOW()) WHERE id = $1 RETURNING *`,
+        [assignment.id],
+      );
+      return res.json({ assignment: updated.rows[0] });
+    }
+
+    // delivered — idempotent: a repeat call reports current state without re-firing notifications
+    if (assignment.delivered_at) {
+      return res.json({ assignment, already_delivered: true });
+    }
+
+    const isCod = assignment.payment_method === 'cash';
+    const cashCollected = isCod ? (data.cash_collected ?? parseFloat(assignment.total)) : null;
+    const updatedAssignment = await query(
+      `UPDATE rider_assignments SET delivered_at = NOW(), cash_collected = $2 WHERE id = $1 RETURNING *`,
+      [assignment.id, cashCollected],
+    );
+
+    const orderRes = await query(
+      `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+      [req.params.id, req.user.tenant_id],
+    );
+    const order = orderRes.rows[0];
+    fireStatusChangeSideEffects(req.user.tenant_id, order, 'delivered');
+
+    res.json({ assignment: updatedAssignment.rows[0], order });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
     next(err);
   }
 });

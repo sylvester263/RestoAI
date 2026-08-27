@@ -20,6 +20,7 @@ import campaignRoutes from './routes/campaigns.js';
 import landingPageRoutes from './routes/landing-page.js';
 import sitesRoutes from './routes/sites.js';
 import posRoutes from './routes/pos.js';
+import riderRoutes from './routes/riders.js';
 
 const app = express();
 
@@ -98,6 +99,7 @@ app.use('/api/table-sessions', tableSessionRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/campaigns', campaignRoutes);
+app.use('/api/riders', riderRoutes);
 app.use('/api/landing-page', landingPageRoutes);
 app.use('/api/sites', sitesRoutes);
 app.use('/api/pos', posRoutes);

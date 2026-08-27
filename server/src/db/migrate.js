@@ -369,6 +369,50 @@ async function migrate() {
     await client.query(`ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_channel_check;`);
     await client.query(`ALTER TABLE orders ADD CONSTRAINT orders_channel_check CHECK (channel IN ('whatsapp','in_person','phone','web','pos'));`);
 
+    // ── Riders, delivery tracking & cash reconciliation (impl-05) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS riders (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id     UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        name          VARCHAR(100) NOT NULL,
+        phone         VARCHAR(20) NOT NULL,
+        status        VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_riders_branch ON riders(branch_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS rider_assignments (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        order_id          UUID NOT NULL UNIQUE REFERENCES orders(id) ON DELETE CASCADE,
+        rider_id          UUID NOT NULL REFERENCES riders(id) ON DELETE CASCADE,
+        assigned_at       TIMESTAMPTZ DEFAULT NOW(),
+        picked_up_at      TIMESTAMPTZ,
+        delivered_at      TIMESTAMPTZ,
+        cash_collected    NUMERIC(10,2),
+        cash_reconciled   BOOLEAN DEFAULT false
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_rider_assignments_rider ON rider_assignments(rider_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS cash_reconciliations (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        rider_id          UUID NOT NULL REFERENCES riders(id) ON DELETE CASCADE,
+        period_start      TIMESTAMPTZ NOT NULL,
+        period_end        TIMESTAMPTZ NOT NULL,
+        total_expected    NUMERIC(10,2) NOT NULL,
+        total_collected   NUMERIC(10,2) NOT NULL,
+        variance          NUMERIC(10,2) NOT NULL,
+        reconciled_by     UUID REFERENCES users(id),
+        created_at        TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

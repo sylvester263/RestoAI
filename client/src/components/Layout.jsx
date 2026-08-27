@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
-  Package, Megaphone, Globe, Receipt,
+  Package, Megaphone, Globe, Receipt, Bike,
 } from 'lucide-react';
 
 const navItems = [
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/pos', icon: Receipt, label: 'POS' },
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/orders', icon: ShoppingBag, label: 'Orders' },
+  { to: '/riders', icon: Bike, label: 'Riders' },
   { to: '/tables', icon: QrCode, label: 'Tables' },
   { to: '/reservations', icon: CalendarCheck, label: 'Reservations' },
   { to: '/inventory', icon: Package, label: 'Inventory' },

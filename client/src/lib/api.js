@@ -58,6 +58,23 @@ export const api = {
   getOrder: (id) => request(`/orders/${id}`),
   updateOrderStatus: (id, status) =>
     request(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  getUnassignedDeliveries: () => request('/orders/deliveries/unassigned'),
+  assignRider: (orderId, riderId) =>
+    request(`/orders/${orderId}/assign-rider`, { method: 'POST', body: JSON.stringify({ rider_id: riderId || undefined }) }),
+  updateDeliveryStatus: (orderId, status, cashCollected) =>
+    request(`/orders/${orderId}/delivery-status`, { method: 'POST', body: JSON.stringify({ status, cash_collected: cashCollected }) }),
+
+  // Riders
+  getRiders: (params = {}) => {
+    const qs = new URLSearchParams(params).toString();
+    return request(`/riders${qs ? `?${qs}` : ''}`);
+  },
+  createRider: (body) => request('/riders', { method: 'POST', body: JSON.stringify(body) }),
+  updateRider: (id, body) => request(`/riders/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  getRiderAssignments: (id) => request(`/riders/${id}/assignments`),
+  reconcileRider: (id, periodStart, periodEnd) =>
+    request(`/riders/${id}/reconcile`, { method: 'POST', body: JSON.stringify({ period_start: periodStart, period_end: periodEnd }) }),
+  getReconciliations: () => request('/riders/reconciliations'),
 
   // Branches
   getBranches: () => request('/branches'),
