@@ -48,6 +48,21 @@ export const api = {
   updateMenuItem: (id, body) => request(`/menu/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteMenuItem: (id) => request(`/menu/${id}`, { method: 'DELETE' }),
   digitizeMenu: (image_base64) => request('/menu/digitize', { method: 'POST', body: JSON.stringify({ image_base64 }) }),
+  uploadMenuItemImage: (id, file) => {
+    const form = new FormData();
+    form.append('photo', file);
+    const token = getToken();
+    return fetch(`${API_BASE}/menu/${id}/image`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(async (res) => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || 'Upload failed');
+      return data;
+    });
+  },
+  deleteMenuItemImage: (id) => request(`/menu/${id}/image`, { method: 'DELETE' }),
 
   // Orders
   getOrders: (params = {}) => {
@@ -150,6 +165,18 @@ export const api = {
   checkSubdomain: (value) => request(`/landing-page/subdomain-check?value=${encodeURIComponent(value)}`),
   publishLandingPage: (published = true) =>
     request('/landing-page/publish', { method: 'POST', body: JSON.stringify({ published }) }),
+
+  // Agentic AI systems (impl-14..21)
+  getAgentSettings: () => request('/agents/settings'),
+  updateAgentSettings: (body) => request('/agents/settings', { method: 'PUT', body: JSON.stringify(body) }),
+  getWinbackPreview: () => request('/agents/winback/preview'),
+  suggestDispatchRider: (orderId) => request(`/agents/dispatch/suggest/${orderId}`),
+  getReconciliationFlags: (status = 'open') => request(`/agents/reconciliation/flags?status=${status}`),
+  updateReconciliationFlagStatus: (id, status) =>
+    request(`/agents/reconciliation/flags/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  getAbuseFlags: (status = 'open') => request(`/agents/abuse-detection/flags?status=${status}`),
+  updateAbuseFlagStatus: (id, status) =>
+    request(`/agents/abuse-detection/flags/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 };
 
 // Public customer ordering endpoints — unauthenticated, no tenant JWT

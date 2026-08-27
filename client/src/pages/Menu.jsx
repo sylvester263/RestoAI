@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Image, X } from 'lucide-react';
 
 export default function Menu() {
   const [items, setItems] = useState([]);
@@ -9,6 +9,8 @@ export default function Menu() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null); // null | 'new' | item object
   const [form, setForm] = useState({ name: '', name_urdu: '', description: '', price: '', category_id: '', is_available: true, tags: '' });
+  const [imgUploading, setImgUploading] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     Promise.all([api.getMenu(), api.getCategories()])
@@ -63,12 +65,41 @@ export default function Menu() {
       category_id: item.category_id || '',
       is_available: item.is_available,
       tags: (item.tags || []).join(', '),
+      image_url: item.image_url || null,
     });
   }
 
   function startNew() {
     setEditing('new');
-    setForm({ name: '', name_urdu: '', description: '', price: '', category_id: '', is_available: true, tags: '' });
+    setForm({ name: '', name_urdu: '', description: '', price: '', category_id: '', is_available: true, tags: '', image_url: null });
+  }
+
+  async function handleImageUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file || editing === 'new') return;
+    setImgUploading(true);
+    try {
+      const res = await api.uploadMenuItemImage(editing.id, file);
+      setItems((prev) => prev.map((i) => (i.id === editing.id ? res.item : i)));
+      setForm((f) => ({ ...f, image_url: res.item.image_url }));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setImgUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleImageRemove() {
+    if (editing === 'new' || !form.image_url) return;
+    if (!confirm('Remove this photo?')) return;
+    try {
+      await api.deleteMenuItemImage(editing.id);
+      setItems((prev) => prev.map((i) => (i.id === editing.id ? { ...i, image_url: null } : i)));
+      setForm((f) => ({ ...f, image_url: null }));
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   const filtered = items.filter((i) =>
@@ -139,6 +170,41 @@ export default function Menu() {
                 <label className="mb-1 block text-xs font-medium text-gray-600">Tags (comma-separated)</label>
                 <input className="input" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
               </div>
+              {/* Image upload — only for existing items (not new, which aren't saved yet) */}
+              {editing !== 'new' && (
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-gray-600">Photo</label>
+                  {form.image_url ? (
+                    <div className="relative inline-block">
+                      <img src={form.image_url} alt="menu item" className="h-24 w-24 rounded-lg object-cover" />
+                      <button
+                        onClick={handleImageRemove}
+                        className="absolute -right-2 -top-2 rounded-full bg-red-500 p-0.5 text-white hover:bg-red-600"
+                        title="Remove photo"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={imgUploading}
+                      className="flex items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"
+                    >
+                      <Image className="h-4 w-4" />
+                      {imgUploading ? 'Uploading...' : 'Upload photo'}
+                    </button>
+                  )}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                  />
+                  {editing === 'new' && <p className="mt-1 text-xs text-gray-400">Save the item first, then add a photo.</p>}
+                </div>
+              )}
             </div>
             <div className="mt-6 flex justify-end gap-3">
               <button onClick={() => setEditing(null)} className="btn-secondary">Cancel</button>
@@ -164,9 +230,18 @@ export default function Menu() {
             {filtered.map((item) => (
               <tr key={item.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3">
-                  <div>
-                    <p className="font-medium text-gray-900">{item.name}</p>
-                    {item.name_urdu && <p className="text-xs text-gray-400" dir="rtl">{item.name_urdu}</p>}
+                  <div className="flex items-center gap-3">
+                    {item.image_url ? (
+                      <img src={item.image_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
+                        <Image className="h-4 w-4 text-gray-300" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium text-gray-900">{item.name}</p>
+                      {item.name_urdu && <p className="text-xs text-gray-400" dir="rtl">{item.name_urdu}</p>}
+                    </div>
                   </div>
                 </td>
                 <td className="px-4 py-3 text-gray-600">{item.category_name || '—'}</td>

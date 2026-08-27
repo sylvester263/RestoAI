@@ -12,6 +12,7 @@ import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, 
 import { sendReply } from '../services/whatsapp.js';
 import { generateRecommendation } from '../services/ai-agent.js';
 import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.js';
+import { estimateReadyTime } from '../services/eta-agent.js';
 import config from '../config.js';
 
 const router = Router({ mergeParams: true });
@@ -149,7 +150,7 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
     }
     const phone = (req.query.phone || '').toString().trim();
     const result = await query(
-      `SELECT o.id, o.order_number, o.status, o.subtotal, o.tax, o.delivery_fee, o.total,
+      `SELECT o.id, o.branch_id, o.order_number, o.status, o.subtotal, o.tax, o.delivery_fee, o.total,
               o.delivery_address, o.payment_method, o.created_at, o.updated_at, c.phone as customer_phone
        FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
@@ -167,8 +168,18 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
       [order.id],
     );
 
-    const { customer_phone, ...orderFields } = order;
-    res.json({ order: { ...orderFields, items: itemsRes.rows } });
+    // impl-17: recomputed fresh on every poll — never cached at order-creation time
+    let eta = null;
+    if (['new', 'confirmed', 'preparing'].includes(order.status) && order.branch_id) {
+      try {
+        eta = await estimateReadyTime(order.branch_id, order.id);
+      } catch (err) {
+        console.error('[eta-agent] estimate failed:', err.message);
+      }
+    }
+
+    const { customer_phone, branch_id, ...orderFields } = order;
+    res.json({ order: { ...orderFields, items: itemsRes.rows, eta } });
   } catch (err) {
     next(err);
   }

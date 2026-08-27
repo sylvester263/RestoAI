@@ -84,6 +84,20 @@ export default function TrackOrder() {
 
         <NotifyBanner tenantSlug={tenantSlug} phone={phone} status={order.status} />
 
+        {order.eta && (
+          <div className="card mb-4 flex items-center gap-3 bg-brand-50 border-brand-200">
+            <Clock className="h-5 w-5 shrink-0 text-brand-600" />
+            <div className="text-sm text-brand-800">
+              <span className="font-semibold">
+                Ready in ~{order.eta.estimated_minutes_min}-{order.eta.estimated_minutes_max} mins
+              </span>
+              {order.eta.queue_ahead > 0 && (
+                <span className="text-brand-600"> · {order.eta.queue_ahead} order{order.eta.queue_ahead > 1 ? 's' : ''} ahead in the kitchen</span>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="card mb-4">
           <div className="space-y-4">
             {STEPS.map((step, i) => {

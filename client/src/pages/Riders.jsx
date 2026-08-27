@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Bike, Plus, Package, CheckCircle2, Truck, Wallet, X, Loader2,
+  Bike, Plus, Package, CheckCircle2, Truck, Wallet, X, Loader2, Sparkles,
 } from 'lucide-react';
 
 export default function Riders() {
@@ -16,6 +16,7 @@ export default function Riders() {
   const [loading, setLoading] = useState(true);
   const [showNewRider, setShowNewRider] = useState(false);
   const [showReconcile, setShowReconcile] = useState(null); // rider object
+  const [suggestions, setSuggestions] = useState({}); // orderId -> { rider, reasoning } | 'loading' | error string
 
   const load = useCallback(async () => {
     try {
@@ -54,6 +55,25 @@ export default function Riders() {
     } catch (err) {
       alert(err.message);
     }
+  }
+
+  async function handleAskAgent(orderId) {
+    setSuggestions((s) => ({ ...s, [orderId]: 'loading' }));
+    try {
+      const suggestion = await api.suggestDispatchRider(orderId);
+      setSuggestions((s) => ({ ...s, [orderId]: suggestion }));
+    } catch (err) {
+      setSuggestions((s) => ({ ...s, [orderId]: { error: err.message } }));
+    }
+  }
+
+  async function handleConfirmSuggestion(orderId, riderId) {
+    await handleAssign(orderId, riderId);
+    setSuggestions((s) => {
+      const next = { ...s };
+      delete next[orderId];
+      return next;
+    });
   }
 
   async function handleDeliveryStatus(orderId, status) {
@@ -141,7 +161,29 @@ export default function Riders() {
                     ))}
                   </select>
                   <button onClick={() => handleAssign(o.id)} className="btn-secondary shrink-0 text-xs">Auto-assign</button>
+                  <button onClick={() => handleAskAgent(o.id)} className="btn-secondary shrink-0 text-xs" title="Ask the dispatch agent">
+                    <Sparkles className="h-3 w-3" />
+                  </button>
                 </div>
+
+                {suggestions[o.id] === 'loading' && (
+                  <p className="mt-2 text-xs text-gray-400">Asking the agent...</p>
+                )}
+                {suggestions[o.id] && suggestions[o.id] !== 'loading' && (
+                  suggestions[o.id].error ? (
+                    <p className="mt-2 text-xs text-red-600">{suggestions[o.id].error}</p>
+                  ) : (
+                    <div className="mt-2 rounded-lg bg-brand-50 p-2 text-xs text-brand-800">
+                      <p className="mb-1"><span className="font-semibold">Agent suggests: {suggestions[o.id].rider.name}</span> — {suggestions[o.id].reasoning}</p>
+                      <button
+                        onClick={() => handleConfirmSuggestion(o.id, suggestions[o.id].rider.id)}
+                        className="font-medium text-brand-700 hover:underline"
+                      >
+                        Confirm this rider
+                      </button>
+                    </div>
+                  )
+                )}
               </div>
             ))}
           </div>

@@ -267,18 +267,31 @@ export const STATUS_MESSAGES = {
 };
 
 export async function notifyStatusChange(orderId, tenantId, newStatus) {
-  const template = STATUS_MESSAGES[newStatus];
+  let template = STATUS_MESSAGES[newStatus];
   if (!template) return;
 
   try {
     const res = await query(
-      `SELECT c.phone FROM orders o
+      `SELECT c.phone, o.branch_id FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
        WHERE o.id = $1 AND o.tenant_id = $2`,
       [orderId, tenantId],
     );
     const phone = res.rows[0]?.phone;
     if (!phone) return;
+
+    // impl-17: recomputed at this exact moment, since the queue may have
+    // shifted since the order was placed — never reuse a stale estimate.
+    if (newStatus === 'preparing' && res.rows[0].branch_id) {
+      try {
+        const { estimateReadyTime } = await import('./eta-agent.js');
+        const eta = await estimateReadyTime(res.rows[0].branch_id, orderId);
+        template += ` Estimated ready in ~${eta.estimated_minutes_max} mins.`;
+      } catch (err) {
+        console.error('[eta-agent] estimate failed (status message sent without it):', err.message);
+      }
+    }
+
     await sendReply(phone, template);
   } catch (err) {
     console.error('[whatsapp] status notification failed:', err.message);

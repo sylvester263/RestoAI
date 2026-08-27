@@ -23,6 +23,7 @@ import POS from './pages/pos/POS';
 import Riders from './pages/Riders';
 import Customers from './pages/Customers';
 import Permissions from './pages/Permissions';
+import Agents from './pages/Agents';
 import PublicSite from './pages/public/PublicSite';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
@@ -70,6 +71,7 @@ export default function App() {
                 <Route path="/riders" element={<Riders />} />
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/permissions" element={<OwnerRoute><Permissions /></OwnerRoute>} />
+                <Route path="/agents" element={<Agents />} />
                 <Route path="/tables" element={<Tables />} />
                 <Route path="/reservations" element={<Reservations />} />
                 <Route path="/inventory" element={<Inventory />} />

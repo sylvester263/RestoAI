@@ -1,0 +1,137 @@
+/**
+ * Fraud/Abuse Detection Agent (impl-21) — flags suspicious patterns for
+ * human review. Never blocks, cancels, or revokes anything itself: false
+ * positives here are reputationally costly, so this always stops at a
+ * human-judgment step.
+ *
+ * Partial build: coupon-abuse detection depends on impl-12 (coupons),
+ * which isn't built yet, so checkCouponAbuse is omitted entirely. Order-
+ * pattern and review-pattern checks need nothing beyond existing tables.
+ */
+import { query } from '../db/pool.js';
+import { generateAgentText } from './ai-agent.js';
+
+/** Customers with an unusually high cancellation ratio in the lookback window. */
+export async function checkRepeatCancellation(tenantId, lookbackDays = 30, minCancellations = 3) {
+  const res = await query(
+    `SELECT c.id as customer_id, c.phone, c.name,
+       COUNT(*) FILTER (WHERE o.status = 'cancelled') as cancelled_count,
+       COUNT(*) as total_count,
+       array_agg(o.id) FILTER (WHERE o.status = 'cancelled') as cancelled_order_ids
+     FROM customers c
+     JOIN orders o ON o.customer_id = c.id
+     WHERE c.tenant_id = $1 AND o.created_at >= NOW() - ($2 || ' days')::interval
+     GROUP BY c.id
+     HAVING COUNT(*) FILTER (WHERE o.status = 'cancelled') >= $3`,
+    [tenantId, lookbackDays, minCancellations],
+  );
+  return res.rows.map((r) => ({
+    customer_id: r.customer_id,
+    flag_type: 'repeat_cancel',
+    evidence: {
+      cancelled_count: parseInt(r.cancelled_count, 10),
+      total_orders: parseInt(r.total_count, 10),
+      order_ids: r.cancelled_order_ids,
+    },
+    severity: parseInt(r.cancelled_count, 10) >= 5 ? 'high' : 'medium',
+  }));
+}
+
+/** Customers placing implausibly many orders in a short trailing window. */
+export async function checkRapidReorderAbuse(tenantId, windowMinutes = 60, minOrders = 4) {
+  const res = await query(
+    `SELECT customer_id, COUNT(*) as order_count, array_agg(id) as order_ids,
+       COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled_count
+     FROM orders
+     WHERE tenant_id = $1 AND customer_id IS NOT NULL
+       AND created_at >= NOW() - ($2 || ' minutes')::interval
+     GROUP BY customer_id
+     HAVING COUNT(*) >= $3`,
+    [tenantId, windowMinutes, minOrders],
+  );
+  return res.rows.map((r) => ({
+    customer_id: r.customer_id,
+    flag_type: 'rapid_reorder',
+    evidence: {
+      order_count: parseInt(r.order_count, 10),
+      cancelled_count: parseInt(r.cancelled_count, 10),
+      order_ids: r.order_ids,
+      window_minutes: windowMinutes,
+    },
+    severity: parseInt(r.cancelled_count, 10) >= 2 ? 'high' : 'medium',
+  }));
+}
+
+/** Unusual clustering of low-rated reviews in a short window — tenant-wide, not customer-specific. */
+export async function checkReviewPatterns(tenantId, windowHours = 24, minCount = 3) {
+  const res = await query(
+    `SELECT COUNT(*) as count, array_agg(id) as review_ids, AVG(rating) as avg_rating
+     FROM reviews
+     WHERE tenant_id = $1 AND created_at >= NOW() - ($2 || ' hours')::interval AND rating <= 2`,
+    [tenantId, windowHours],
+  );
+  const row = res.rows[0];
+  const count = parseInt(row.count, 10);
+  if (count < minCount) return [];
+  return [
+    {
+      customer_id: null,
+      flag_type: 'review_pattern',
+      evidence: { count, review_ids: row.review_ids, avg_rating: parseFloat(row.avg_rating), window_hours: windowHours },
+      severity: 'medium',
+    },
+  ];
+}
+
+function fallbackDescription(r) {
+  switch (r.flag_type) {
+    case 'repeat_cancel':
+      return `This customer has cancelled ${r.evidence.cancelled_count} of ${r.evidence.total_orders} recent orders — worth a closer look.`;
+    case 'rapid_reorder':
+      return `This customer placed ${r.evidence.order_count} orders within ${r.evidence.window_minutes} minutes — worth verifying these are genuine.`;
+    case 'review_pattern':
+      return `${r.evidence.count} low-rated reviews (avg ${r.evidence.avg_rating?.toFixed(1)}) came in within ${r.evidence.window_hours}h — may indicate a coordinated issue or a real service problem worth investigating.`;
+    default:
+      return 'Unusual pattern detected — review the evidence for details.';
+  }
+}
+
+export async function runAbuseScan(tenantId) {
+  const results = [
+    ...(await checkRepeatCancellation(tenantId)),
+    ...(await checkRapidReorderAbuse(tenantId)),
+    ...(await checkReviewPatterns(tenantId)),
+  ];
+
+  let created = 0;
+  for (const r of results) {
+    const existing = await query(
+      `SELECT id FROM agent_abuse_flags
+       WHERE tenant_id = $1 AND flag_type = $2 AND status = 'open'
+         AND ((customer_id IS NULL AND $3::uuid IS NULL) OR customer_id = $3)`,
+      [tenantId, r.flag_type, r.customer_id || null],
+    );
+    if (existing.rows.length > 0) continue;
+
+    let description;
+    try {
+      description = await generateAgentText(
+        'You are a trust-and-safety assistant for a restaurant. Describe this suspicious pattern in one clear, ' +
+          'factual sentence for staff to review. Reference only the numbers given. This is a pattern worth ' +
+          'checking, not a fraud accusation — do not use accusatory language.',
+        JSON.stringify(r),
+      );
+    } catch (err) {
+      console.error('[abuse-detection-agent] description generation failed, using fallback:', err.message);
+      description = fallbackDescription(r);
+    }
+
+    await query(
+      `INSERT INTO agent_abuse_flags (tenant_id, flag_type, customer_id, description, evidence, severity)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tenantId, r.flag_type, r.customer_id || null, description, JSON.stringify(r.evidence), r.severity],
+    );
+    created++;
+  }
+  return created;
+}

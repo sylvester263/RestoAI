@@ -32,7 +32,7 @@ router.post('/query', authorize('reports.view'), insightsLimiter, async (req, re
 
 // ── GET /api/insights/dashboard ──
 // Pre-computed KPIs for the admin dashboard
-router.get('/dashboard', async (req, res, next) => {
+router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
   try {
     const tenantId = req.user.tenant_id;
 

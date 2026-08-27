@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
+import { put, del } from '@vercel/blob';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
@@ -121,6 +123,93 @@ router.put('/:id', authorize('menu.edit'), async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Menu item not found' } });
     }
     res.json({ item: result.rows[0] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── POST /api/menu/:id/image ──
+// Upload or replace the photo for a menu item.
+// Accepts multipart/form-data with a `photo` field (JPEG/PNG/WebP, max 5 MB).
+// Stores to Vercel Blob, writes the CDN URL into menu_items.image_url.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) {
+      return cb(new Error('Only JPEG, PNG, and WebP images are accepted'));
+    }
+    cb(null, true);
+  },
+});
+
+router.post('/:id/image', authorize('menu.edit'), upload.single('photo'), async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: { message: 'photo file is required' } });
+    }
+
+    // Confirm item belongs to this tenant before touching storage
+    const existing = await query(
+      'SELECT id, image_url FROM menu_items WHERE tenant_id = $1 AND id = $2',
+      [req.user.tenant_id, req.params.id],
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Menu item not found' } });
+    }
+
+    // Delete the old blob if one exists to avoid orphaned storage
+    const oldUrl = existing.rows[0].image_url;
+    if (oldUrl && oldUrl.includes('vercel-storage.com')) {
+      try { await del(oldUrl); } catch { /* ignore stale blob errors */ }
+    }
+
+    const ext = req.file.mimetype === 'image/png' ? 'png'
+      : req.file.mimetype === 'image/webp' ? 'webp' : 'jpg';
+    const pathname = `menu-images/${req.user.tenant_id}/${req.params.id}.${ext}`;
+
+    const blob = await put(pathname, req.file.buffer, {
+      access: 'public',
+      contentType: req.file.mimetype,
+      addRandomSuffix: false, // deterministic URL so re-upload replaces the same path
+    });
+
+    const result = await query(
+      'UPDATE menu_items SET image_url = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3 RETURNING *',
+      [blob.url, req.user.tenant_id, req.params.id],
+    );
+    res.json({ item: result.rows[0] });
+  } catch (err) {
+    if (err.message && err.message.includes('Only JPEG')) {
+      return res.status(400).json({ error: { message: err.message } });
+    }
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: { message: 'Image must be under 5 MB' } });
+    }
+    next(err);
+  }
+});
+
+// ── DELETE /api/menu/:id/image ──
+// Removes the stored photo and clears image_url on the item.
+router.delete('/:id/image', authorize('menu.edit'), async (req, res, next) => {
+  try {
+    const existing = await query(
+      'SELECT id, image_url FROM menu_items WHERE tenant_id = $1 AND id = $2',
+      [req.user.tenant_id, req.params.id],
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Menu item not found' } });
+    }
+    const oldUrl = existing.rows[0].image_url;
+    if (oldUrl && oldUrl.includes('vercel-storage.com')) {
+      try { await del(oldUrl); } catch { /* ignore stale blob errors */ }
+    }
+    await query(
+      'UPDATE menu_items SET image_url = NULL, updated_at = NOW() WHERE tenant_id = $1 AND id = $2',
+      [req.user.tenant_id, req.params.id],
+    );
+    res.status(204).end();
   } catch (err) {
     next(err);
   }

@@ -5,6 +5,22 @@ import { getCart, addToCart, updateCartQuantity } from '../../lib/publicOrderSto
 import { ShoppingCart, Plus, Minus, CalendarCheck, Star, Gift } from 'lucide-react';
 import AIAssistantWidget from './AIAssistantWidget';
 
+// Distinct muted colors for category placeholders when a photo isn't set yet.
+// Cycles by index so every category gets a consistent tint.
+const PLACEHOLDER_COLORS = [
+  'bg-orange-100 text-orange-400',
+  'bg-emerald-100 text-emerald-400',
+  'bg-sky-100 text-sky-400',
+  'bg-purple-100 text-purple-400',
+  'bg-rose-100 text-rose-400',
+  'bg-amber-100 text-amber-400',
+];
+
+function categoryColor(categoryName, allCategories) {
+  const idx = allCategories.indexOf(categoryName);
+  return PLACEHOLDER_COLORS[(idx >= 0 ? idx : 0) % PLACEHOLDER_COLORS.length];
+}
+
 export default function PublicMenu() {
   const { tenantSlug } = useParams();
   const navigate = useNavigate();
@@ -47,6 +63,7 @@ export default function PublicMenu() {
       name: item.name,
       price: Number(item.price),
       quantity: 1,
+      image_url: item.image_url || null,
     });
     setCart(updated);
   }
@@ -70,6 +87,8 @@ export default function PublicMenu() {
     (acc[category] = acc[category] || []).push(item);
     return acc;
   }, {});
+
+  const allCategories = Object.keys(grouped);
 
   const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
   const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
@@ -101,43 +120,66 @@ export default function PublicMenu() {
               {catItems.map((item) => {
                 const qty = quantityOf(item.id);
                 return (
-                  <div key={item.id} className="card flex items-center justify-between gap-4">
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{item.name}</p>
-                      {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
-                      <div className="mt-1 flex items-center gap-2">
-                        <p className="text-sm font-semibold text-brand-600">
-                          Rs. {Number(item.price).toLocaleString()}
-                        </p>
-                        {ratings[item.id] && (
-                          <span className="flex items-center gap-0.5 text-xs text-gray-500">
-                            <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                            {ratings[item.id].average} ({ratings[item.id].count})
-                          </span>
-                        )}
-                      </div>
+                  <div key={item.id} className="card flex items-start gap-4">
+                    {/* Item photo or category-colored placeholder */}
+                    <div className="relative shrink-0">
+                      {item.image_url ? (
+                        <img
+                          src={item.image_url}
+                          alt={item.name}
+                          className="h-20 w-20 rounded-xl object-cover"
+                        />
+                      ) : (
+                        <div className={`flex h-20 w-20 items-center justify-center rounded-xl text-3xl ${categoryColor(item.category_name || 'Menu', allCategories)}`}>
+                          🍽️
+                        </div>
+                      )}
+                      {!item.is_available && (
+                        <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60">
+                          <span className="text-xs font-bold uppercase tracking-wide text-white">Sold out</span>
+                        </div>
+                      )}
                     </div>
-                    {qty === 0 ? (
-                      <button onClick={() => handleAdd(item)} className="btn-primary shrink-0">
-                        <Plus className="h-4 w-4" /> Add
-                      </button>
-                    ) : (
-                      <div className="flex shrink-0 items-center gap-3">
-                        <button
-                          onClick={() => handleQuantityChange(item, -1)}
-                          className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
-                        >
-                          <Minus className="h-4 w-4" />
-                        </button>
-                        <span className="w-6 text-center font-medium">{qty}</span>
-                        <button
-                          onClick={() => handleQuantityChange(item, 1)}
-                          className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
+                    <div className="flex flex-1 items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className={`font-medium text-gray-900 ${!item.is_available ? 'line-through text-gray-400' : ''}`}>{item.name}</p>
+                        {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
+                        <div className="mt-1 flex items-center gap-2">
+                          <p className={`text-sm font-semibold ${item.is_available ? 'text-brand-600' : 'text-gray-400'}`}>
+                            Rs. {Number(item.price).toLocaleString()}
+                          </p>
+                          {ratings[item.id] && (
+                            <span className="flex items-center gap-0.5 text-xs text-gray-500">
+                              <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
+                              {ratings[item.id].average} ({ratings[item.id].count})
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    )}
+                      {item.is_available && (
+                        qty === 0 ? (
+                          <button onClick={() => handleAdd(item)} className="btn-primary shrink-0">
+                            <Plus className="h-4 w-4" /> Add
+                          </button>
+                        ) : (
+                          <div className="flex shrink-0 items-center gap-3">
+                            <button
+                              onClick={() => handleQuantityChange(item, -1)}
+                              className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                            <span className="w-6 text-center font-medium">{qty}</span>
+                            <button
+                              onClick={() => handleQuantityChange(item, 1)}
+                              className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
+                            >
+                              <Plus className="h-4 w-4" />
+                            </button>
+                          </div>
+                        )
+                      )}
+                    </div>
                   </div>
                 );
               })}

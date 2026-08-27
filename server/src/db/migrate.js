@@ -488,6 +488,87 @@ async function migrate() {
       }
     }
 
+    // ── Agentic AI systems (impl-14..21) ──
+    // Owner-facing on/off controls — automation an owner should be able to
+    // disable, not something forced on silently.
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS agent_winback_enabled BOOLEAN NOT NULL DEFAULT true;`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS agent_dispatch_mode VARCHAR(20) NOT NULL DEFAULT 'suggest_only' CHECK (agent_dispatch_mode IN ('suggest_only','auto'));`);
+
+    // impl-14 — daily briefing idempotency (one briefing per tenant per day)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_briefing_log (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        briefing_date DATE NOT NULL,
+        sent_at       TIMESTAMPTZ DEFAULT NOW(),
+        content       TEXT NOT NULL,
+        UNIQUE(tenant_id, briefing_date)
+      );
+    `);
+
+    // impl-15 — win-back message log (also the re-trigger cooldown source)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_winback_log (
+        id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id              UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        customer_id            UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        triggered_at           TIMESTAMPTZ DEFAULT NOW(),
+        days_since_last_order  INTEGER NOT NULL,
+        message_sent           TEXT NOT NULL
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_winback_log_tenant_customer ON agent_winback_log(tenant_id, customer_id, triggered_at);`);
+
+    // impl-16 — dispatch reasoning log (both committed auto-assigns and
+    // previewed suggestions, distinguished by auto_assigned)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_dispatch_log (
+        id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id              UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        order_id               UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+        rider_id               UUID NOT NULL REFERENCES riders(id) ON DELETE CASCADE,
+        reasoning              TEXT NOT NULL,
+        candidates_considered  JSONB,
+        auto_assigned          BOOLEAN DEFAULT true,
+        created_at             TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_dispatch_log_tenant ON agent_dispatch_log(tenant_id, created_at DESC);`);
+
+    // impl-18 — reconciliation flags
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_reconciliation_flags (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        order_id      UUID REFERENCES orders(id) ON DELETE CASCADE,
+        flag_type     VARCHAR(50) NOT NULL,
+        description   TEXT NOT NULL,
+        severity      VARCHAR(10) NOT NULL CHECK (severity IN ('low','medium','high')),
+        status        VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','reviewed','resolved','dismissed')),
+        detected_at   TIMESTAMPTZ DEFAULT NOW(),
+        reviewed_by   UUID REFERENCES users(id),
+        reviewed_at   TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_reconciliation_flags_tenant ON agent_reconciliation_flags(tenant_id);`);
+
+    // impl-21 — abuse/fraud flags (order & review pattern checks only —
+    // coupon-abuse check deferred until impl-12 coupons exist)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_abuse_flags (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        flag_type     VARCHAR(30) NOT NULL,
+        customer_id   UUID REFERENCES customers(id) ON DELETE CASCADE,
+        description   TEXT NOT NULL,
+        evidence      JSONB NOT NULL,
+        severity      VARCHAR(10) NOT NULL CHECK (severity IN ('low','medium','high')),
+        status        VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','reviewed','confirmed','false_positive')),
+        detected_at   TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_abuse_flags_tenant ON agent_abuse_flags(tenant_id);`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

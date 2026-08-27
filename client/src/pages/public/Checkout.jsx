@@ -85,8 +85,11 @@ export default function Checkout() {
           <h2 className="mb-3 text-sm font-semibold text-gray-600">Your order</h2>
           <div className="space-y-2 text-sm">
             {cart.map((item) => (
-              <div key={item.menu_item_id} className="flex justify-between">
-                <span>{item.quantity}x {item.name}</span>
+              <div key={item.menu_item_id} className="flex items-center justify-between gap-3">
+                {item.image_url && (
+                  <img src={item.image_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                )}
+                <span className="flex-1">{item.quantity}x {item.name}</span>
                 <span>Rs. {(item.price * item.quantity).toLocaleString()}</span>
               </div>
             ))}

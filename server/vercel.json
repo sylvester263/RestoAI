@@ -1,5 +1,11 @@
 {
   "version": 2,
   "builds": [{ "src": "src/index.js", "use": "@vercel/node" }],
-  "routes": [{ "src": "/(.*)", "dest": "src/index.js" }]
+  "routes": [{ "src": "/(.*)", "dest": "src/index.js" }],
+  "crons": [
+    { "path": "/api/agents/daily-briefing/run", "schedule": "0 3 * * *" },
+    { "path": "/api/agents/winback/run", "schedule": "30 3 * * 1" },
+    { "path": "/api/agents/reconciliation/run", "schedule": "0 4 * * *" },
+    { "path": "/api/agents/abuse-detection/run", "schedule": "30 4 * * *" }
+  ]
 }

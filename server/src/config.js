@@ -45,11 +45,18 @@ const config = {
   timing: {
     estimatedPrepMin: 25,
     estimatedPrepMax: 30,
+    // ETA agent (impl-17): how much longer the estimate grows per order
+    // already queued ahead of this one, and per extra item in this order.
+    perOrderQueueDelayMin: 3,
+    perItemDelayMin: 1,
   },
   vapid: {
     publicKey: process.env.VAPID_PUBLIC_KEY || '',
     privateKey: process.env.VAPID_PRIVATE_KEY || '',
   },
+  // Shared secret for scheduler-triggered endpoints (/api/agents/*/run) —
+  // these aren't user-authenticated, so a header secret stands in for a JWT.
+  cronSecret: process.env.CRON_SECRET || 'dev-cron-secret-change-me',
 };
 
 export default config;

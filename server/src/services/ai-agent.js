@@ -201,6 +201,30 @@ Respond ONLY with a valid JSON array.`,
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// AGENT TEXT — generic short-text phrasing used by the agentic-AI systems
+// (impl-14..21). These agents all do their own deterministic detection in
+// plain code; Qwen is used only to turn a result into readable text, via
+// this one shared helper, never a separate client per agent.
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Turn a system instruction + factual payload into a short piece of text.
+ * @param {string} systemPrompt - instruction, should demand the model only
+ *   reference the facts given (no invented numbers).
+ * @param {string} userContent - the factual payload (plain text or JSON).
+ * @returns {Promise<string>}
+ */
+export async function generateAgentText(systemPrompt, userContent, { temperature = 0.4 } = {}) {
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent },
+  ];
+  const text = await callQwen(messages, { temperature });
+  if (!text) throw new Error('Qwen returned an empty response');
+  return text.trim();
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // INSIGHTS — Natural-language Q&A over order data
 // Converts a question into SQL, runs it, then summarizes in plain language.
 // ═══════════════════════════════════════════════════════════════════

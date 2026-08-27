@@ -39,13 +39,22 @@ export default function MenuBoard() {
             <h2 className="mb-4 border-b-2 border-brand-500 pb-2 text-3xl font-bold text-brand-500">{category}</h2>
             <div className="space-y-3">
               {catItems.map((item) => (
-                <div key={item.id} className={`flex items-baseline justify-between gap-4 ${!item.is_available ? 'opacity-40' : ''}`}>
-                  <div>
-                    <span className="text-xl font-medium">{item.name}</span>
-                    {item.name_urdu && <span className="ml-2 text-lg text-gray-400" dir="rtl">{item.name_urdu}</span>}
-                    {!item.is_available && <span className="ml-2 text-sm uppercase tracking-wide text-red-400">Sold Out</span>}
+                <div key={item.id} className={`flex items-center gap-4 ${!item.is_available ? 'opacity-40' : ''}`}>
+                  {item.image_url && (
+                    <img
+                      src={item.image_url}
+                      alt={item.name}
+                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                    />
+                  )}
+                  <div className="flex flex-1 items-baseline justify-between gap-4">
+                    <div>
+                      <span className="text-xl font-medium">{item.name}</span>
+                      {item.name_urdu && <span className="ml-2 text-lg text-gray-400" dir="rtl">{item.name_urdu}</span>}
+                      {!item.is_available && <span className="ml-2 text-sm uppercase tracking-wide text-red-400">Sold Out</span>}
+                    </div>
+                    <span className="whitespace-nowrap text-xl font-semibold text-brand-500">Rs. {Number(item.price).toLocaleString()}</span>
                   </div>
-                  <span className="whitespace-nowrap text-xl font-semibold text-brand-500">Rs. {Number(item.price).toLocaleString()}</span>
                 </div>
               ))}
             </div>

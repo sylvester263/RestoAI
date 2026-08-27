@@ -22,6 +22,25 @@ export function fireStatusChangeSideEffects(tenantId, order, status) {
     awardPointsForOrder(tenantId, order.id).catch((err) => console.error('[loyalty] award failed:', err.message));
     markCodPaidOnDelivery(tenantId, order.id).catch((err) => console.error('[payments] COD mark-paid failed:', err.message));
   }
+  // impl-16 dispatch agent: a delivery order just became ready for a rider.
+  // Dynamic import avoids a circular dependency (dispatch-agent.js needs
+  // createRiderAssignment, defined below in this same file).
+  if (status === 'confirmed' && order.delivery_address && !order.table_session_id) {
+    import('../services/dispatch-agent.js')
+      .then(({ maybeAutoAssign }) => maybeAutoAssign(tenantId, order))
+      .catch((err) => console.error('[dispatch-agent] auto-assign hook failed:', err.message));
+  }
+}
+
+// ── Shared rider-assignment insert — used by both the manual assign-rider
+// route below and the dispatch agent's auto-assign, so the INSERT exists
+// in exactly one place. ──
+export async function createRiderAssignment(tenantId, orderId, riderId) {
+  const result = await query(
+    `INSERT INTO rider_assignments (tenant_id, order_id, rider_id) VALUES ($1, $2, $3) RETURNING *`,
+    [tenantId, orderId, riderId],
+  );
+  return result.rows[0];
 }
 
 // ── GET /api/orders ──
@@ -239,11 +258,8 @@ router.post('/:id/assign-rider', authorize('orders.status_update'), async (req, 
       riderId = pick.rows[0].id;
     }
 
-    const assignRes = await query(
-      `INSERT INTO rider_assignments (tenant_id, order_id, rider_id) VALUES ($1, $2, $3) RETURNING *`,
-      [req.user.tenant_id, order.id, riderId],
-    );
-    res.status(201).json({ assignment: assignRes.rows[0] });
+    const assignment = await createRiderAssignment(req.user.tenant_id, order.id, riderId);
+    res.status(201).json({ assignment });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });

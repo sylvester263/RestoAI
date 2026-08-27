@@ -24,6 +24,7 @@ import riderRoutes from './routes/riders.js';
 import customerRoutes from './routes/customers.js';
 import segmentRoutes from './routes/segments.js';
 import permissionRoutes from './routes/permissions.js';
+import agentRoutes from './routes/agents.js';
 
 const app = express();
 
@@ -109,6 +110,7 @@ app.use('/api/pos', posRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/segments', segmentRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/agents', agentRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

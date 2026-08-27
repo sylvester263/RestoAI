@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
-  Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck,
+  Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck, Sparkles,
 } from 'lucide-react';
 
 const navItems = [
@@ -25,9 +25,15 @@ const navItems = [
 export default function Layout({ children }) {
   const { user, tenant, logout } = useAuth();
   const navigate = useNavigate();
-  const items = user?.role === 'owner'
-    ? [...navItems, { to: '/permissions', icon: ShieldCheck, label: 'Permissions' }]
+  // AI Agents surfaces reports.view-gated data (owner/manager by default) —
+  // hiding it from staff is a client-side convenience only, matching the
+  // pattern already used for Permissions; the server independently enforces it.
+  let items = user?.role === 'manager' || user?.role === 'owner'
+    ? [...navItems, { to: '/agents', icon: Sparkles, label: 'AI Agents' }]
     : navItems;
+  if (user?.role === 'owner') {
+    items = [...items, { to: '/permissions', icon: ShieldCheck, label: 'Permissions' }];
+  }
 
   function handleLogout() {
     logout();
