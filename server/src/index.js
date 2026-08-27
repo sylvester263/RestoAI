@@ -25,6 +25,8 @@ import customerRoutes from './routes/customers.js';
 import segmentRoutes from './routes/segments.js';
 import permissionRoutes from './routes/permissions.js';
 import agentRoutes from './routes/agents.js';
+import supplierRoutes from './routes/suppliers.js';
+import purchaseOrderRoutes from './routes/purchase-orders.js';
 
 const app = express();
 
@@ -111,6 +113,8 @@ app.use('/api/customers', customerRoutes);
 app.use('/api/segments', segmentRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/agents', agentRoutes);
+app.use('/api/suppliers', supplierRoutes);
+app.use('/api/purchase-orders', purchaseOrderRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

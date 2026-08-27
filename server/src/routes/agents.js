@@ -18,6 +18,9 @@ import { findLapsedCustomers, sendWinbackToCustomer } from '../services/winback-
 import { previewSuggestion, autoAssign, DispatchError } from '../services/dispatch-agent.js';
 import { runReconciliation } from '../services/reconciliation-agent.js';
 import { runAbuseScan } from '../services/abuse-detection-agent.js';
+import { runReplenishmentScan } from '../services/replenishment-agent.js';
+import { createDraftPurchaseOrder } from '../services/purchase-orders.js';
+import { runMenuInsightScan } from '../services/menu-insight-agent.js';
 
 const router = Router();
 
@@ -302,6 +305,159 @@ router.put('/abuse-detection/flags/:id/status', authenticate, authorize('reports
       return res.status(404).json({ error: { message: 'Flag not found' } });
     }
     res.json({ flag: result.rows[0] });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    next(err);
+  }
+});
+
+// ═══ impl-19 — Replenishment (suggest-only, never auto-orders) ═══
+
+async function runReplenishment(req, res, next) {
+  try {
+    const tenantsRes = await query('SELECT id FROM tenants');
+    let suggestionsCreated = 0;
+    let failed = 0;
+    for (const tenant of tenantsRes.rows) {
+      try {
+        suggestionsCreated += await runReplenishmentScan(tenant.id);
+      } catch (err) {
+        failed++;
+        console.error(`[agents:replenishment] tenant ${tenant.id} failed:`, err.message);
+      }
+    }
+    res.json({ suggestions_created: suggestionsCreated, failed });
+  } catch (err) {
+    next(err);
+  }
+}
+router.get('/replenishment/run', requireCronSecret, runReplenishment);
+router.post('/replenishment/run', requireCronSecret, runReplenishment);
+
+router.get('/replenishment/suggestions', authenticate, authorize('inventory.manage'), async (req, res, next) => {
+  try {
+    const status = req.query.status || 'pending';
+    const result = await query(
+      `SELECT rs.*, i.name as ingredient_name, i.unit FROM agent_replenishment_suggestions rs
+       JOIN ingredients i ON i.id = rs.ingredient_id
+       WHERE rs.tenant_id = $1 AND ($2 = 'all' OR rs.status = $2)
+       ORDER BY rs.created_at DESC`,
+      [req.user.tenant_id, status],
+    );
+    res.json({ suggestions: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/replenishment/suggestions/:id/approve', authenticate, authorize('inventory.manage'), async (req, res, next) => {
+  try {
+    const suggRes = await query(
+      `SELECT * FROM agent_replenishment_suggestions WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
+      [req.params.id, req.user.tenant_id],
+    );
+    const suggestion = suggRes.rows[0];
+    if (!suggestion) {
+      return res.status(404).json({ error: { message: 'Suggestion not found or already actioned' } });
+    }
+
+    const ingredientRes = await query('SELECT * FROM ingredients WHERE id = $1', [suggestion.ingredient_id]);
+    const ingredient = ingredientRes.rows[0];
+    const supplierId = req.body.supplier_id || ingredient.preferred_supplier_id;
+    if (!supplierId) {
+      return res.status(400).json({ error: { message: 'No supplier specified — pass supplier_id or set a preferred supplier on this ingredient' } });
+    }
+
+    const po = await createDraftPurchaseOrder(req.user.tenant_id, ingredient.branch_id, supplierId, [
+      { ingredient_id: ingredient.id, quantity: suggestion.suggested_quantity, unit_cost: ingredient.cost_per_unit },
+    ]);
+
+    await query(
+      `UPDATE agent_replenishment_suggestions SET status = 'approved', purchase_order_id = $3 WHERE id = $1 AND tenant_id = $2`,
+      [req.params.id, req.user.tenant_id, po.id],
+    );
+
+    res.status(201).json({ purchase_order: po });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const suggestionStatusSchema = z.object({ status: z.enum(['dismissed']) });
+
+router.put('/replenishment/suggestions/:id/status', authenticate, authorize('inventory.manage'), async (req, res, next) => {
+  try {
+    const data = suggestionStatusSchema.parse(req.body);
+    const result = await query(
+      `UPDATE agent_replenishment_suggestions SET status = $3 WHERE tenant_id = $1 AND id = $2 AND status = 'pending' RETURNING *`,
+      [req.user.tenant_id, req.params.id, data.status],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Suggestion not found or already actioned' } });
+    }
+    res.json({ suggestion: result.rows[0] });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    next(err);
+  }
+});
+
+// ═══ impl-20 — Menu/Pricing Insights ═══
+
+async function runMenuInsights(req, res, next) {
+  try {
+    const tenantsRes = await query('SELECT id FROM tenants');
+    let insightsCreated = 0;
+    let failed = 0;
+    for (const tenant of tenantsRes.rows) {
+      try {
+        insightsCreated += await runMenuInsightScan(tenant.id);
+      } catch (err) {
+        failed++;
+        console.error(`[agents:menu-insights] tenant ${tenant.id} failed:`, err.message);
+      }
+    }
+    res.json({ insights_created: insightsCreated, failed });
+  } catch (err) {
+    next(err);
+  }
+}
+router.get('/menu-insights/run', requireCronSecret, runMenuInsights);
+router.post('/menu-insights/run', requireCronSecret, runMenuInsights);
+
+router.get('/menu-insights', authenticate, authorize('reports.view'), async (req, res, next) => {
+  try {
+    const status = req.query.status || 'new';
+    const result = await query(
+      `SELECT mi.*, m.name as menu_item_name FROM agent_menu_insights mi
+       JOIN menu_items m ON m.id = mi.menu_item_id
+       WHERE mi.tenant_id = $1 AND ($2 = 'all' OR mi.status = $2)
+       ORDER BY mi.generated_at DESC`,
+      [req.user.tenant_id, status],
+    );
+    res.json({ insights: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const menuInsightStatusSchema = z.object({ status: z.enum(['new', 'acknowledged', 'acted_on', 'dismissed']) });
+
+router.put('/menu-insights/:id/status', authenticate, authorize('reports.view'), async (req, res, next) => {
+  try {
+    const data = menuInsightStatusSchema.parse(req.body);
+    const result = await query(
+      `UPDATE agent_menu_insights SET status = $3 WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      [req.user.tenant_id, req.params.id, data.status],
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Insight not found' } });
+    }
+    res.json({ insight: result.rows[0] });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });

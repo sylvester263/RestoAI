@@ -3,8 +3,9 @@
  * pipeline and the public web ordering flow, so pricing and order-creation
  * exist in exactly one place.
  */
-import { query } from '../db/pool.js';
+import { query, withTransaction } from '../db/pool.js';
 import { createPaymentForOrder } from './payments.js';
+import { depleteIngredientsForOrder, autoDisableUnmakeableItems, alertIfCrossedThreshold } from './inventory.js';
 
 export class OrderError extends Error {
   constructor(status, message) {
@@ -89,49 +90,64 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
     resolvedBranchId = branchRes.rows[0]?.id;
   }
 
-  const orderRes = await query(
-    `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, discount_amount, total, delivery_address, payment_method, notes, table_session_id, pos_tab_id)
-     VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-     RETURNING *`,
-    [
-      tenantId,
-      resolvedBranchId,
-      customer.id,
-      channel,
-      pricing.subtotal,
-      pricing.tax,
-      pricing.delivery_fee,
-      pricing.discount || 0,
-      pricing.total,
-      tableSessionId ? null : (deliveryAddress || customer.address),
-      paymentMethod || null,
-      notes || null,
-      tableSessionId || null,
-      posTabId || null,
-    ],
-  );
-
-  const order = orderRes.rows[0];
-
-  for (const item of items) {
-    await query(
-      `INSERT INTO order_items (order_id, menu_item_id, name, quantity, unit_price, total_price)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [order.id, item.menu_item_id, item.name, item.quantity, item.unit_price, item.total_price],
+  // Order creation, item rows, the customer's running totals, and impl-08's
+  // recipe-based ingredient depletion all happen in one transaction — stock
+  // and orders must never be able to drift out of sync with each other.
+  const { order, touchedIngredients } = await withTransaction(async (client) => {
+    const orderRes = await client.query(
+      `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, discount_amount, total, delivery_address, payment_method, notes, table_session_id, pos_tab_id)
+       VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       RETURNING *`,
+      [
+        tenantId,
+        resolvedBranchId,
+        customer.id,
+        channel,
+        pricing.subtotal,
+        pricing.tax,
+        pricing.delivery_fee,
+        pricing.discount || 0,
+        pricing.total,
+        tableSessionId ? null : (deliveryAddress || customer.address),
+        paymentMethod || null,
+        notes || null,
+        tableSessionId || null,
+        posTabId || null,
+      ],
     );
-  }
+    const order = orderRes.rows[0];
 
-  if (customer?.id) {
-    await query(
-      `UPDATE customers SET order_count = order_count + 1, total_spent = total_spent + $2, updated_at = NOW() WHERE id = $1`,
-      [customer.id, pricing.total],
-    );
-  }
+    for (const item of items) {
+      await client.query(
+        `INSERT INTO order_items (order_id, menu_item_id, name, quantity, unit_price, total_price)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [order.id, item.menu_item_id, item.name, item.quantity, item.unit_price, item.total_price],
+      );
+    }
+
+    if (customer?.id) {
+      await client.query(
+        `UPDATE customers SET order_count = order_count + 1, total_spent = total_spent + $2, updated_at = NOW() WHERE id = $1`,
+        [customer.id, pricing.total],
+      );
+    }
+
+    const touchedIngredients = await depleteIngredientsForOrder(client, items);
+    if (touchedIngredients.size > 0) {
+      await autoDisableUnmakeableItems(client, tenantId, [...touchedIngredients.keys()]);
+    }
+
+    return { order, touchedIngredients };
+  });
 
   // Auto-create a payment record (COD starts pending, marked paid on delivery)
   if (paymentMethod) {
     await createPaymentForOrder(tenantId, order.id, pricing.total, paymentMethod);
   }
+
+  // Best-effort, post-commit — a notification failure must never roll back a sale.
+  alertIfCrossedThreshold(tenantId, touchedIngredients).catch((err) =>
+    console.error('[inventory] low-stock alert failed:', err.message));
 
   return { ...order, items };
 }

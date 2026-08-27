@@ -100,12 +100,19 @@ export async function runReconciliation(tenantId, sinceDate) {
         description = fallbackDescription(flag, order);
       }
 
-      await query(
-        `INSERT INTO agent_reconciliation_flags (tenant_id, order_id, flag_type, description, severity)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [tenantId, order.id, flag.flag_type, description, flag.severity],
-      );
-      created++;
+      try {
+        await query(
+          `INSERT INTO agent_reconciliation_flags (tenant_id, order_id, flag_type, description, severity)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [tenantId, order.id, flag.flag_type, description, flag.severity],
+        );
+        created++;
+      } catch (err) {
+        // 23505 = unique_violation on idx_reconciliation_flags_dedup — a
+        // concurrent run already flagged this; the SELECT above is only a
+        // fast path, the DB constraint is the real guarantee.
+        if (err.code !== '23505') throw err;
+      }
     }
   }
   return created;

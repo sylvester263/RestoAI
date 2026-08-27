@@ -488,6 +488,83 @@ async function migrate() {
       }
     }
 
+    // ── Full inventory: recipes, suppliers, purchase orders (impl-08) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS suppliers (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        name            VARCHAR(150) NOT NULL,
+        contact_phone   VARCHAR(20),
+        contact_email   VARCHAR(150),
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_suppliers_tenant ON suppliers(tenant_id);`);
+
+    // Deviation from the spec's literal DDL: adds preferred_supplier_id.
+    // impl-19's replenishment agent needs a default supplier to draft a PO
+    // against, and impl-08's own schema had no way to express "who do we
+    // usually buy this from" — without it, every approval would need a
+    // supplier picked by hand with no sensible default.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS ingredients (
+        id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id             UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id             UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        name                  VARCHAR(150) NOT NULL,
+        unit                  VARCHAR(20) NOT NULL,
+        current_stock         NUMERIC(12,3) NOT NULL DEFAULT 0,
+        low_stock_threshold   NUMERIC(12,3) NOT NULL DEFAULT 0,
+        cost_per_unit         NUMERIC(10,2) NOT NULL DEFAULT 0,
+        preferred_supplier_id UUID REFERENCES suppliers(id) ON DELETE SET NULL,
+        created_at            TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ingredients_branch ON ingredients(branch_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_ingredients_tenant ON ingredients(tenant_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS recipes (
+        id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        menu_item_id        UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+        ingredient_id       UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+        quantity_required   NUMERIC(12,3) NOT NULL,
+        UNIQUE(menu_item_id, ingredient_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_recipes_menu_item ON recipes(menu_item_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_recipes_ingredient ON recipes(ingredient_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_orders (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id     UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        supplier_id   UUID NOT NULL REFERENCES suppliers(id),
+        status        VARCHAR(20) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','ordered','received','cancelled')),
+        ordered_at    TIMESTAMPTZ,
+        received_at   TIMESTAMPTZ,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_purchase_orders_tenant ON purchase_orders(tenant_id, status);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS purchase_order_items (
+        id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        purchase_order_id   UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+        ingredient_id       UUID NOT NULL REFERENCES ingredients(id),
+        quantity            NUMERIC(12,3) NOT NULL,
+        unit_cost           NUMERIC(10,2) NOT NULL
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_po_items_po ON purchase_order_items(purchase_order_id);`);
+
+    // Tracks whether an unavailable menu item was auto-86'd by the
+    // ingredient-depletion logic (vs. a manual staff decision) — restocking
+    // must only ever re-enable the former, never override the latter.
+    await client.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS auto_unavailable BOOLEAN NOT NULL DEFAULT false;`);
+
     // ── Agentic AI systems (impl-14..21) ──
     // Owner-facing on/off controls — automation an owner should be able to
     // disable, not something forced on silently.
@@ -568,6 +645,65 @@ async function migrate() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_abuse_flags_tenant ON agent_abuse_flags(tenant_id);`);
+
+    // impl-19 — replenishment suggestions (never auto-orders; approval creates a real PO)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_replenishment_suggestions (
+        id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id           UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        ingredient_id       UUID NOT NULL REFERENCES ingredients(id) ON DELETE CASCADE,
+        suggested_quantity  NUMERIC(12,3) NOT NULL,
+        reasoning           TEXT NOT NULL,
+        status              VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','dismissed','ordered')),
+        purchase_order_id   UUID REFERENCES purchase_orders(id),
+        created_at          TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_replenishment_tenant ON agent_replenishment_suggestions(tenant_id, status);`);
+
+    // impl-20 — menu/pricing insights (velocity + margin, deterministic classification)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS agent_menu_insights (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        menu_item_id      UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+        insight_type      VARCHAR(30) NOT NULL,
+        recommendation    TEXT NOT NULL,
+        supporting_data   JSONB NOT NULL,
+        status            VARCHAR(20) NOT NULL DEFAULT 'new' CHECK (status IN ('new','acknowledged','acted_on','dismissed')),
+        generated_at      TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_menu_insights_tenant ON agent_menu_insights(tenant_id, status);`);
+
+    // Concurrency hardening: a plain "check existing, then insert" in application
+    // code has a race window — two overlapping scan runs (e.g. a manually
+    // triggered demo run overlapping a scheduled one) can both pass the SELECT
+    // before either INSERTs, producing duplicate open findings. Each agent's
+    // own verification steps explicitly require "run twice, no duplicate", so
+    // this is enforced at the DB level too, not just in application logic —
+    // partial unique indexes scoped to the "still open" status, so a finding
+    // can recur later after being resolved/dismissed/acted on.
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_menu_insights_dedup
+      ON agent_menu_insights(tenant_id, menu_item_id, insight_type) WHERE status = 'new';
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_reconciliation_flags_dedup
+      ON agent_reconciliation_flags(tenant_id, order_id, flag_type) WHERE status = 'open';
+    `);
+    // customer_id is nullable (review_pattern flags are tenant-wide, not
+    // per-customer) — a plain UNIQUE index treats every NULL as distinct, so
+    // it would never actually dedupe those. Coalescing to a fixed sentinel
+    // UUID inside the index expression makes all NULLs collide as intended.
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_abuse_flags_dedup
+      ON agent_abuse_flags(tenant_id, flag_type, COALESCE(customer_id, '00000000-0000-0000-0000-000000000000'::uuid)) WHERE status = 'open';
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_replenishment_dedup
+      ON agent_replenishment_suggestions(tenant_id, ingredient_id) WHERE status = 'pending';
+    `);
 
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);

@@ -36,7 +36,7 @@ router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
   try {
     const tenantId = req.user.tenant_id;
 
-    const [todayOrders, weekRevenue, topItems, statusBreakdown, recentCustomers, reviewStats, lowStockCount] = await Promise.all([
+    const [todayOrders, weekRevenue, topItems, statusBreakdown, recentCustomers, reviewStats, lowStockCount, foodCostMargins] = await Promise.all([
       // Today's order count and revenue
       query(`
         SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as revenue
@@ -88,11 +88,25 @@ router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
         WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '30 days'
       `, [tenantId]),
 
-      // Low-stock inventory items count
+      // Low-stock ingredients count (impl-08)
       query(`
         SELECT COUNT(*) as count
-        FROM inventory_items
-        WHERE tenant_id = $1 AND current_qty <= min_qty
+        FROM ingredients
+        WHERE tenant_id = $1 AND current_stock <= low_stock_threshold
+      `, [tenantId]),
+
+      // Food-cost margin per menu item (impl-08) — only items with a recipe
+      // defined have real cost data; items without one are omitted rather
+      // than shown with a misleading 0-cost/100%-margin figure.
+      query(`
+        SELECT mi.id, mi.name, mi.price,
+               SUM(r.quantity_required * i.cost_per_unit) as unit_cost
+        FROM menu_items mi
+        JOIN recipes r ON r.menu_item_id = mi.id
+        JOIN ingredients i ON i.id = r.ingredient_id
+        WHERE mi.tenant_id = $1
+        GROUP BY mi.id, mi.name, mi.price
+        ORDER BY mi.name
       `, [tenantId]),
     ]);
 
@@ -110,6 +124,19 @@ router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
         average: Math.round(parseFloat(reviewStats.rows[0].average) * 10) / 10,
       },
       low_stock_count: parseInt(lowStockCount.rows[0].count, 10),
+      food_cost_margins: foodCostMargins.rows.map((row) => {
+        const price = parseFloat(row.price);
+        const unitCost = parseFloat(row.unit_cost);
+        const margin = price - unitCost;
+        return {
+          menu_item_id: row.id,
+          name: row.name,
+          price,
+          unit_cost: unitCost,
+          margin,
+          margin_pct: price > 0 ? Math.round((margin / price) * 1000) / 10 : null,
+        };
+      }),
     });
   } catch (err) {
     next(err);

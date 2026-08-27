@@ -1,22 +1,26 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api';
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Image, X } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Image, X, Beaker } from 'lucide-react';
 
 export default function Menu() {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [ingredients, setIngredients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null); // null | 'new' | item object
   const [form, setForm] = useState({ name: '', name_urdu: '', description: '', price: '', category_id: '', is_available: true, tags: '' });
   const [imgUploading, setImgUploading] = useState(false);
+  const [recipe, setRecipe] = useState([]); // [{ ingredient_id, quantity_required, name, unit }]
+  const [recipeSaving, setRecipeSaving] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
-    Promise.all([api.getMenu(), api.getCategories()])
-      .then(([menuRes, catRes]) => {
+    Promise.all([api.getMenu(), api.getCategories(), api.getIngredients()])
+      .then(([menuRes, catRes, ingRes]) => {
         setItems(menuRes.items);
         setCategories(catRes.categories);
+        setIngredients(ingRes.ingredients);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -67,11 +71,42 @@ export default function Menu() {
       tags: (item.tags || []).join(', '),
       image_url: item.image_url || null,
     });
+    setRecipe([]);
+    api.getMenuItemRecipe(item.id).then((res) => setRecipe(res.recipe)).catch(() => {});
   }
 
   function startNew() {
     setEditing('new');
     setForm({ name: '', name_urdu: '', description: '', price: '', category_id: '', is_available: true, tags: '', image_url: null });
+    setRecipe([]);
+  }
+
+  function addRecipeLine() {
+    setRecipe((prev) => [...prev, { ingredient_id: '', quantity_required: '' }]);
+  }
+
+  function updateRecipeLine(i, field, value) {
+    setRecipe((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+  }
+
+  function removeRecipeLine(i) {
+    setRecipe((prev) => prev.filter((_, idx) => idx !== i));
+  }
+
+  async function handleSaveRecipe() {
+    if (editing === 'new') return;
+    setRecipeSaving(true);
+    try {
+      const validLines = recipe
+        .filter((r) => r.ingredient_id && r.quantity_required)
+        .map((r) => ({ ingredient_id: r.ingredient_id, quantity_required: Number(r.quantity_required) }));
+      const res = await api.setMenuItemRecipe(editing.id, validLines);
+      setRecipe(res.recipe);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setRecipeSaving(false);
+    }
   }
 
   async function handleImageUpload(e) {
@@ -203,6 +238,47 @@ export default function Menu() {
                     onChange={handleImageUpload}
                   />
                   {editing === 'new' && <p className="mt-1 text-xs text-gray-400">Save the item first, then add a photo.</p>}
+                </div>
+              )}
+
+              {/* Recipe (impl-08) — which ingredients this item consumes, and how much */}
+              {editing !== 'new' && (
+                <div>
+                  <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">
+                    <Beaker className="h-3 w-3" /> Recipe (for auto-deplete stock)
+                  </label>
+                  <div className="space-y-2">
+                    {recipe.map((line, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <select
+                          className="input flex-1 text-sm"
+                          value={line.ingredient_id}
+                          onChange={(e) => updateRecipeLine(i, 'ingredient_id', e.target.value)}
+                        >
+                          <option value="">Ingredient...</option>
+                          {ingredients.map((ing) => <option key={ing.id} value={ing.id}>{ing.name} ({ing.unit})</option>)}
+                        </select>
+                        <input
+                          type="number"
+                          className="input w-24 text-sm"
+                          placeholder="Qty"
+                          min="0"
+                          step="0.01"
+                          value={line.quantity_required}
+                          onChange={(e) => updateRecipeLine(i, 'quantity_required', e.target.value)}
+                        />
+                        <button onClick={() => removeRecipeLine(i)} className="text-gray-400 hover:text-red-500">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between">
+                      <button onClick={addRecipeLine} className="text-xs font-medium text-brand-600 hover:underline">+ Add ingredient</button>
+                      <button onClick={handleSaveRecipe} disabled={recipeSaving} className="btn-secondary px-3 py-1 text-xs">
+                        {recipeSaving ? 'Saving...' : 'Save recipe'}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

@@ -111,6 +111,26 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* Food-cost margins (impl-08) — only items with a recipe defined have real cost data */}
+        {data.food_cost_margins?.length > 0 && (
+          <div className="card">
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">Food-Cost Margins</h2>
+            <div className="space-y-3">
+              {data.food_cost_margins.map((m) => (
+                <div key={m.menu_item_id} className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{m.name}</p>
+                    <p className="text-xs text-gray-500">Cost Rs. {m.unit_cost.toLocaleString()} · Price Rs. {m.price.toLocaleString()}</p>
+                  </div>
+                  <span className={`badge ${m.margin_pct >= 40 ? 'bg-green-100 text-green-700' : m.margin_pct < 15 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {m.margin_pct}% margin
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Recent Customers */}
         <div className="card">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">Recent Customers</h2>

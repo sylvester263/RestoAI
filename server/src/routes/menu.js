@@ -113,6 +113,13 @@ router.put('/:id', authorize('menu.edit'), async (req, res, next) => {
         idx++;
       }
     }
+    // A staff member setting availability by hand is a manual decision —
+    // clear the auto-86 flag so a later stock replenishment (impl-08) never
+    // silently overrides it. If they're re-enabling something the kitchen
+    // still can't make, that's on them; the flag only protects the reverse.
+    if (data.is_available !== undefined) {
+      sets.push('auto_unavailable = false');
+    }
     sets.push('updated_at = NOW()');
 
     const result = await query(
@@ -124,6 +131,51 @@ router.put('/:id', authorize('menu.edit'), async (req, res, next) => {
     }
     res.json({ item: result.rows[0] });
   } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/menu/:id/recipe ── (impl-08)
+router.get('/:id/recipe', authorize('menu.edit'), async (req, res, next) => {
+  try {
+    const itemRes = await query('SELECT id FROM menu_items WHERE tenant_id = $1 AND id = $2', [req.user.tenant_id, req.params.id]);
+    if (itemRes.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Menu item not found' } });
+    }
+    const { getRecipe } = await import('../services/inventory.js');
+    const recipe = await getRecipe(req.user.tenant_id, req.params.id);
+    res.json({ recipe });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const recipeSchema = z.object({
+  ingredients: z.array(z.object({
+    ingredient_id: z.string().uuid(),
+    quantity_required: z.number().positive(),
+  })),
+});
+
+// ── PUT /api/menu/:id/recipe ── (impl-08)
+// Replaces the full recipe for a menu item with the given ingredient list.
+router.put('/:id/recipe', authorize('menu.edit'), async (req, res, next) => {
+  try {
+    const itemRes = await query('SELECT id FROM menu_items WHERE tenant_id = $1 AND id = $2', [req.user.tenant_id, req.params.id]);
+    if (itemRes.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Menu item not found' } });
+    }
+    const data = recipeSchema.parse(req.body);
+    const { setRecipe } = await import('../services/inventory.js');
+    const recipe = await setRecipe(req.user.tenant_id, req.params.id, data.ingredients);
+    res.json({ recipe });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    if (err.status) {
+      return res.status(err.status).json({ error: { message: err.message } });
+    }
     next(err);
   }
 });

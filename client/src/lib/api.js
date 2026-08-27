@@ -132,15 +132,42 @@ export const api = {
   simulateWhatsApp: (phone, message) =>
     request('/whatsapp/simulate', { method: 'POST', body: JSON.stringify({ phone, message }) }),
 
-  // Inventory
-  getInventory: (params = {}) => {
+  // Inventory — ingredients (impl-08)
+  getIngredients: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request(`/inventory${qs ? `?${qs}` : ''}`);
   },
-  createInventoryItem: (body) => request('/inventory', { method: 'POST', body: JSON.stringify(body) }),
-  updateInventoryItem: (id, body) => request(`/inventory/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
-  deleteInventoryItem: (id) => request(`/inventory/${id}`, { method: 'DELETE' }),
-  restockItem: (id, quantity) => request(`/inventory/${id}/restock`, { method: 'POST', body: JSON.stringify({ quantity }) }),
+  createIngredient: (body) => request('/inventory', { method: 'POST', body: JSON.stringify(body) }),
+  updateIngredient: (id, body) => request(`/inventory/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteIngredient: (id) => request(`/inventory/${id}`, { method: 'DELETE' }),
+
+  // Recipes (impl-08)
+  getMenuItemRecipe: (menuItemId) => request(`/menu/${menuItemId}/recipe`),
+  setMenuItemRecipe: (menuItemId, ingredients) =>
+    request(`/menu/${menuItemId}/recipe`, { method: 'PUT', body: JSON.stringify({ ingredients }) }),
+
+  // Suppliers (impl-08)
+  getSuppliers: () => request('/suppliers'),
+  createSupplier: (body) => request('/suppliers', { method: 'POST', body: JSON.stringify(body) }),
+  updateSupplier: (id, body) => request(`/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  // Purchase orders (impl-08)
+  getPurchaseOrders: () => request('/purchase-orders'),
+  getPurchaseOrder: (id) => request(`/purchase-orders/${id}`),
+  createPurchaseOrder: (body) => request('/purchase-orders', { method: 'POST', body: JSON.stringify(body) }),
+  receivePurchaseOrder: (id) => request(`/purchase-orders/${id}/receive`, { method: 'POST' }),
+
+  // Replenishment agent (impl-19)
+  getReplenishmentSuggestions: (status = 'pending') => request(`/agents/replenishment/suggestions?status=${status}`),
+  approveReplenishmentSuggestion: (id, supplierId) =>
+    request(`/agents/replenishment/suggestions/${id}/approve`, { method: 'POST', body: JSON.stringify(supplierId ? { supplier_id: supplierId } : {}) }),
+  dismissReplenishmentSuggestion: (id) =>
+    request(`/agents/replenishment/suggestions/${id}/status`, { method: 'PUT', body: JSON.stringify({ status: 'dismissed' }) }),
+
+  // Menu insight agent (impl-20)
+  getMenuInsights: (status = 'new') => request(`/agents/menu-insights?status=${status}`),
+  updateMenuInsightStatus: (id, status) =>
+    request(`/agents/menu-insights/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 
   // Campaigns
   getCampaigns: () => request('/campaigns'),

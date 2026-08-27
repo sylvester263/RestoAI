@@ -126,12 +126,19 @@ export async function runAbuseScan(tenantId) {
       description = fallbackDescription(r);
     }
 
-    await query(
-      `INSERT INTO agent_abuse_flags (tenant_id, flag_type, customer_id, description, evidence, severity)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [tenantId, r.flag_type, r.customer_id || null, description, JSON.stringify(r.evidence), r.severity],
-    );
-    created++;
+    try {
+      await query(
+        `INSERT INTO agent_abuse_flags (tenant_id, flag_type, customer_id, description, evidence, severity)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [tenantId, r.flag_type, r.customer_id || null, description, JSON.stringify(r.evidence), r.severity],
+      );
+      created++;
+    } catch (err) {
+      // 23505 = unique_violation on idx_abuse_flags_dedup — a concurrent run
+      // already flagged this; the SELECT above is only a fast path, the DB
+      // constraint is the real guarantee.
+      if (err.code !== '23505') throw err;
+    }
   }
   return created;
 }

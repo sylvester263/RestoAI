@@ -1,6 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { Send, Sparkles, Loader2 } from 'lucide-react';
+import { Send, Sparkles, Loader2, TrendingUp } from 'lucide-react';
+
+const INSIGHT_STYLES = {
+  feature_candidate: { label: 'Feature this', className: 'bg-green-100 text-green-700' },
+  pricing_review: { label: 'Pricing review', className: 'bg-amber-100 text-amber-700' },
+  low_velocity: { label: 'Low velocity', className: 'bg-gray-100 text-gray-600' },
+  low_margin: { label: 'Low margin', className: 'bg-red-100 text-red-700' },
+};
 
 const SAMPLE_QUESTIONS = [
   "What was my best-selling item this week?",
@@ -16,6 +23,20 @@ export default function Insights() {
   const [answer, setAnswer] = useState('');
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [menuInsights, setMenuInsights] = useState([]);
+
+  useEffect(() => {
+    api.getMenuInsights('new').then((res) => setMenuInsights(res.insights)).catch(() => {});
+  }, []);
+
+  async function handleInsightStatus(id, status) {
+    try {
+      await api.updateMenuInsightStatus(id, status);
+      setMenuInsights((prev) => prev.filter((i) => i.id !== id));
+    } catch (err) {
+      alert(err.message);
+    }
+  }
 
   async function handleAsk(q) {
     const query = q || question;
@@ -41,6 +62,38 @@ export default function Insights() {
         <h1 className="text-2xl font-bold text-gray-900">AI Insights</h1>
         <p className="text-sm text-gray-500">Ask questions about your restaurant data in English or Urdu</p>
       </div>
+
+      {/* Menu/pricing insights (impl-20) — deterministic classification, AI-phrased text */}
+      {menuInsights.length > 0 && (
+        <div className="card mb-6">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700">
+            <TrendingUp className="h-4 w-4" /> Menu Insights
+          </h2>
+          <div className="space-y-2">
+            {menuInsights.map((insight) => {
+              const style = INSIGHT_STYLES[insight.insight_type] || { label: insight.insight_type, className: 'bg-gray-100 text-gray-600' };
+              const data = insight.supporting_data || {};
+              return (
+                <div key={insight.id} className="rounded-lg border border-gray-100 p-3 text-sm">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="font-medium text-gray-900">{insight.menu_item_name}</span>
+                    <span className={`badge ${style.className}`}>{style.label}</span>
+                  </div>
+                  <p className="mb-2 text-gray-700">{insight.recommendation}</p>
+                  <p className="mb-2 text-xs text-gray-400">
+                    {data.units_sold} sold in {data.period_days} days
+                    {data.margin_pct !== null && data.margin_pct !== undefined && ` · ${data.margin_pct}% margin`}
+                  </p>
+                  <div className="flex gap-3 text-xs">
+                    <button onClick={() => handleInsightStatus(insight.id, 'acted_on')} className="font-medium text-brand-600 hover:underline">Mark acted on</button>
+                    <button onClick={() => handleInsightStatus(insight.id, 'dismissed')} className="font-medium text-gray-500 hover:underline">Dismiss</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Query input */}
       <div className="card mb-6">

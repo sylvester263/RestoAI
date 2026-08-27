@@ -144,18 +144,18 @@ async function seed() {
       }
     }
 
-    // ── Demo inventory ──
-    const inventoryItems = [
-      ['Chicken (whole)', 'kg', 25, 5], ['Mutton', 'kg', 10, 3],
-      ['Tomatoes', 'kg', 30, 10], ['Onions', 'kg', 40, 10],
-      ['Cooking Oil', 'litre', 15, 5], ['Basmati Rice', 'kg', 50, 15],
-      ['Yogurt', 'kg', 8, 3], ['Naan Dough', 'kg', 20, 5],
+    // ── Demo ingredients (impl-08) ──
+    const ingredients = [
+      ['Chicken (whole)', 'kg', 25, 5, 450], ['Mutton', 'kg', 10, 3, 1400],
+      ['Tomatoes', 'kg', 30, 10, 80], ['Onions', 'kg', 40, 10, 60],
+      ['Cooking Oil', 'litre', 15, 5, 550], ['Basmati Rice', 'kg', 50, 15, 280],
+      ['Yogurt', 'kg', 8, 3, 220], ['Naan Dough', 'kg', 20, 5, 150],
     ];
-    for (const [name, unit, qty, min] of inventoryItems) {
+    for (const [name, unit, stock, threshold, costPerUnit] of ingredients) {
       await client.query(`
-        INSERT INTO inventory_items (tenant_id, branch_id, name, unit, current_qty, min_qty)
-        VALUES ($1, $2, $3, $4, $5, $6);
-      `, [tenantId, branchId, name, unit, qty, min]);
+        INSERT INTO ingredients (tenant_id, branch_id, name, unit, current_stock, low_stock_threshold, cost_per_unit)
+        VALUES ($1, $2, $3, $4, $5, $6, $7);
+      `, [tenantId, branchId, name, unit, stock, threshold, costPerUnit]);
     }
 
     await client.query('COMMIT');
