@@ -101,6 +101,16 @@ export const api = {
   sendCampaign: (id) => request(`/campaigns/${id}/send`, { method: 'POST' }),
   getCampaignStatus: (id) => request(`/campaigns/${id}/status`),
 
+  // POS
+  getPosTabs: (branchId) => request(`/pos/tabs${branchId ? `?branch_id=${branchId}` : ''}`),
+  getPosTab: (id) => request(`/pos/tabs/${id}`),
+  openPosTab: (body) => request('/pos/tabs', { method: 'POST', body: JSON.stringify(body) }),
+  addPosTabItems: (id, body) => request(`/pos/tabs/${id}/items`, { method: 'POST', body: JSON.stringify(body) }),
+  applyPosTabDiscount: (id, body) => request(`/pos/tabs/${id}/discount`, { method: 'POST', body: JSON.stringify(body) }),
+  voidPosTab: (id) => request(`/pos/tabs/${id}/void`, { method: 'POST' }),
+  settlePosTab: (id, paymentMethod) =>
+    request(`/pos/tabs/${id}/settle`, { method: 'POST', body: JSON.stringify({ payment_method: paymentMethod }) }),
+
   // Landing page builder
   getLandingPage: () => request('/landing-page'),
   saveLandingPage: (body) => request('/landing-page', { method: 'PUT', body: JSON.stringify(body) }),

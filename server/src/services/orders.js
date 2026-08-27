@@ -82,7 +82,7 @@ export function calculatePricing(orderItems, { deliveryFee = 100, discount = 0 }
 }
 
 // ── Persist a finalized order ──
-export async function createOrder({ tenantId, customer, items, pricing, deliveryAddress, paymentMethod, channel, notes, branchId, tableSessionId }) {
+export async function createOrder({ tenantId, customer, items, pricing, deliveryAddress, paymentMethod, channel, notes, branchId, tableSessionId, posTabId }) {
   let resolvedBranchId = branchId;
   if (!resolvedBranchId) {
     const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [tenantId]);
@@ -90,8 +90,8 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
   }
 
   const orderRes = await query(
-    `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, discount_amount, total, delivery_address, payment_method, notes, table_session_id)
-     VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12, $13)
+    `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, discount_amount, total, delivery_address, payment_method, notes, table_session_id, pos_tab_id)
+     VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      RETURNING *`,
     [
       tenantId,
@@ -104,9 +104,10 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
       pricing.discount || 0,
       pricing.total,
       tableSessionId ? null : (deliveryAddress || customer.address),
-      paymentMethod,
+      paymentMethod || null,
       notes || null,
       tableSessionId || null,
+      posTabId || null,
     ],
   );
 

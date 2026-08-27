@@ -19,6 +19,7 @@ import inventoryRoutes from './routes/inventory.js';
 import campaignRoutes from './routes/campaigns.js';
 import landingPageRoutes from './routes/landing-page.js';
 import sitesRoutes from './routes/sites.js';
+import posRoutes from './routes/pos.js';
 
 const app = express();
 
@@ -99,6 +100,7 @@ app.use('/api/inventory', inventoryRoutes);
 app.use('/api/campaigns', campaignRoutes);
 app.use('/api/landing-page', landingPageRoutes);
 app.use('/api/sites', sitesRoutes);
+app.use('/api/pos', posRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

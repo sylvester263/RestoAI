@@ -3,11 +3,12 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
-  Package, Megaphone, Globe,
+  Package, Megaphone, Globe, Receipt,
 } from 'lucide-react';
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/pos', icon: Receipt, label: 'POS' },
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/orders', icon: ShoppingBag, label: 'Orders' },
   { to: '/tables', icon: QrCode, label: 'Tables' },

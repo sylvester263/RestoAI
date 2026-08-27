@@ -19,6 +19,7 @@ import Reservations from './pages/Reservations';
 import Inventory from './pages/Inventory';
 import Campaigns from './pages/Campaigns';
 import LandingPageEditor from './pages/LandingPageEditor';
+import POS from './pages/pos/POS';
 import PublicSite from './pages/public/PublicSite';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
@@ -52,6 +53,7 @@ export default function App() {
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/menu" element={<Menu />} />
                 <Route path="/orders" element={<Orders />} />
+                <Route path="/pos" element={<POS />} />
                 <Route path="/tables" element={<Tables />} />
                 <Route path="/reservations" element={<Reservations />} />
                 <Route path="/inventory" element={<Inventory />} />

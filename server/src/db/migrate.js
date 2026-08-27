@@ -341,6 +341,34 @@ async function migrate() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_landing_pages_subdomain ON landing_pages(subdomain);`);
 
+    // ── POS tabs (impl-04) — counter/dine-in/phone orders taken by staff ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_tabs (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id         UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id         UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        table_session_id  UUID REFERENCES table_sessions(id),
+        order_type        VARCHAR(20) NOT NULL CHECK (order_type IN ('counter','dine_in','phone')),
+        status            VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','settled','voided')),
+        opened_by         UUID REFERENCES users(id),
+        customer_name     VARCHAR(255),
+        customer_phone    VARCHAR(20),
+        discount_amount   NUMERIC(10,2) NOT NULL DEFAULT 0,
+        discount_reason   TEXT,
+        created_at        TIMESTAMPTZ DEFAULT NOW(),
+        settled_at        TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_tabs_branch ON pos_tabs(branch_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_tabs_tenant_status ON pos_tabs(tenant_id, status);`);
+
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS pos_tab_id UUID REFERENCES pos_tabs(id);`);
+    // payment_method has no NOT NULL constraint and its CHECK already passes
+    // on NULL (SQL: `NULL IN (...)` is NULL, not FALSE) — so POS rounds can
+    // leave it unset until settlement chooses one, no constraint change needed.
+    await client.query(`ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_channel_check;`);
+    await client.query(`ALTER TABLE orders ADD CONSTRAINT orders_channel_check CHECK (channel IN ('whatsapp','in_person','phone','web','pos'));`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);
