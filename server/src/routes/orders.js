@@ -268,58 +268,78 @@ router.post('/:id/assign-rider', authorize('orders.status_update'), async (req, 
   }
 });
 
-const deliveryStatusSchema = z.object({
+export const deliveryStatusSchema = z.object({
   status: z.enum(['picked_up', 'delivered']),
   cash_collected: z.number().min(0).optional(),
 });
+
+// ── Shared delivery-status transition — used by the owner/staff route below
+// and by the rider self-service app (rider-app.js). When riderId is passed,
+// the assignment lookup is additionally scoped to that rider, so a rider
+// token can only ever move their own assignment. ──
+export async function applyDeliveryStatus(tenantId, orderId, data, riderId = null) {
+  const params = [orderId, tenantId];
+  let riderClause = '';
+  if (riderId) {
+    riderClause = ' AND ra.rider_id = $3';
+    params.push(riderId);
+  }
+  const assignRes = await query(
+    `SELECT ra.*, o.payment_method, o.total, o.customer_id, o.status as order_status
+     FROM rider_assignments ra
+     JOIN orders o ON o.id = ra.order_id
+     WHERE ra.order_id = $1 AND o.tenant_id = $2${riderClause}`,
+    params,
+  );
+  const assignment = assignRes.rows[0];
+  if (!assignment) {
+    const err = new Error('No rider assignment found for this order');
+    err.status = 404;
+    throw err;
+  }
+
+  if (data.status === 'picked_up') {
+    const updated = await query(
+      `UPDATE rider_assignments SET picked_up_at = COALESCE(picked_up_at, NOW()) WHERE id = $1 RETURNING *`,
+      [assignment.id],
+    );
+    return { assignment: updated.rows[0] };
+  }
+
+  // delivered — idempotent: a repeat call reports current state without re-firing notifications
+  if (assignment.delivered_at) {
+    return { assignment, already_delivered: true };
+  }
+
+  const isCod = assignment.payment_method === 'cash';
+  const cashCollected = isCod ? (data.cash_collected ?? parseFloat(assignment.total)) : null;
+  const updatedAssignment = await query(
+    `UPDATE rider_assignments SET delivered_at = NOW(), cash_collected = $2 WHERE id = $1 RETURNING *`,
+    [assignment.id, cashCollected],
+  );
+
+  const orderRes = await query(
+    `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+    [orderId, tenantId],
+  );
+  const order = orderRes.rows[0];
+  fireStatusChangeSideEffects(tenantId, order, 'delivered');
+
+  return { assignment: updatedAssignment.rows[0], order };
+}
 
 // ── POST /api/orders/:id/delivery-status ── (impl-05)
 router.post('/:id/delivery-status', authorize('orders.status_update'), async (req, res, next) => {
   try {
     const data = deliveryStatusSchema.parse(req.body);
-    const assignRes = await query(
-      `SELECT ra.*, o.payment_method, o.total, o.customer_id, o.status as order_status
-       FROM rider_assignments ra
-       JOIN orders o ON o.id = ra.order_id
-       WHERE ra.order_id = $1 AND o.tenant_id = $2`,
-      [req.params.id, req.user.tenant_id],
-    );
-    const assignment = assignRes.rows[0];
-    if (!assignment) {
-      return res.status(404).json({ error: { message: 'No rider assignment found for this order' } });
-    }
-
-    if (data.status === 'picked_up') {
-      const updated = await query(
-        `UPDATE rider_assignments SET picked_up_at = COALESCE(picked_up_at, NOW()) WHERE id = $1 RETURNING *`,
-        [assignment.id],
-      );
-      return res.json({ assignment: updated.rows[0] });
-    }
-
-    // delivered — idempotent: a repeat call reports current state without re-firing notifications
-    if (assignment.delivered_at) {
-      return res.json({ assignment, already_delivered: true });
-    }
-
-    const isCod = assignment.payment_method === 'cash';
-    const cashCollected = isCod ? (data.cash_collected ?? parseFloat(assignment.total)) : null;
-    const updatedAssignment = await query(
-      `UPDATE rider_assignments SET delivered_at = NOW(), cash_collected = $2 WHERE id = $1 RETURNING *`,
-      [assignment.id, cashCollected],
-    );
-
-    const orderRes = await query(
-      `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1 AND tenant_id = $2 RETURNING *`,
-      [req.params.id, req.user.tenant_id],
-    );
-    const order = orderRes.rows[0];
-    fireStatusChangeSideEffects(req.user.tenant_id, order, 'delivered');
-
-    res.json({ assignment: updatedAssignment.rows[0], order });
+    const result = await applyDeliveryStatus(req.user.tenant_id, req.params.id, data);
+    res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    if (err.status) {
+      return res.status(err.status).json({ error: { message: err.message } });
     }
     next(err);
   }

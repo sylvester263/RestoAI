@@ -8,11 +8,19 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { query, withTransaction } from '../db/pool.js';
 
 const router = Router();
 router.use(authenticate);
+
+// A random 6-digit PIN, zero-padded — generated when the owner doesn't set
+// one explicitly at rider creation/reset.
+function generatePin() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+}
 
 async function assertBranchOwnedByTenant(tenantId, branchId) {
   const res = await query('SELECT id FROM branches WHERE id = $1 AND tenant_id = $2', [branchId, tenantId]);
@@ -34,7 +42,8 @@ router.get('/', async (req, res, next) => {
       params.push(status);
     }
     const result = await query(
-      `SELECT r.*, b.name as branch_name,
+      `SELECT r.id, r.tenant_id, r.branch_id, r.name, r.phone, r.status, r.last_login_at, r.created_at,
+              b.name as branch_name,
               (SELECT COUNT(*) FROM rider_assignments WHERE rider_id = r.id AND delivered_at IS NULL) as active_deliveries
        FROM riders r
        LEFT JOIN branches b ON b.id = r.branch_id
@@ -52,9 +61,13 @@ const riderCreateSchema = z.object({
   name: z.string().min(1).max(100),
   phone: z.string().min(7).max(20),
   branch_id: z.string().uuid().optional(),
+  pin: z.string().regex(/^\d{4,6}$/, 'PIN must be 4-6 digits').optional(),
 });
 
 // ── POST /api/riders ──
+// Also sets the rider's login PIN — either the one the owner supplied or a
+// freshly generated one. The plaintext PIN is only ever returned in this
+// response (never stored, never logged) for the owner to hand to the rider.
 router.post('/', authorize('riders.manage'), async (req, res, next) => {
   try {
     const data = riderCreateSchema.parse(req.body);
@@ -70,11 +83,15 @@ router.post('/', authorize('riders.manage'), async (req, res, next) => {
     if (!branchId) {
       return res.status(400).json({ error: { message: 'No branch configured for this restaurant' } });
     }
+    const pin = data.pin || generatePin();
+    const pinHash = await bcrypt.hash(pin, 10);
     const result = await query(
-      `INSERT INTO riders (tenant_id, branch_id, name, phone) VALUES ($1, $2, $3, $4) RETURNING *`,
-      [req.user.tenant_id, branchId, data.name, data.phone],
+      `INSERT INTO riders (tenant_id, branch_id, name, phone, pin_hash) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [req.user.tenant_id, branchId, data.name, data.phone, pinHash],
     );
-    res.status(201).json({ rider: result.rows[0] });
+    const rider = result.rows[0];
+    delete rider.pin_hash;
+    res.status(201).json({ rider, pin });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
@@ -83,7 +100,28 @@ router.post('/', authorize('riders.manage'), async (req, res, next) => {
   }
 });
 
-const riderUpdateSchema = riderCreateSchema.partial().extend({
+// ── POST /api/riders/:id/reset-pin ──
+// Issues a fresh PIN for a rider (e.g. they forgot it, or a phone was lost).
+// Returns the plaintext PIN once, same as creation.
+router.post('/:id/reset-pin', authorize('riders.manage'), async (req, res, next) => {
+  try {
+    const riderRes = await query('SELECT id FROM riders WHERE id = $1 AND tenant_id = $2', [req.params.id, req.user.tenant_id]);
+    if (riderRes.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Rider not found' } });
+    }
+    const pin = generatePin();
+    const pinHash = await bcrypt.hash(pin, 10);
+    await query('UPDATE riders SET pin_hash = $1 WHERE id = $2', [pinHash, req.params.id]);
+    res.json({ pin });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PIN changes go through POST /:id/reset-pin (which hashes it) — 'pin' is
+// omitted here since the generic UPDATE loop below writes column names
+// directly from the parsed keys, and 'pin' isn't a real column.
+const riderUpdateSchema = riderCreateSchema.omit({ pin: true }).partial().extend({
   status: z.enum(['active', 'inactive']).optional(),
 });
 
@@ -106,7 +144,8 @@ router.put('/:id', authorize('riders.manage'), async (req, res, next) => {
       return res.status(400).json({ error: { message: 'No fields to update' } });
     }
     const result = await query(
-      `UPDATE riders SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+      `UPDATE riders SET ${sets.join(', ')} WHERE tenant_id = $1 AND id = $2
+       RETURNING id, tenant_id, branch_id, name, phone, status, last_login_at, created_at`,
       params,
     );
     if (result.rows.length === 0) {

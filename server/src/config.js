@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
@@ -25,11 +26,22 @@ const config = {
   jwt: {
     secret: process.env.JWT_SECRET || DEV_JWT_SECRET,
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    // Rider tokens are signed with a distinct secret (derived from the main
+    // one, no extra env var required) so a rider token can never verify
+    // against the owner/staff secret or vice versa — structural separation
+    // instead of relying on claim shape, so a rider token can never
+    // accidentally pass an authorize() check meant for staff.
+    riderSecret: crypto.createHash('sha256').update(`${process.env.JWT_SECRET || DEV_JWT_SECRET}:rider`).digest('hex'),
+    riderExpiresIn: process.env.RIDER_JWT_EXPIRES_IN || '16h',
   },
   corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean),
+  // Used to build absolute links (staff invite emails/WhatsApp messages).
+  // Falls back to the first configured CORS origin — that's already the
+  // deployed frontend URL in every environment that has one set.
+  appUrl: process.env.APP_URL || (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',')[0].trim(),
   whatsapp: {
     token: process.env.WHATSAPP_TOKEN || '',
     phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID || '',

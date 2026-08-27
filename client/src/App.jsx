@@ -23,11 +23,16 @@ import POS from './pages/pos/POS';
 import Riders from './pages/Riders';
 import Customers from './pages/Customers';
 import Permissions from './pages/Permissions';
+import Staff from './pages/Staff';
 import Agents from './pages/Agents';
 import Coupons from './pages/Coupons';
 import PublicSite from './pages/public/PublicSite';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
+import LandingPage from './pages/marketing/LandingPage';
+import InviteAccept from './pages/InviteAccept';
+import RiderLogin from './pages/rider/RiderLogin';
+import RiderDashboard from './pages/rider/RiderDashboard';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -45,10 +50,23 @@ function OwnerRoute({ children }) {
   return children;
 }
 
+// The public marketing page at "/" for anyone not signed in; a signed-in
+// visitor is sent straight to their dashboard instead of the sales pitch.
+function Home() {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  return user ? <Navigate to="/dashboard" /> : <LandingPage />;
+}
+
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/invite/:token" element={<InviteAccept />} />
+      <Route path="/rider/login" element={<RiderLogin />} />
+      <Route path="/rider/:tenantSlug/login" element={<RiderLogin />} />
+      <Route path="/rider" element={<RiderDashboard />} />
       <Route path="/order/:tenantSlug" element={<PublicMenu />} />
       <Route path="/order/:tenantSlug/checkout" element={<Checkout />} />
       <Route path="/order/:tenantSlug/track/:orderId" element={<TrackOrder />} />
@@ -65,12 +83,13 @@ export default function App() {
           <ProtectedRoute>
             <Layout>
               <Routes>
-                <Route path="/" element={<Dashboard />} />
+                <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/menu" element={<Menu />} />
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/pos" element={<POS />} />
                 <Route path="/riders" element={<Riders />} />
                 <Route path="/customers" element={<Customers />} />
+                <Route path="/staff" element={<Staff />} />
                 <Route path="/permissions" element={<OwnerRoute><Permissions /></OwnerRoute>} />
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/coupons" element={<Coupons />} />

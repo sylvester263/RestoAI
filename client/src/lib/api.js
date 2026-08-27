@@ -4,6 +4,20 @@ function getToken() {
   return localStorage.getItem('token');
 }
 
+async function parseResponse(res) {
+  let data;
+  try {
+    data = await res.json();
+  } catch {
+    if (res.status === 429) throw new Error('Too many requests — please wait a moment and try again.');
+    throw new Error(`Request failed (${res.status})`);
+  }
+  if (!res.ok) {
+    throw new Error(data.error?.message || 'Request failed');
+  }
+  return data;
+}
+
 async function request(path, options = {}) {
   const token = getToken();
   const headers = {
@@ -20,17 +34,45 @@ async function request(path, options = {}) {
     throw new Error('Session expired');
   }
 
-  let data;
-  try {
-    data = await res.json();
-  } catch {
-    if (res.status === 429) throw new Error('Too many requests — please wait a moment and try again.');
-    throw new Error(`Request failed (${res.status})`);
+  return parseResponse(res);
+}
+
+// For unauthenticated endpoints (contact form, invite-accept) — no token
+// attached, no redirect-on-401, since there's no session to have expired.
+async function requestPublic(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+  });
+  return parseResponse(res);
+}
+
+// Rider requests use a separate token (a different localStorage key and a
+// different JWT type — see server/src/middleware/auth.js) so a rider
+// session and an owner/staff session can coexist in the same browser
+// without clobbering each other, and expiry redirects to the rider login.
+function getRiderToken() {
+  return localStorage.getItem('riderToken');
+}
+
+async function requestRider(path, options = {}) {
+  const token = getRiderToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token && { Authorization: `Bearer ${token}` }),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+  if (res.status === 401) {
+    localStorage.removeItem('riderToken');
+    localStorage.removeItem('riderInfo');
+    window.location.href = '/rider/login';
+    throw new Error('Session expired');
   }
-  if (!res.ok) {
-    throw new Error(data.error?.message || 'Request failed');
-  }
-  return data;
+
+  return parseResponse(res);
 }
 
 export const api = {
@@ -90,6 +132,11 @@ export const api = {
   reconcileRider: (id, periodStart, periodEnd) =>
     request(`/riders/${id}/reconcile`, { method: 'POST', body: JSON.stringify({ period_start: periodStart, period_end: periodEnd }) }),
   getReconciliations: () => request('/riders/reconciliations'),
+  resetRiderPin: (id) => request(`/riders/${id}/reset-pin`, { method: 'POST' }),
+
+  // Staff invites (owner/manager)
+  getStaffInvites: () => request('/staff-invites'),
+  createStaffInvite: (body) => request('/staff-invites', { method: 'POST', body: JSON.stringify(body) }),
 
   // Customers (CRM)
   getCustomers: (search) => request(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
@@ -209,6 +256,28 @@ export const api = {
   getAbuseFlags: (status = 'open') => request(`/agents/abuse-detection/flags?status=${status}`),
   updateAbuseFlagStatus: (id, status) =>
     request(`/agents/abuse-detection/flags/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+};
+
+// RestoAI's own marketing site — unauthenticated, no tenant JWT (this is a
+// lead for RestoAI itself, not a request scoped to any restaurant tenant)
+export const marketingApi = {
+  submitContact: (body) => requestPublic('/contact', { method: 'POST', body: JSON.stringify(body) }),
+  acceptStaffInvite: (token, body) => requestPublic(`/staff-invites/${token}/accept`, { method: 'POST', body: JSON.stringify(body) }),
+};
+
+// Rider self-service app — separate token type (JWT signed with a distinct
+// secret server-side), separate localStorage key, own login/expiry flow.
+export const riderApi = {
+  login: (tenantSlug, phone, pin) =>
+    requestPublic('/rider-auth/login', { method: 'POST', body: JSON.stringify({ tenantSlug, phone, pin }) }),
+  me: () => requestRider('/rider-app/me'),
+  getAssignments: () => requestRider('/rider-app/assignments'),
+  getSummary: () => requestRider('/rider-app/summary'),
+  updateAssignmentStatus: (orderId, status, cashCollected) =>
+    requestRider(`/rider-app/assignments/${orderId}/status`, {
+      method: 'POST',
+      body: JSON.stringify({ status, cash_collected: cashCollected }),
+    }),
 };
 
 // Public customer ordering endpoints — unauthenticated, no tenant JWT

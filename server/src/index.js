@@ -28,6 +28,10 @@ import agentRoutes from './routes/agents.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchase-orders.js';
 import couponRoutes from './routes/coupons.js';
+import staffInviteRoutes from './routes/staff-invites.js';
+import riderAuthRoutes from './routes/rider-auth.js';
+import riderAppRoutes from './routes/rider-app.js';
+import contactRoutes from './routes/contact.js';
 
 const app = express();
 
@@ -56,6 +60,9 @@ app.use(express.json({ limit: '10mb', verify: (req, _res, buf) => { req.rawBody 
 // Rate limiting on webhook endpoint is lenient; tighten for auth endpoints
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
 app.use('/api/auth', authLimiter);
+// staff-invites includes a public token-gated accept endpoint — same ceiling
+// as auth. Rider login has its own tighter, phone-keyed limiter (rider-auth.js).
+app.use('/api/staff-invites', authLimiter);
 
 // WhatsApp webhook is unauthenticated by design (Meta calls it directly), so
 // it's rate-limited per-IP with a higher ceiling meant for real traffic.
@@ -117,6 +124,10 @@ app.use('/api/agents', agentRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/coupons', couponRoutes);
+app.use('/api/staff-invites', staffInviteRoutes);
+app.use('/api/rider-auth', riderAuthRoutes);
+app.use('/api/rider-app', riderAppRoutes);
+app.use('/api/contact', contactRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { ChefHat, Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
-  const [isRegister, setIsRegister] = useState(false);
+  const [searchParams] = useSearchParams();
+  const [isRegister, setIsRegister] = useState(searchParams.get('mode') === 'register');
   const [form, setForm] = useState({ email: '', password: '', name: '', restaurantName: '', restaurantSlug: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -20,7 +21,7 @@ export default function Login() {
     try {
       const res = isRegister ? await api.register(form) : await api.login(form);
       login(res.token, res.user, res.tenant);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err) {
       setError(err.message);
     } finally {

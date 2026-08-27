@@ -755,6 +755,46 @@ async function migrate() {
       ON agent_replenishment_suggestions(tenant_id, ingredient_id) WHERE status = 'pending';
     `);
 
+    // ── Staff invites (impl-23) — owner/manager invites a staff member by
+    // email; the invitee sets their own password on accept, creating a
+    // normal `users` row. Owner/staff share the existing users/JWT system,
+    // so this table only exists to bridge "invited" -> "activated". ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS staff_invites (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        email         VARCHAR(255) NOT NULL,
+        phone         VARCHAR(20),
+        role          VARCHAR(20) NOT NULL CHECK (role IN ('manager','staff')),
+        branch_id     UUID REFERENCES branches(id),
+        invite_token  VARCHAR(64) UNIQUE NOT NULL,
+        status        VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted','expired')),
+        expires_at    TIMESTAMPTZ NOT NULL,
+        created_by    UUID REFERENCES users(id),
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_invites_tenant ON staff_invites(tenant_id, status);`);
+
+    // ── Rider PIN login (impl-23) — riders authenticate with phone + PIN
+    // via a separate, lighter-weight auth path than owner/staff. ──
+    await client.query(`ALTER TABLE riders ADD COLUMN IF NOT EXISTS pin_hash TEXT;`);
+    await client.query(`ALTER TABLE riders ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;`);
+
+    // ── RestoAI's own marketing-site contact form (impl-22) — not
+    // tenant-scoped, this is a lead for RestoAI itself, not a restaurant. ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS contact_inquiries (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name          VARCHAR(255) NOT NULL,
+        email         VARCHAR(255) NOT NULL,
+        restaurant    VARCHAR(255),
+        phone         VARCHAR(20),
+        message       TEXT,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

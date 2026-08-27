@@ -3,11 +3,11 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
-  Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck, Sparkles, Tag,
+  Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck, Sparkles, Tag, UserPlus,
 } from 'lucide-react';
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/pos', icon: Receipt, label: 'POS' },
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/orders', icon: ShoppingBag, label: 'Orders' },
@@ -29,7 +29,7 @@ export default function Layout({ children }) {
   // hiding them from staff is a client-side convenience only, matching the
   // pattern already used for Permissions; the server independently enforces it.
   let items = user?.role === 'manager' || user?.role === 'owner'
-    ? [...navItems, { to: '/agents', icon: Sparkles, label: 'AI Agents' }, { to: '/coupons', icon: Tag, label: 'Coupons' }]
+    ? [...navItems, { to: '/staff', icon: UserPlus, label: 'Staff' }, { to: '/agents', icon: Sparkles, label: 'AI Agents' }, { to: '/coupons', icon: Tag, label: 'Coupons' }]
     : navItems;
   if (user?.role === 'owner') {
     items = [...items, { to: '/permissions', icon: ShieldCheck, label: 'Permissions' }];
@@ -56,7 +56,7 @@ export default function Layout({ children }) {
             <NavLink
               key={to}
               to={to}
-              end={to === '/'}
+              end={to === '/dashboard'}
               className={({ isActive }) =>
                 `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   isActive

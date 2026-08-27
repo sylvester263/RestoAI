@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Bike, Plus, Package, CheckCircle2, Truck, Wallet, X, Loader2, Sparkles,
+  Bike, Plus, Package, CheckCircle2, Truck, Wallet, X, Loader2, Sparkles, KeyRound, Copy, Check,
 } from 'lucide-react';
 
 export default function Riders() {
@@ -16,6 +16,7 @@ export default function Riders() {
   const [loading, setLoading] = useState(true);
   const [showNewRider, setShowNewRider] = useState(false);
   const [showReconcile, setShowReconcile] = useState(null); // rider object
+  const [pinResult, setPinResult] = useState(null); // { rider, pin } — shown once after create/reset
   const [suggestions, setSuggestions] = useState({}); // orderId -> { rider, reasoning } | 'loading' | error string
 
   const load = useCallback(async () => {
@@ -94,6 +95,15 @@ export default function Riders() {
     }
   }
 
+  async function handleResetPin(rider) {
+    try {
+      const res = await api.resetRiderPin(rider.id);
+      setPinResult({ rider, pin: res.pin });
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading riders...</div>;
 
   return (
@@ -130,6 +140,11 @@ export default function Riders() {
                   )}
                   {canManage && (
                     <button onClick={() => setShowReconcile(r)} className="text-xs font-medium text-brand-600 hover:underline">Reconcile</button>
+                  )}
+                  {canManage && (
+                    <button onClick={() => handleResetPin(r)} className="text-xs font-medium text-brand-600 hover:underline" title="Generate a new login PIN">
+                      Reset PIN
+                    </button>
                   )}
                 </div>
               </div>
@@ -239,8 +254,14 @@ export default function Riders() {
         </div>
       </div>
 
-      {showNewRider && <NewRiderModal onClose={() => setShowNewRider(false)} onCreated={() => { setShowNewRider(false); load(); }} />}
+      {showNewRider && (
+        <NewRiderModal
+          onClose={() => setShowNewRider(false)}
+          onCreated={(rider, pin) => { setShowNewRider(false); setPinResult({ rider, pin }); load(); }}
+        />
+      )}
       {showReconcile && <ReconcileModal rider={showReconcile} onClose={() => setShowReconcile(null)} onDone={() => { setShowReconcile(null); load(); }} />}
+      {pinResult && <PinResultModal rider={pinResult.rider} pin={pinResult.pin} onClose={() => setPinResult(null)} />}
     </div>
   );
 }
@@ -255,8 +276,8 @@ function NewRiderModal({ onClose, onCreated }) {
     setSaving(true);
     setError('');
     try {
-      await api.createRider({ name, phone });
-      onCreated();
+      const res = await api.createRider({ name, phone });
+      onCreated(res.rider, res.pin);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -275,10 +296,44 @@ function NewRiderModal({ onClose, onCreated }) {
           <input className="input" placeholder="Rider name" value={name} onChange={(e) => setName(e.target.value)} />
           <input className="input" placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
         </div>
+        <p className="mt-2 text-xs text-gray-400">A login PIN is generated automatically — you'll see it once after saving, to share with the rider.</p>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         <button onClick={handleCreate} disabled={saving || !name || !phone} className="btn-primary mt-4 w-full justify-center">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add Rider'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function PinResultModal({ rider, pin, onClose }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    navigator.clipboard?.writeText(pin).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-lg font-semibold"><KeyRound className="h-5 w-5 text-brand-600" /> {rider.name}'s PIN</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+        </div>
+        <p className="mb-3 text-sm text-gray-500">
+          Share this PIN with {rider.name} directly (in person or by phone) — it won't be shown again. They log in at{' '}
+          <span className="font-medium text-gray-700">/rider/login</span> with their phone number and this PIN.
+        </p>
+        <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+          <span className="text-2xl font-bold tracking-widest text-gray-900">{pin}</span>
+          <button onClick={handleCopy} className="btn-secondary text-xs">
+            {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
+          </button>
+        </div>
+        <button onClick={onClose} className="btn-primary mt-4 w-full justify-center">Done</button>
       </div>
     </div>
   );

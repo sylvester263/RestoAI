@@ -22,6 +22,31 @@ export function authenticate(req, res, next) {
   }
 }
 
+/**
+ * Rider JWT authentication middleware — structurally separate from
+ * authenticate() above (different secret, no role/permissions claims).
+ * Attaches { rider_id, tenant_id, branch_id } to req.rider. Only apply to
+ * rider-facing routes; never mix with authenticate()/authorize() on the
+ * same route.
+ */
+export function authenticateRider(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: { message: 'Authentication required' } });
+  }
+  try {
+    const token = header.slice(7);
+    const decoded = jwt.verify(token, config.jwt.riderSecret);
+    if (decoded.type !== 'rider') {
+      return res.status(401).json({ error: { message: 'Invalid or expired token' } });
+    }
+    req.rider = decoded;
+    next();
+  } catch {
+    return res.status(401).json({ error: { message: 'Invalid or expired token' } });
+  }
+}
+
 // Per-tenant role->permission-set cache. The set is tiny (a handful of
 // roles times ~15 keys per tenant) so caching the whole thing beats a
 // query per gated request; a short TTL keeps a just-changed permission
