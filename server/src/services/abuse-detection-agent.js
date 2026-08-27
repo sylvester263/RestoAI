@@ -4,9 +4,8 @@
  * positives here are reputationally costly, so this always stops at a
  * human-judgment step.
  *
- * Partial build: coupon-abuse detection depends on impl-12 (coupons),
- * which isn't built yet, so checkCouponAbuse is omitted entirely. Order-
- * pattern and review-pattern checks need nothing beyond existing tables.
+ * Coupons (impl-12) now exist, so checkCouponAbuse is included alongside
+ * the order/review-pattern checks.
  */
 import { query } from '../db/pool.js';
 import { generateAgentText } from './ai-agent.js';
@@ -83,6 +82,40 @@ export async function checkReviewPatterns(tenantId, windowHours = 24, minCount =
   ];
 }
 
+/**
+ * Unusually high redemption velocity on a single coupon — can't do
+ * device/IP fingerprinting without infrastructure that doesn't exist here,
+ * so this stays simple per the spec: flag a coupon whose redemption rate
+ * looks abnormal for staff to look into, not a definitive fraud claim.
+ */
+export async function checkCouponAbuse(tenantId, windowMinutes = 60, minRedemptions = 3) {
+  const res = await query(
+    `SELECT cr.coupon_id, c.code, COUNT(*) as redemption_count,
+       COUNT(DISTINCT cr.customer_id) as distinct_customers,
+       array_agg(cr.id) as redemption_ids
+     FROM coupon_redemptions cr
+     JOIN coupons c ON c.id = cr.coupon_id
+     WHERE c.tenant_id = $1 AND cr.redeemed_at >= NOW() - ($2 || ' minutes')::interval
+     GROUP BY cr.coupon_id, c.code
+     HAVING COUNT(*) >= $3`,
+    [tenantId, windowMinutes, minRedemptions],
+  );
+  return res.rows.map((r) => ({
+    customer_id: null,
+    related_entity_id: r.coupon_id,
+    flag_type: 'coupon_abuse',
+    evidence: {
+      coupon_id: r.coupon_id,
+      coupon_code: r.code,
+      redemption_count: parseInt(r.redemption_count, 10),
+      distinct_customers: parseInt(r.distinct_customers, 10),
+      redemption_ids: r.redemption_ids,
+      window_minutes: windowMinutes,
+    },
+    severity: parseInt(r.distinct_customers, 10) >= parseInt(r.redemption_count, 10) ? 'high' : 'medium',
+  }));
+}
+
 function fallbackDescription(r) {
   switch (r.flag_type) {
     case 'repeat_cancel':
@@ -91,6 +124,8 @@ function fallbackDescription(r) {
       return `This customer placed ${r.evidence.order_count} orders within ${r.evidence.window_minutes} minutes — worth verifying these are genuine.`;
     case 'review_pattern':
       return `${r.evidence.count} low-rated reviews (avg ${r.evidence.avg_rating?.toFixed(1)}) came in within ${r.evidence.window_hours}h — may indicate a coordinated issue or a real service problem worth investigating.`;
+    case 'coupon_abuse':
+      return `Coupon ${r.evidence.coupon_code} was redeemed ${r.evidence.redemption_count} times by ${r.evidence.distinct_customers} different customers within ${r.evidence.window_minutes} minutes — worth checking the redemption pattern.`;
     default:
       return 'Unusual pattern detected — review the evidence for details.';
   }
@@ -101,6 +136,7 @@ export async function runAbuseScan(tenantId) {
     ...(await checkRepeatCancellation(tenantId)),
     ...(await checkRapidReorderAbuse(tenantId)),
     ...(await checkReviewPatterns(tenantId)),
+    ...(await checkCouponAbuse(tenantId)),
   ];
 
   let created = 0;
@@ -108,8 +144,9 @@ export async function runAbuseScan(tenantId) {
     const existing = await query(
       `SELECT id FROM agent_abuse_flags
        WHERE tenant_id = $1 AND flag_type = $2 AND status = 'open'
-         AND ((customer_id IS NULL AND $3::uuid IS NULL) OR customer_id = $3)`,
-      [tenantId, r.flag_type, r.customer_id || null],
+         AND ((customer_id IS NULL AND $3::uuid IS NULL) OR customer_id = $3)
+         AND ((related_entity_id IS NULL AND $4::uuid IS NULL) OR related_entity_id = $4)`,
+      [tenantId, r.flag_type, r.customer_id || null, r.related_entity_id || null],
     );
     if (existing.rows.length > 0) continue;
 
@@ -128,9 +165,9 @@ export async function runAbuseScan(tenantId) {
 
     try {
       await query(
-        `INSERT INTO agent_abuse_flags (tenant_id, flag_type, customer_id, description, evidence, severity)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [tenantId, r.flag_type, r.customer_id || null, description, JSON.stringify(r.evidence), r.severity],
+        `INSERT INTO agent_abuse_flags (tenant_id, flag_type, customer_id, related_entity_id, description, evidence, severity)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [tenantId, r.flag_type, r.customer_id || null, r.related_entity_id || null, description, JSON.stringify(r.evidence), r.severity],
       );
       created++;
     } catch (err) {

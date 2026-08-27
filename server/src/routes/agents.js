@@ -254,7 +254,7 @@ router.put('/reconciliation/flags/:id/status', authenticate, authorize('reports.
   }
 });
 
-// ═══ impl-21 — Abuse Detection (order/review checks only — coupon-abuse pending impl-12) ═══
+// ═══ impl-21 — Abuse Detection (order, review, and coupon-redemption pattern checks) ═══
 
 async function runAbuseDetection(req, res, next) {
   try {

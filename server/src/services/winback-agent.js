@@ -2,14 +2,14 @@
  * Customer Win-Back Agent (impl-15) — detects customers who've gone quiet
  * and sends a personalized WhatsApp message with a suggested incentive.
  *
- * Coupons (impl-12) aren't built yet, so this runs in the documented
- * fallback mode: a plain-text offer honored manually by staff at checkout,
- * rather than a real generated code. coupon_id stays permanently null in
- * that mode — there is no coupons table to reference.
+ * Coupons (impl-12) now exist, so this mints a real single-use coupon per
+ * customer (usage_limit_per_customer=1, 7-day expiry) and references its
+ * actual code — no more plain-text "ask staff" fallback.
  */
 import { query } from '../db/pool.js';
 import { generateAgentText } from './ai-agent.js';
 import { sendReply } from './whatsapp.js';
+import { createCustomerCoupon } from './coupons.js';
 
 const DEFAULT_THRESHOLD_DAYS = 20;
 
@@ -51,23 +51,26 @@ export async function findLapsedCustomers(tenantId, thresholdDays = DEFAULT_THRE
     }));
 }
 
-async function craftWinbackMessage(customer, tenant) {
+async function craftWinbackMessage(customer, tenant, coupon) {
   const fallback =
     `We miss you${customer.name ? `, ${customer.name}` : ''}! ` +
     `It's been a while since your last order${customer.favorite_item ? ` (${customer.favorite_item})` : ''} — ` +
-    `come back this week and ask our staff about a returning-customer discount!`;
+    `come back this week and use code ${coupon.code} for ${coupon.discount_value}% off!`;
 
   try {
     return await generateAgentText(
       'You are a warm, brief WhatsApp message writer for a Pakistani restaurant win-back campaign. ' +
         'Write 1-3 short sentences addressed to the customer by name, mentioning their favorite item if given. ' +
-        'End with an invitation to come back and ask staff about a returning-customer discount (no real coupon ' +
-        'code exists yet — do not invent one). Do not use markdown.',
+        'End by telling them to use the exact coupon code given for the stated discount — do not alter the ' +
+        'code or invent a different offer. Do not use markdown.',
       JSON.stringify({
         customer_name: customer.name || 'there',
         favorite_item: customer.favorite_item || null,
         days_since_last_order: customer.days_since_last_order,
         restaurant_name: tenant?.name,
+        coupon_code: coupon.code,
+        discount_percent: coupon.discount_value,
+        expires_in_days: 7,
       }),
     );
   } catch (err) {
@@ -77,11 +80,12 @@ async function craftWinbackMessage(customer, tenant) {
 }
 
 export async function sendWinbackToCustomer(tenantId, customer, tenant) {
-  const message = await craftWinbackMessage(customer, tenant);
+  const coupon = await createCustomerCoupon(tenantId, customer.id, { discountType: 'percent', discountValue: 10, expiryDays: 7 });
+  const message = await craftWinbackMessage(customer, tenant, coupon);
   await sendReply(customer.phone, message);
   await query(
-    `INSERT INTO agent_winback_log (tenant_id, customer_id, days_since_last_order, message_sent)
-     VALUES ($1, $2, $3, $4)`,
-    [tenantId, customer.id, customer.days_since_last_order, message],
+    `INSERT INTO agent_winback_log (tenant_id, customer_id, days_since_last_order, message_sent, coupon_id)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [tenantId, customer.id, customer.days_since_last_order, message, coupon.id],
   );
 }

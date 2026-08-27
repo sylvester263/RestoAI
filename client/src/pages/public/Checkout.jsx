@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getCart, clearCart, getIdentity, setIdentity } from '../../lib/publicOrderStore';
-import { ArrowLeft, Gift } from 'lucide-react';
+import { ArrowLeft, Gift, Tag, X } from 'lucide-react';
 
 export default function Checkout() {
   const { tenantSlug } = useParams();
@@ -12,6 +12,10 @@ export default function Checkout() {
   const [form, setForm] = useState({ name: '', phone: '', delivery_address: '', payment_method: 'cash', notes: '' });
   const [loyalty, setLoyalty] = useState(null); // { enabled, balance, redemption_rate }
   const [redeem, setRedeem] = useState(false);
+  const [couponInput, setCouponInput] = useState('');
+  const [coupon, setCoupon] = useState(null); // { code, discount } once applied
+  const [couponError, setCouponError] = useState('');
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
   useEffect(() => {
     const items = getCart(tenantSlug);
@@ -47,7 +51,29 @@ export default function Checkout() {
   const redeemDiscount = canRedeem && redeem
     ? Math.round(loyalty.balance * loyalty.redemption_rate * 100) / 100
     : 0;
-  const total = Math.max(0, subtotal + tax + deliveryFee - redeemDiscount);
+  const couponDiscount = coupon?.discount || 0;
+  const total = Math.max(0, subtotal + tax + deliveryFee - redeemDiscount - couponDiscount);
+
+  async function handleApplyCoupon() {
+    if (!couponInput.trim()) return;
+    setApplyingCoupon(true);
+    setCouponError('');
+    try {
+      const res = await publicApi.previewCoupon(tenantSlug, couponInput.trim(), form.phone, subtotal);
+      setCoupon({ code: couponInput.trim().toUpperCase(), discount: res.discount });
+    } catch (err) {
+      setCoupon(null);
+      setCouponError(err.message);
+    } finally {
+      setApplyingCoupon(false);
+    }
+  }
+
+  function handleRemoveCoupon() {
+    setCoupon(null);
+    setCouponInput('');
+    setCouponError('');
+  }
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -60,13 +86,22 @@ export default function Checkout() {
         payment_method: form.payment_method,
         notes: form.notes || undefined,
         redeem_points: canRedeem && redeem ? loyalty.balance : undefined,
+        coupon_code: coupon?.code || undefined,
         items: cart.map((i) => ({ menu_item_id: i.menu_item_id, quantity: i.quantity })),
       });
       setIdentity(tenantSlug, { name: form.name, phone: form.phone });
       clearCart(tenantSlug);
       navigate(`/order/${tenantSlug}/track/${res.order.id}?phone=${encodeURIComponent(form.phone)}`);
     } catch (err) {
-      alert(err.message);
+      // The coupon may have been valid at preview but rejected at final
+      // submit (e.g. someone else used the last redemption in between) —
+      // surface that clearly rather than a generic failure.
+      if (coupon && err.message.toLowerCase().includes('coupon')) {
+        setCoupon(null);
+        setCouponError(err.message);
+      } else {
+        alert(err.message);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -101,9 +136,42 @@ export default function Checkout() {
             {redeemDiscount > 0 && (
               <div className="flex justify-between text-green-600"><span>Loyalty discount</span><span>-Rs. {redeemDiscount.toLocaleString()}</span></div>
             )}
+            {coupon && (
+              <div className="flex justify-between text-green-600"><span>Coupon ({coupon.code})</span><span>-Rs. {couponDiscount.toLocaleString()}</span></div>
+            )}
             <div className="flex justify-between text-base font-semibold text-gray-900">
               <span>Total</span><span>Rs. {total.toLocaleString()}</span>
             </div>
+          </div>
+
+          {/* Coupon code */}
+          <div className="mt-3">
+            {coupon ? (
+              <div className="flex items-center justify-between rounded-lg bg-green-50 p-3 text-sm text-green-800">
+                <span className="flex items-center gap-2"><Tag className="h-4 w-4" /> {coupon.code} applied</span>
+                <button type="button" onClick={handleRemoveCoupon} className="text-green-700 hover:text-green-900">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <input
+                  className="input flex-1"
+                  placeholder="Coupon code"
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value)}
+                />
+                <button
+                  type="button"
+                  onClick={handleApplyCoupon}
+                  disabled={applyingCoupon || !couponInput.trim()}
+                  className="btn-secondary shrink-0"
+                >
+                  {applyingCoupon ? 'Checking...' : 'Apply'}
+                </button>
+              </div>
+            )}
+            {couponError && <p className="mt-1 text-xs text-red-600">{couponError}</p>}
           </div>
 
           {canRedeem && (

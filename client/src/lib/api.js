@@ -169,6 +169,11 @@ export const api = {
   updateMenuInsightStatus: (id, status) =>
     request(`/agents/menu-insights/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
 
+  // Coupons (impl-12)
+  getCoupons: () => request('/coupons'),
+  createCoupon: (body) => request('/coupons', { method: 'POST', body: JSON.stringify(body) }),
+  setCouponActive: (id, active) => request(`/coupons/${id}`, { method: 'PUT', body: JSON.stringify({ active }) }),
+
   // Campaigns
   getCampaigns: () => request('/campaigns'),
   createCampaign: (body) => request('/campaigns', { method: 'POST', body: JSON.stringify(body) }),
@@ -218,6 +223,10 @@ export const publicApi = {
 
   // Loyalty
   getLoyaltyBalance: (slug, phone) => request(`/public/${slug}/loyalty/balance?phone=${encodeURIComponent(phone)}`),
+
+  // Coupons (impl-12)
+  previewCoupon: (slug, code, phone, subtotal) =>
+    request(`/public/${slug}/coupons/${encodeURIComponent(code)}/preview?phone=${encodeURIComponent(phone || '')}&subtotal=${subtotal}`),
 
   // Reviews
   submitReview: (slug, body) => request(`/public/${slug}/reviews`, { method: 'POST', body: JSON.stringify(body) }),

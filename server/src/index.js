@@ -27,6 +27,7 @@ import permissionRoutes from './routes/permissions.js';
 import agentRoutes from './routes/agents.js';
 import supplierRoutes from './routes/suppliers.js';
 import purchaseOrderRoutes from './routes/purchase-orders.js';
+import couponRoutes from './routes/coupons.js';
 
 const app = express();
 
@@ -115,6 +116,7 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/suppliers', supplierRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
+app.use('/api/coupons', couponRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

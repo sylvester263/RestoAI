@@ -565,6 +565,44 @@ async function migrate() {
     // must only ever re-enable the former, never override the latter.
     await client.query(`ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS auto_unavailable BOOLEAN NOT NULL DEFAULT false;`);
 
+    // ── Coupons & discounts (impl-12) ──
+    // No written spec exists for impl-12 anywhere in the repo — it's only
+    // referenced by name as a dependency in impl-15 (winback) and impl-21
+    // (abuse detection). Schema and scope below are my own design, sized to
+    // exactly what those two specs already assume: a customer-targeted
+    // single-use code with an expiry (impl-15), and a redemption log to
+    // compute abuse velocity from (impl-21) — not a general promotions engine.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coupons (
+        id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id                 UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        code                      VARCHAR(30) NOT NULL,
+        discount_type             VARCHAR(10) NOT NULL CHECK (discount_type IN ('percent','fixed')),
+        discount_value            NUMERIC(10,2) NOT NULL,
+        usage_limit_per_customer  INTEGER NOT NULL DEFAULT 1,
+        max_redemptions           INTEGER,
+        expires_at                TIMESTAMPTZ,
+        customer_id               UUID REFERENCES customers(id) ON DELETE CASCADE,
+        created_by                UUID REFERENCES users(id),
+        active                    BOOLEAN NOT NULL DEFAULT true,
+        created_at                TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(tenant_id, code)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coupons_tenant ON coupons(tenant_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS coupon_redemptions (
+        id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        coupon_id         UUID NOT NULL REFERENCES coupons(id) ON DELETE CASCADE,
+        order_id          UUID REFERENCES orders(id) ON DELETE CASCADE,
+        customer_id       UUID REFERENCES customers(id) ON DELETE SET NULL,
+        discount_amount   NUMERIC(10,2) NOT NULL,
+        redeemed_at       TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_coupon_redemptions_coupon ON coupon_redemptions(coupon_id, redeemed_at);`);
+
     // ── Agentic AI systems (impl-14..21) ──
     // Owner-facing on/off controls — automation an owner should be able to
     // disable, not something forced on silently.
@@ -595,6 +633,8 @@ async function migrate() {
       );
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_winback_log_tenant_customer ON agent_winback_log(tenant_id, customer_id, triggered_at);`);
+    // impl-12 now exists — real coupon reference (added after coupons/coupon_redemptions above).
+    await client.query(`ALTER TABLE agent_winback_log ADD COLUMN IF NOT EXISTS coupon_id UUID REFERENCES coupons(id);`);
 
     // impl-16 — dispatch reasoning log (both committed auto-assigns and
     // previewed suggestions, distinguished by auto_assigned)
@@ -629,21 +669,22 @@ async function migrate() {
     `);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_reconciliation_flags_tenant ON agent_reconciliation_flags(tenant_id);`);
 
-    // impl-21 — abuse/fraud flags (order & review pattern checks only —
-    // coupon-abuse check deferred until impl-12 coupons exist)
+    // impl-21 — abuse/fraud flags
     await client.query(`
       CREATE TABLE IF NOT EXISTS agent_abuse_flags (
-        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-        flag_type     VARCHAR(30) NOT NULL,
-        customer_id   UUID REFERENCES customers(id) ON DELETE CASCADE,
-        description   TEXT NOT NULL,
-        evidence      JSONB NOT NULL,
-        severity      VARCHAR(10) NOT NULL CHECK (severity IN ('low','medium','high')),
-        status        VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','reviewed','confirmed','false_positive')),
-        detected_at   TIMESTAMPTZ DEFAULT NOW()
+        id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        flag_type          VARCHAR(30) NOT NULL,
+        customer_id        UUID REFERENCES customers(id) ON DELETE CASCADE,
+        related_entity_id  UUID, -- e.g. a coupon id for coupon_abuse — dedup needs a per-entity key too, not just per-customer
+        description        TEXT NOT NULL,
+        evidence           JSONB NOT NULL,
+        severity           VARCHAR(10) NOT NULL CHECK (severity IN ('low','medium','high')),
+        status             VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','reviewed','confirmed','false_positive')),
+        detected_at        TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+    await client.query(`ALTER TABLE agent_abuse_flags ADD COLUMN IF NOT EXISTS related_entity_id UUID;`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_abuse_flags_tenant ON agent_abuse_flags(tenant_id);`);
 
     // impl-19 — replenishment suggestions (never auto-orders; approval creates a real PO)
@@ -692,13 +733,22 @@ async function migrate() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_reconciliation_flags_dedup
       ON agent_reconciliation_flags(tenant_id, order_id, flag_type) WHERE status = 'open';
     `);
-    // customer_id is nullable (review_pattern flags are tenant-wide, not
-    // per-customer) — a plain UNIQUE index treats every NULL as distinct, so
-    // it would never actually dedupe those. Coalescing to a fixed sentinel
-    // UUID inside the index expression makes all NULLs collide as intended.
+    // Dedup key varies by flag_type's actual subject: repeat_cancel/rapid_reorder
+    // are per-customer (customer_id set), coupon_abuse is per-coupon
+    // (related_entity_id set, customer_id null), review_pattern is tenant-wide
+    // (both null). A plain UNIQUE index treats every NULL as distinct, so
+    // coalescing down to a single sentinel is what makes each case dedupe
+    // correctly instead of either never colliding or colliding across
+    // unrelated coupons/customers.
+    // DROP + recreate rather than IF NOT EXISTS: an earlier version of this
+    // index (before related_entity_id existed) may already be on disk under
+    // the same name, and CREATE ... IF NOT EXISTS would silently keep that
+    // stale definition instead of picking up the corrected one.
+    await client.query(`DROP INDEX IF EXISTS idx_abuse_flags_dedup;`);
     await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_abuse_flags_dedup
-      ON agent_abuse_flags(tenant_id, flag_type, COALESCE(customer_id, '00000000-0000-0000-0000-000000000000'::uuid)) WHERE status = 'open';
+      CREATE UNIQUE INDEX idx_abuse_flags_dedup
+      ON agent_abuse_flags(tenant_id, flag_type, COALESCE(customer_id, related_entity_id, '00000000-0000-0000-0000-000000000000'::uuid))
+      WHERE status = 'open';
     `);
     await client.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS idx_replenishment_dedup

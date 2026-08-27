@@ -12,6 +12,7 @@ import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, 
 import { sendReply } from '../services/whatsapp.js';
 import { generateRecommendation } from '../services/ai-agent.js';
 import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.js';
+import { previewCoupon, redeemCoupon, attachRedemptionToOrder } from '../services/coupons.js';
 import { estimateReadyTime } from '../services/eta-agent.js';
 import config from '../config.js';
 
@@ -50,6 +51,7 @@ const checkoutSchema = z.object({
   payment_method: z.enum(['cash', 'jazzcash', 'easypaisa', 'card']).default('cash'),
   notes: z.string().max(500).optional(),
   redeem_points: z.number().int().min(0).optional(),
+  coupon_code: z.string().min(1).max(30).optional(),
   items: z.array(z.object({
     menu_item_id: z.string().uuid(),
     quantity: z.number().int().min(1).max(50),
@@ -64,15 +66,19 @@ router.get('/:tenantSlug', (req, res) => {
 });
 
 // ── GET /api/public/:tenantSlug/menu ──
-// Available menu items for a tenant, publicly browsable
+// All menu items for a tenant, publicly browsable. Unavailable items are
+// still included (with is_available: false) so the frontend can show them
+// grayed out/"sold out" rather than silently vanishing — actual ordering
+// is independently blocked server-side in resolveOrderItems, which is the
+// real enforcement point, so this list is display-only.
 router.get('/:tenantSlug/menu', async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT mi.id, mi.name, mi.name_urdu, mi.description, mi.price, mi.image_url, mi.tags,
+      `SELECT mi.id, mi.name, mi.name_urdu, mi.description, mi.price, mi.image_url, mi.tags, mi.is_available,
               mc.name as category_name, mc.sort_order
        FROM menu_items mi
        LEFT JOIN menu_categories mc ON mi.category_id = mc.id
-       WHERE mi.tenant_id = $1 AND mi.is_available = true
+       WHERE mi.tenant_id = $1
        ORDER BY mc.sort_order, mi.name`,
       [req.tenant.id],
     );
@@ -97,8 +103,17 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
 
     let discount = 0;
     if (data.redeem_points) {
-      discount = await redeemPoints(req.tenant.id, customer.id, data.redeem_points);
+      discount += await redeemPoints(req.tenant.id, customer.id, data.redeem_points);
     }
+
+    let couponRedemptionId = null;
+    if (data.coupon_code) {
+      const subtotalForCoupon = resolvedItems.reduce((sum, i) => sum + i.total_price, 0);
+      const result = await redeemCoupon(req.tenant.id, data.coupon_code, customer.id, subtotalForCoupon);
+      discount += result.discount;
+      couponRedemptionId = result.redemptionId;
+    }
+
     const pricing = calculatePricing(resolvedItems, { discount });
 
     const order = await createOrder({
@@ -111,6 +126,10 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
       channel: 'web',
       notes: data.notes,
     });
+
+    if (couponRedemptionId) {
+      await attachRedemptionToOrder(couponRedemptionId, order.id);
+    }
 
     res.status(201).json({
       order: {
@@ -130,6 +149,28 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
     }
+    if (err instanceof OrderError) {
+      return res.status(err.status).json({ error: { message: err.message } });
+    }
+    next(err);
+  }
+});
+
+// ── GET /api/public/:tenantSlug/coupons/:code/preview ──
+// Read-only — shows the discount a code would apply before final checkout.
+// Final enforcement still happens atomically inside POST /orders.
+router.get('/:tenantSlug/coupons/:code/preview', async (req, res, next) => {
+  try {
+    const phone = (req.query.phone || '').toString().trim();
+    const subtotal = parseFloat(req.query.subtotal) || 0;
+    let customerId = null;
+    if (phone) {
+      const custRes = await query('SELECT id FROM customers WHERE tenant_id = $1 AND phone = $2', [req.tenant.id, phone]);
+      customerId = custRes.rows[0]?.id || null;
+    }
+    const result = await previewCoupon(req.tenant.id, req.params.code, customerId, subtotal);
+    res.json(result);
+  } catch (err) {
     if (err instanceof OrderError) {
       return res.status(err.status).json({ error: { message: err.message } });
     }
