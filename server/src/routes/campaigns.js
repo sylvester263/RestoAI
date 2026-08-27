@@ -41,7 +41,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // ── POST /api/campaigns ──
-router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/', authorize('campaigns.manage'), async (req, res, next) => {
   try {
     const data = campaignSchema.parse(req.body);
     const result = await query(
@@ -60,7 +60,7 @@ router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
 
 // ── POST /api/campaigns/:id/recipients ──
 // Populate recipients from all customers for this tenant
-router.post('/:id/recipients', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/:id/recipients', authorize('campaigns.manage'), async (req, res, next) => {
   try {
     // Verify campaign ownership
     const campRes = await query(
@@ -99,7 +99,7 @@ const campaignSendLimiter = rateLimit({
 
 // ── POST /api/campaigns/:id/send ──
 // Send the campaign to all pending recipients with a delay between messages
-router.post('/:id/send', authorize('owner', 'manager'), campaignSendLimiter, async (req, res, next) => {
+router.post('/:id/send', authorize('campaigns.send'), campaignSendLimiter, async (req, res, next) => {
   try {
     // Atomic check-and-lock: SELECT FOR UPDATE inside a transaction prevents
     // two concurrent send clicks from both passing the status guard.

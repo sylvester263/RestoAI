@@ -1,4 +1,5 @@
 import pool from './pool.js';
+import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../services/permissions.js';
 
 /**
  * Runs all SQL migration statements in order.
@@ -412,6 +413,80 @@ async function migrate() {
         created_at        TIMESTAMPTZ DEFAULT NOW()
       );
     `);
+
+    // ── Customer CRM: tags & segments (impl-10 part A) ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_tags (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        customer_id   UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        tag           VARCHAR(50) NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(customer_id, tag)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customer_tags_customer ON customer_tags(customer_id);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS customer_segments (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        name          VARCHAR(100) NOT NULL,
+        filter_rules  JSONB NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_customer_segments_tenant ON customer_segments(tenant_id);`);
+
+    // ── Granular RBAC (impl-10 part B) ──
+    // `permissions` is a global, non-tenant-scoped catalog of what keys exist
+    // (a permission key means the same thing for every restaurant).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS permissions (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        key           VARCHAR(50) UNIQUE NOT NULL,
+        description   TEXT NOT NULL
+      );
+    `);
+    for (const p of PERMISSIONS) {
+      await client.query(
+        `INSERT INTO permissions (key, description) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET description = EXCLUDED.description`,
+        [p.key, p.description],
+      );
+    }
+
+    // Deviation from the spec's literal schema: role_permissions here is
+    // tenant-scoped (tenant_id added to the PK). The spec's own prose calls
+    // for permissions "configurable per-tenant" but the SQL it gave omitted
+    // tenant_id — without it, one restaurant's owner editing what "manager"
+    // can do would change that role for every tenant on the platform, which
+    // is exactly the cross-tenant leakage class of bug this codebase's
+    // earlier security audit was about eliminating.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS role_permissions (
+        tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        role            VARCHAR(20) NOT NULL,
+        permission_key  VARCHAR(50) NOT NULL REFERENCES permissions(key) ON DELETE CASCADE,
+        PRIMARY KEY (tenant_id, role, permission_key)
+      );
+    `);
+
+    // Seed every existing tenant with the defaults that reproduce today's
+    // actual behavior (see services/permissions.js for why each default is
+    // what it is) — so migrating never revokes access anyone already has.
+    const tenantsRes = await client.query('SELECT id FROM tenants');
+    for (const tenant of tenantsRes.rows) {
+      for (const [role, keys] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
+        for (const key of keys) {
+          await client.query(
+            `INSERT INTO role_permissions (tenant_id, role, permission_key) VALUES ($1, $2, $3)
+             ON CONFLICT (tenant_id, role, permission_key) DO NOTHING`,
+            [tenant.id, role, key],
+          );
+        }
+      }
+    }
 
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);

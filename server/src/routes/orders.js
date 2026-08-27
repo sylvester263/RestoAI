@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { notifyStatusChange, STATUS_MESSAGES } from '../services/whatsapp.js';
 import { awardPointsForOrder } from '../services/loyalty.js';
@@ -26,7 +26,7 @@ export function fireStatusChangeSideEffects(tenantId, order, status) {
 
 // ── GET /api/orders ──
 // List orders for the current tenant with filtering & pagination
-router.get('/', async (req, res, next) => {
+router.get('/', authorize('orders.view'), async (req, res, next) => {
   try {
     const { status, branch_id, from, to, limit = 50, offset = 0 } = req.query;
 
@@ -94,7 +94,7 @@ router.get('/', async (req, res, next) => {
 
 // ── GET /api/orders/kitchen ──
 // Active orders for kitchen display (new, confirmed, preparing)
-router.get('/kitchen', async (req, res, next) => {
+router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
       `SELECT o.*, rt.table_number,
@@ -122,7 +122,7 @@ router.get('/kitchen', async (req, res, next) => {
 // generic GET /:id below — a literal 2-segment path never collides with
 // it (different segment count), but keeping specific-before-generic
 // matches this file's existing /kitchen convention.
-router.get('/deliveries/unassigned', async (req, res, next) => {
+router.get('/deliveries/unassigned', authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
       `SELECT o.*, c.name as customer_name, c.phone as customer_phone
@@ -141,7 +141,7 @@ router.get('/deliveries/unassigned', async (req, res, next) => {
 });
 
 // ── GET /api/orders/:id ──
-router.get('/:id', async (req, res, next) => {
+router.get('/:id', authorize('orders.view'), async (req, res, next) => {
   try {
     const orderRes = await query(
       `SELECT o.*, c.name as customer_name, c.phone as customer_phone
@@ -168,7 +168,7 @@ router.get('/:id', async (req, res, next) => {
 
 // ── PATCH /api/orders/:id/status ──
 // Update order status (for kitchen flow)
-router.patch('/:id/status', async (req, res, next) => {
+router.patch('/:id/status', authorize('orders.status_update'), async (req, res, next) => {
   try {
     const { status } = req.body;
     const validStatuses = ['new', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
@@ -195,7 +195,7 @@ router.patch('/:id/status', async (req, res, next) => {
 const assignRiderSchema = z.object({ rider_id: z.string().uuid().optional() });
 
 // ── POST /api/orders/:id/assign-rider ── (impl-05)
-router.post('/:id/assign-rider', async (req, res, next) => {
+router.post('/:id/assign-rider', authorize('orders.status_update'), async (req, res, next) => {
   try {
     const orderRes = await query('SELECT * FROM orders WHERE id = $1 AND tenant_id = $2', [req.params.id, req.user.tenant_id]);
     const order = orderRes.rows[0];
@@ -258,7 +258,7 @@ const deliveryStatusSchema = z.object({
 });
 
 // ── POST /api/orders/:id/delivery-status ── (impl-05)
-router.post('/:id/delivery-status', async (req, res, next) => {
+router.post('/:id/delivery-status', authorize('orders.status_update'), async (req, res, next) => {
   try {
     const data = deliveryStatusSchema.parse(req.body);
     const assignRes = await query(

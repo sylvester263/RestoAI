@@ -209,7 +209,7 @@ const discountSchema = z.object({
 // ── POST /api/pos/tabs/:id/discount ──
 // Manager/owner only — ties into impl-10's RBAC when it exists; gated on
 // the existing roles as an interim, per the spec's own fallback note.
-router.post('/tabs/:id/discount', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/tabs/:id/discount', authorize('discounts.apply'), async (req, res, next) => {
   try {
     const tab = await loadTab(req.user.tenant_id, req.params.id);
     if (!tab) return res.status(404).json({ error: { message: 'Tab not found' } });

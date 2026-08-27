@@ -56,7 +56,7 @@ const saveSchema = z.object({
 });
 
 // ── PUT /api/landing-page ── (create or update)
-router.put('/', authorize('owner', 'manager'), async (req, res, next) => {
+router.put('/', authorize('website.manage'), async (req, res, next) => {
   try {
     const data = saveSchema.parse(req.body);
     const theme = data.theme || themeSchema.parse({});
@@ -94,7 +94,7 @@ router.put('/', authorize('owner', 'manager'), async (req, res, next) => {
 });
 
 // ── POST /api/landing-page/publish ── body: { published?: boolean } — defaults to true
-router.post('/publish', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/publish', authorize('website.manage'), async (req, res, next) => {
   try {
     const publish = req.body?.published !== false;
     const row = await getRow(req.user.tenant_id);

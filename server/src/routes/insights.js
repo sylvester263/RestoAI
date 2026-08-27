@@ -15,7 +15,7 @@ const insightsLimiter = rateLimit({
 
 // ── POST /api/insights/query ──
 // Natural-language query over the restaurant's order data, powered by Qwen
-router.post('/query', authorize('owner', 'manager'), insightsLimiter, async (req, res, next) => {
+router.post('/query', authorize('reports.view'), insightsLimiter, async (req, res, next) => {
   try {
     const { question } = req.body;
     if (!question || typeof question !== 'string') {

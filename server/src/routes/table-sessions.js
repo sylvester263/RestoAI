@@ -187,7 +187,7 @@ router.get('/:id/bill', async (req, res, next) => {
 
 // ── POST /api/table-sessions/:id/close ──
 // Staff closes the session once payment is settled.
-router.post('/:id/close', authenticate, authorize('owner', 'manager', 'staff'), async (req, res, next) => {
+router.post('/:id/close', authenticate, authorize('tables.close'), async (req, res, next) => {
   try {
     const session = await loadSession(req.params.id);
     if (!session || session.tenant_id !== req.user.tenant_id) {

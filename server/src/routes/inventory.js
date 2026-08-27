@@ -52,7 +52,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // ── POST /api/inventory ──
-router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/', authorize('inventory.manage'), async (req, res, next) => {
   try {
     const data = itemSchema.parse(req.body);
 
@@ -78,7 +78,7 @@ router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
 });
 
 // ── PUT /api/inventory/:id ──
-router.put('/:id', authorize('owner', 'manager'), async (req, res, next) => {
+router.put('/:id', authorize('inventory.manage'), async (req, res, next) => {
   try {
     const data = itemSchema.partial().parse(req.body);
     const sets = [];
@@ -110,7 +110,7 @@ router.put('/:id', authorize('owner', 'manager'), async (req, res, next) => {
 });
 
 // ── DELETE /api/inventory/:id ──
-router.delete('/:id', authorize('owner', 'manager'), async (req, res, next) => {
+router.delete('/:id', authorize('inventory.manage'), async (req, res, next) => {
   try {
     const result = await query(
       'DELETE FROM inventory_items WHERE tenant_id = $1 AND id = $2 RETURNING id',
@@ -127,7 +127,7 @@ router.delete('/:id', authorize('owner', 'manager'), async (req, res, next) => {
 
 // ── POST /api/inventory/:id/restock ──
 // Quick restock action — adds quantity and updates last_restocked
-router.post('/:id/restock', authorize('owner', 'manager', 'staff'), async (req, res, next) => {
+router.post('/:id/restock', authorize('inventory.restock'), async (req, res, next) => {
   try {
     const { quantity } = req.body;
     if (!quantity || quantity <= 0) {

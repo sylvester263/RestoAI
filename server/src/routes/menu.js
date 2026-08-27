@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
 
@@ -77,7 +77,7 @@ router.get('/categories', async (req, res, next) => {
 
 // ── POST /api/menu ──
 // Create a new menu item
-router.post('/', async (req, res, next) => {
+router.post('/', authorize('menu.edit'), async (req, res, next) => {
   try {
     const data = menuItemSchema.parse(req.body);
     const result = await query(
@@ -97,7 +97,7 @@ router.post('/', async (req, res, next) => {
 
 // ── PUT /api/menu/:id ──
 // Update a menu item
-router.put('/:id', async (req, res, next) => {
+router.put('/:id', authorize('menu.edit'), async (req, res, next) => {
   try {
     const data = menuItemSchema.partial().parse(req.body);
     const sets = [];
@@ -127,7 +127,7 @@ router.put('/:id', async (req, res, next) => {
 });
 
 // ── DELETE /api/menu/:id ──
-router.delete('/:id', async (req, res, next) => {
+router.delete('/:id', authorize('menu.edit'), async (req, res, next) => {
   try {
     const result = await query(
       'DELETE FROM menu_items WHERE tenant_id = $1 AND id = $2 RETURNING id',
@@ -144,7 +144,7 @@ router.delete('/:id', async (req, res, next) => {
 
 // ── POST /api/menu/digitize ──
 // Accepts a base64 image of a physical menu and uses Qwen vision to extract items
-router.post('/digitize', digitizeLimiter, async (req, res, next) => {
+router.post('/digitize', authorize('menu.edit'), digitizeLimiter, async (req, res, next) => {
   try {
     const { image_base64 } = req.body;
     if (!image_base64) {

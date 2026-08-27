@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
-  Package, Megaphone, Globe, Receipt, Bike,
+  Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck,
 } from 'lucide-react';
 
 const navItems = [
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/menu', icon: UtensilsCrossed, label: 'Menu' },
   { to: '/orders', icon: ShoppingBag, label: 'Orders' },
   { to: '/riders', icon: Bike, label: 'Riders' },
+  { to: '/customers', icon: Users, label: 'Customers' },
   { to: '/tables', icon: QrCode, label: 'Tables' },
   { to: '/reservations', icon: CalendarCheck, label: 'Reservations' },
   { to: '/inventory', icon: Package, label: 'Inventory' },
@@ -24,6 +25,9 @@ const navItems = [
 export default function Layout({ children }) {
   const { user, tenant, logout } = useAuth();
   const navigate = useNavigate();
+  const items = user?.role === 'owner'
+    ? [...navItems, { to: '/permissions', icon: ShieldCheck, label: 'Permissions' }]
+    : navItems;
 
   function handleLogout() {
     logout();
@@ -42,7 +46,7 @@ export default function Layout({ children }) {
 
         {/* Nav */}
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {items.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

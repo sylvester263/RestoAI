@@ -55,7 +55,7 @@ const riderCreateSchema = z.object({
 });
 
 // ── POST /api/riders ──
-router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/', authorize('riders.manage'), async (req, res, next) => {
   try {
     const data = riderCreateSchema.parse(req.body);
     let branchId = data.branch_id || null;
@@ -88,7 +88,7 @@ const riderUpdateSchema = riderCreateSchema.partial().extend({
 });
 
 // ── PUT /api/riders/:id ──
-router.put('/:id', authorize('owner', 'manager'), async (req, res, next) => {
+router.put('/:id', authorize('riders.manage'), async (req, res, next) => {
   try {
     const data = riderUpdateSchema.parse(req.body);
     if (data.branch_id && !(await assertBranchOwnedByTenant(req.user.tenant_id, data.branch_id))) {
@@ -174,7 +174,7 @@ const reconcileSchema = z.object({
 // compares against the expected COD total for the same set, records the
 // variance, and marks those assignments reconciled — locked in a
 // transaction so a second run for the same period can't double-count.
-router.post('/:id/reconcile', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/:id/reconcile', authorize('riders.reconcile'), async (req, res, next) => {
   try {
     const data = reconcileSchema.parse(req.body);
     const riderRes = await query('SELECT id FROM riders WHERE id = $1 AND tenant_id = $2', [req.params.id, req.user.tenant_id]);

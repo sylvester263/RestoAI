@@ -76,6 +76,22 @@ export const api = {
     request(`/riders/${id}/reconcile`, { method: 'POST', body: JSON.stringify({ period_start: periodStart, period_end: periodEnd }) }),
   getReconciliations: () => request('/riders/reconciliations'),
 
+  // Customers (CRM)
+  getCustomers: (search) => request(`/customers${search ? `?search=${encodeURIComponent(search)}` : ''}`),
+  getCustomerProfile: (id) => request(`/customers/${id}/profile`),
+  addCustomerTag: (id, tag) => request(`/customers/${id}/tags`, { method: 'POST', body: JSON.stringify({ tag }) }),
+  removeCustomerTag: (id, tag) => request(`/customers/${id}/tags/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
+
+  // Segments
+  getSegments: () => request('/segments'),
+  createSegment: (body) => request('/segments', { method: 'POST', body: JSON.stringify(body) }),
+  getSegmentCustomers: (id) => request(`/segments/${id}/customers`),
+
+  // Permissions (owner-only)
+  getPermissions: () => request('/permissions'),
+  updateRolePermissions: (role, permissionKeys) =>
+    request(`/permissions/${role}`, { method: 'PUT', body: JSON.stringify({ permission_keys: permissionKeys }) }),
+
   // Branches
   getBranches: () => request('/branches'),
   createBranch: (body) => request('/branches', { method: 'POST', body: JSON.stringify(body) }),

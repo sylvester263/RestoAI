@@ -21,6 +21,8 @@ import Campaigns from './pages/Campaigns';
 import LandingPageEditor from './pages/LandingPageEditor';
 import POS from './pages/pos/POS';
 import Riders from './pages/Riders';
+import Customers from './pages/Customers';
+import Permissions from './pages/Permissions';
 import PublicSite from './pages/public/PublicSite';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
@@ -29,6 +31,16 @@ function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
   return user ? children : <Navigate to="/login" />;
+}
+
+// Client-side convenience only — the backend independently enforces this
+// (routes/permissions.js's requireOwner), which is what actually matters.
+function OwnerRoute({ children }) {
+  const { user } = useAuth();
+  if (user?.role !== 'owner') {
+    return <div className="p-6 text-sm text-gray-500">Only the restaurant owner can access this page.</div>;
+  }
+  return children;
 }
 
 export default function App() {
@@ -56,6 +68,8 @@ export default function App() {
                 <Route path="/orders" element={<Orders />} />
                 <Route path="/pos" element={<POS />} />
                 <Route path="/riders" element={<Riders />} />
+                <Route path="/customers" element={<Customers />} />
+                <Route path="/permissions" element={<OwnerRoute><Permissions /></OwnerRoute>} />
                 <Route path="/tables" element={<Tables />} />
                 <Route path="/reservations" element={<Reservations />} />
                 <Route path="/inventory" element={<Inventory />} />

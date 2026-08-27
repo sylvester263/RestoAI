@@ -21,6 +21,9 @@ import landingPageRoutes from './routes/landing-page.js';
 import sitesRoutes from './routes/sites.js';
 import posRoutes from './routes/pos.js';
 import riderRoutes from './routes/riders.js';
+import customerRoutes from './routes/customers.js';
+import segmentRoutes from './routes/segments.js';
+import permissionRoutes from './routes/permissions.js';
 
 const app = express();
 
@@ -103,6 +106,9 @@ app.use('/api/riders', riderRoutes);
 app.use('/api/landing-page', landingPageRoutes);
 app.use('/api/sites', sitesRoutes);
 app.use('/api/pos', posRoutes);
+app.use('/api/customers', customerRoutes);
+app.use('/api/segments', segmentRoutes);
+app.use('/api/permissions', permissionRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import config from '../config.js';
 import pool, { query } from '../db/pool.js';
+import { DEFAULT_ROLE_PERMISSIONS } from '../services/permissions.js';
 
 const router = Router();
 
@@ -65,6 +66,18 @@ router.post('/register', async (req, res, next) => {
       'INSERT INTO branches (tenant_id, name) VALUES ($1, $2)',
       [tenant.id, 'Main Branch'],
     );
+
+    // Seed this tenant's default role permissions (same defaults migrate.js
+    // backfills for pre-existing tenants) so a brand-new restaurant starts
+    // with the same effective access as before granular RBAC existed.
+    for (const [role, keys] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
+      for (const key of keys) {
+        await client.query(
+          'INSERT INTO role_permissions (tenant_id, role, permission_key) VALUES ($1, $2, $3)',
+          [tenant.id, role, key],
+        );
+      }
+    }
 
     await client.query('COMMIT');
 

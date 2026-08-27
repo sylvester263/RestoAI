@@ -75,7 +75,7 @@ router.get('/', async (req, res, next) => {
 });
 
 // ── POST /api/branches ──
-router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/', authorize('branches.manage'), async (req, res, next) => {
   try {
     const data = branchSchema.parse(req.body);
     const result = await query(
@@ -92,7 +92,7 @@ router.post('/', authorize('owner', 'manager'), async (req, res, next) => {
 });
 
 // ── PUT /api/branches/:id ──
-router.put('/:id', authorize('owner', 'manager'), async (req, res, next) => {
+router.put('/:id', authorize('branches.manage'), async (req, res, next) => {
   try {
     const data = branchSchema.partial().parse(req.body);
     const sets = [];
@@ -169,7 +169,7 @@ router.get('/:id/reservations', async (req, res, next) => {
 });
 
 // ── POST /api/branches/:id/tables ──
-router.post('/:id/tables', authorize('owner', 'manager'), async (req, res, next) => {
+router.post('/:id/tables', authorize('branches.manage'), async (req, res, next) => {
   try {
     if (!(await assertBranchOwnedByTenant(req.user.tenant_id, req.params.id))) {
       return res.status(404).json({ error: { message: 'Branch not found' } });

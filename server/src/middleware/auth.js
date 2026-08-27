@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import config from '../config.js';
+import { query } from '../db/pool.js';
 
 /**
  * JWT authentication middleware.
@@ -21,16 +22,56 @@ export function authenticate(req, res, next) {
   }
 }
 
+// Per-tenant role->permission-set cache. The set is tiny (a handful of
+// roles times ~15 keys per tenant) so caching the whole thing beats a
+// query per gated request; a short TTL keeps a just-changed permission
+// from being stale for long, and invalidatePermissionsCache() below lets
+// the permissions-management route clear it immediately on save.
+const CACHE_TTL_MS = 30000;
+const cache = new Map(); // tenantId -> { at, map: { role -> Set<permission_key> } }
+
+async function getRolePermissions(tenantId) {
+  const cached = cache.get(tenantId);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.map;
+  }
+  const result = await query('SELECT role, permission_key FROM role_permissions WHERE tenant_id = $1', [tenantId]);
+  const map = {};
+  for (const row of result.rows) {
+    (map[row.role] = map[row.role] || new Set()).add(row.permission_key);
+  }
+  cache.set(tenantId, { at: Date.now(), map });
+  return map;
+}
+
+export function invalidatePermissionsCache(tenantId) {
+  cache.delete(tenantId);
+}
+
 /**
- * Role-based authorization middleware.
- * Must be used after authenticate().
- * @param  {...string} roles - Allowed roles (e.g., 'owner', 'manager')
+ * Granular permission-based authorization middleware. Must follow
+ * authenticate(). Pass one or more permission keys — the request proceeds
+ * if the user's role has ANY of them for their tenant.
+ *
+ * 'owner' always passes, regardless of what's in role_permissions — this
+ * is a hardcoded bypass, not a seeded default, so an owner can never
+ * misconfigure their own way into being locked out of their restaurant.
+ * @param {...string} permissionKeys
  */
-export function authorize(...roles) {
-  return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({ error: { message: 'Insufficient permissions' } });
+export function authorize(...permissionKeys) {
+  return async (req, res, next) => {
+    if (req.user.role === 'owner') {
+      return next();
     }
-    next();
+    try {
+      const rolePerms = await getRolePermissions(req.user.tenant_id);
+      const granted = rolePerms[req.user.role] || new Set();
+      if (!permissionKeys.some((key) => granted.has(key))) {
+        return res.status(403).json({ error: { message: 'Insufficient permissions' } });
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
   };
 }
