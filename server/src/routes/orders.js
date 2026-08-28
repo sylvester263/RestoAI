@@ -6,6 +6,7 @@ import { notifyStatusChange, STATUS_MESSAGES } from '../services/whatsapp.js';
 import { awardPointsForOrder } from '../services/loyalty.js';
 import { sendPushToCustomer } from '../services/push.js';
 import { markCodPaidOnDelivery, getPaymentsForOrders } from '../services/payments.js';
+import { completeReferralIfEligible } from '../services/coupons.js';
 
 const router = Router();
 router.use(authenticate);
@@ -21,6 +22,10 @@ export function fireStatusChangeSideEffects(tenantId, order, status) {
   if (status === 'delivered') {
     awardPointsForOrder(tenantId, order.id).catch((err) => console.error('[loyalty] award failed:', err.message));
     markCodPaidOnDelivery(tenantId, order.id).catch((err) => console.error('[payments] COD mark-paid failed:', err.message));
+    // impl-12 referral program: only rewards the referrer once the referred
+    // order actually reaches delivered — guards against referral-then-cancel
+    // abuse, same spirit as impl-21's rapid_reorder/repeat_cancel checks.
+    completeReferralIfEligible(tenantId, order.id).catch((err) => console.error('[coupons] referral completion failed:', err.message));
   }
   // impl-16 dispatch agent: a delivery order just became ready for a rider.
   // Dynamic import avoids a circular dependency (dispatch-agent.js needs

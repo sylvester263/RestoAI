@@ -148,6 +148,8 @@ export const api = {
   getSegments: () => request('/segments'),
   createSegment: (body) => request('/segments', { method: 'POST', body: JSON.stringify(body) }),
   getSegmentCustomers: (id) => request(`/segments/${id}/customers`),
+  getRfmSegments: () => request('/segments/rfm'),
+  getRfmSegmentCustomers: (label) => request(`/segments/rfm/customers?label=${encodeURIComponent(label)}`),
 
   // Permissions (owner-only)
   getPermissions: () => request('/permissions'),
@@ -172,6 +174,12 @@ export const api = {
 
   // Insights
   getDashboard: () => request('/insights/dashboard'),
+
+  // Branch analytics (impl-25)
+  compareBranches: (period) => request(`/analytics/branches/compare?period=${period}`),
+  getBranchAnalytics: (id, period) => request(`/analytics/branches/${id}?period=${period}`),
+  getBranchBenchmark: (id, period) => request(`/analytics/branches/${id}/benchmark?period=${period}`),
+  getBranchStaffPerformance: (id, period) => request(`/analytics/branches/${id}/staff-performance?period=${period}`),
   queryInsights: (question) =>
     request('/insights/query', { method: 'POST', body: JSON.stringify({ question }) }),
 
@@ -224,7 +232,7 @@ export const api = {
   // Campaigns
   getCampaigns: () => request('/campaigns'),
   createCampaign: (body) => request('/campaigns', { method: 'POST', body: JSON.stringify(body) }),
-  addRecipients: (id) => request(`/campaigns/${id}/recipients`, { method: 'POST' }),
+  addRecipients: (id, body) => request(`/campaigns/${id}/recipients`, { method: 'POST', body: JSON.stringify(body || {}) }),
   sendCampaign: (id) => request(`/campaigns/${id}/send`, { method: 'POST' }),
   getCampaignStatus: (id) => request(`/campaigns/${id}/status`),
 
@@ -235,8 +243,22 @@ export const api = {
   addPosTabItems: (id, body) => request(`/pos/tabs/${id}/items`, { method: 'POST', body: JSON.stringify(body) }),
   applyPosTabDiscount: (id, body) => request(`/pos/tabs/${id}/discount`, { method: 'POST', body: JSON.stringify(body) }),
   voidPosTab: (id) => request(`/pos/tabs/${id}/void`, { method: 'POST' }),
-  settlePosTab: (id, paymentMethod) =>
-    request(`/pos/tabs/${id}/settle`, { method: 'POST', body: JSON.stringify({ payment_method: paymentMethod }) }),
+  settlePosTab: (id, body) => request(`/pos/tabs/${id}/settle`, { method: 'POST', body: JSON.stringify(body) }),
+  holdPosTab: (id) => request(`/pos/tabs/${id}/hold`, { method: 'POST' }),
+  resumePosTab: (id) => request(`/pos/tabs/${id}/resume`, { method: 'POST' }),
+  transferPosTab: (id, tableId) => request(`/pos/tabs/${id}/transfer`, { method: 'POST', body: JSON.stringify({ table_id: tableId }) }),
+  voidPosTabItem: (id, body) => request(`/pos/tabs/${id}/void-item`, { method: 'POST', body: JSON.stringify(body) }),
+  refundPosOrder: (orderId, body) => request(`/pos/orders/${orderId}/refund`, { method: 'POST', body: JSON.stringify(body) }),
+  getPosOrderVoids: (orderId) => request(`/pos/orders/${orderId}/voids`),
+  getPosReceipt: (orderId) => request(`/pos/receipts/${orderId}`),
+  getTaxConfig: (branchId) => request(`/pos/tax-config?branch_id=${branchId}`),
+  setTaxConfig: (branchId, body) => request('/pos/tax-config', { method: 'PUT', body: JSON.stringify({ branch_id: branchId, ...body }) }),
+  openPosShift: (body) => request('/pos/shifts/open', { method: 'POST', body: JSON.stringify(body) }),
+  getCurrentPosShift: (branchId) => request(`/pos/shifts/current?branch_id=${branchId}`),
+  getPosShifts: (branchId) => request(`/pos/shifts${branchId ? `?branch_id=${branchId}` : ''}`),
+  closePosShift: (id, closingCashCounted) =>
+    request(`/pos/shifts/${id}/close`, { method: 'POST', body: JSON.stringify({ closing_cash_counted: closingCashCounted }) }),
+  getPosZReport: (id) => request(`/pos/shifts/${id}/z-report`),
 
   // Landing page builder
   getLandingPage: () => request('/landing-page'),
@@ -296,6 +318,8 @@ export const publicApi = {
   // Coupons (impl-12)
   previewCoupon: (slug, code, phone, subtotal) =>
     request(`/public/${slug}/coupons/${encodeURIComponent(code)}/preview?phone=${encodeURIComponent(phone || '')}&subtotal=${subtotal}`),
+  validateCoupon: (slug, body) => request(`/public/${slug}/coupons/validate`, { method: 'POST', body: JSON.stringify(body) }),
+  getReferralCode: (slug, phone) => request(`/public/${slug}/referral?phone=${encodeURIComponent(phone)}`),
 
   // Reviews
   submitReview: (slug, body) => request(`/public/${slug}/reviews`, { method: 'POST', body: JSON.stringify(body) }),

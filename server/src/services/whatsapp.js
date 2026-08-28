@@ -10,6 +10,8 @@ import { query } from '../db/pool.js';
 import { parseOrderMessage, generateRecommendation } from './ai-agent.js';
 import { getOrCreateCustomer, calculatePricing, createOrder } from './orders.js';
 import { getBalance } from './loyalty.js';
+import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder } from './coupons.js';
+import { OrderError } from './orders.js';
 
 /**
  * Process an incoming WhatsApp message through the order agent pipeline.
@@ -76,7 +78,7 @@ export async function processWhatsAppMessage(tenantId, message) {
     reply = parsed.reply_message;
 
     if (parsed.intent === 'order' && parsed.items.length > 0 && parsed.confidence >= 0.7) {
-      const draft = buildDraftOrder(parsed, menuItems);
+      const draft = await buildDraftOrder(parsed, menuItems, tenantId, customer.id);
       if (draft) {
         conversationContext.pending_draft = draft;
         reply = buildConfirmationMessage(draft);
@@ -97,7 +99,7 @@ export async function processWhatsAppMessage(tenantId, message) {
 
     if (parsed.intent === 'order' && parsed.items.length > 0 && parsed.confidence >= 0.7) {
       // Store as pending draft — do NOT create order yet, wait for confirmation
-      const draft = buildDraftOrder(parsed, menuItems);
+      const draft = await buildDraftOrder(parsed, menuItems, tenantId, customer.id);
       if (draft) {
         conversationContext.pending_draft = draft;
         reply = buildConfirmationMessage(draft);
@@ -175,7 +177,12 @@ async function handleReservationRequest(tenantId, customer, parsed) {
 }
 
 // ── Helper: Build a draft order from parsed AI output (not yet saved to DB) ──
-function buildDraftOrder(parsed, menuItems) {
+// A mentioned coupon code is only previewed here (no lock, no redemption) —
+// the real, concurrency-safe redemption happens once at finalizeOrder, the
+// same split public.js already uses (preview at cart-build time, atomic
+// redeem at order-creation time). An invalid/expired code doesn't block the
+// order — it's just dropped, with a note in the confirmation message.
+async function buildDraftOrder(parsed, menuItems, tenantId, customerId) {
   const orderItems = [];
   for (const parsedItem of parsed.items) {
     const match = menuItems.find((mi) =>
@@ -194,13 +201,29 @@ function buildDraftOrder(parsed, menuItems) {
   }
   if (orderItems.length === 0) return null;
 
-  const pricing = calculatePricing(orderItems);
+  let couponCode = null;
+  let couponError = null;
+  let discount = 0;
+  if (parsed.coupon_code) {
+    const subtotal = orderItems.reduce((sum, i) => sum + i.total_price, 0);
+    try {
+      const result = await previewCoupon(tenantId, parsed.coupon_code, customerId, subtotal, { items: orderItems, deliveryFee: 100 });
+      couponCode = parsed.coupon_code.toUpperCase();
+      discount = result.discount;
+    } catch (err) {
+      couponError = err instanceof OrderError ? err.message : 'Could not apply that code';
+    }
+  }
+
+  const pricing = calculatePricing(orderItems, { discount });
 
   return {
     items: orderItems,
     ...pricing,
     delivery_address: parsed.delivery_address || null,
     payment_method: parsed.payment_method || 'cash',
+    coupon_code: couponCode,
+    coupon_error: couponError,
   };
 }
 
@@ -208,6 +231,11 @@ function buildDraftOrder(parsed, menuItems) {
 function buildConfirmationMessage(draft) {
   let msg = '📋 *Order Summary:*\n';
   msg += draft.items.map((i) => `  • ${i.quantity}x ${i.name} — Rs. ${i.total_price}`).join('\n');
+  if (draft.coupon_code) {
+    msg += `\n\n🏷 Code *${draft.coupon_code}* applied: -Rs. ${draft.discount}`;
+  } else if (draft.coupon_error) {
+    msg += `\n\n⚠️ ${draft.coupon_error} — order will proceed without it.`;
+  }
   msg += `\n\n💰 *Total: Rs. ${draft.total}*`;
   msg += `\n⏱ Estimated time: ~${config.timing.estimatedPrepMax} mins`;
   msg += `\n\nReply "yes" to confirm or tell me what to change.`;
@@ -215,16 +243,44 @@ function buildConfirmationMessage(draft) {
 }
 
 // ── Helper: Finalize a confirmed order — saves to DB ──
+// Never trusts the draft's previewed discount — a coupon mentioned earlier
+// in the conversation could have been used up or expired by confirmation
+// time, so it's re-validated and atomically redeemed here, same principle
+// as the public checkout flow never trusting a client-supplied amount.
 async function finalizeOrder(tenantId, customer, draft) {
-  return createOrder({
+  let pricing = { subtotal: draft.subtotal, tax: draft.tax, delivery_fee: draft.delivery_fee, total: draft.total };
+  let couponRedemptionId = null;
+
+  if (draft.coupon_code) {
+    try {
+      const result = await validateAndApplyCoupon(tenantId, customer.id, draft.coupon_code, draft.subtotal, {
+        items: draft.items, deliveryFee: draft.delivery_fee,
+      });
+      couponRedemptionId = result.redemptionId;
+      pricing = calculatePricing(draft.items, { discount: result.discount, deliveryFee: draft.delivery_fee });
+    } catch {
+      // Code stopped working between preview and confirmation (e.g. someone
+      // else used the last redemption) — proceed without it rather than
+      // failing the whole order at the finalize step.
+      pricing = calculatePricing(draft.items, { deliveryFee: draft.delivery_fee });
+    }
+  }
+
+  const order = await createOrder({
     tenantId,
     customer,
     items: draft.items,
-    pricing: { subtotal: draft.subtotal, tax: draft.tax, delivery_fee: draft.delivery_fee, total: draft.total },
+    pricing,
     deliveryAddress: draft.delivery_address || customer.address,
     paymentMethod: draft.payment_method,
     channel: 'whatsapp',
   });
+
+  if (couponRedemptionId) {
+    await attachRedemptionToOrder(couponRedemptionId, order.id);
+  }
+
+  return order;
 }
 
 // ── Helper: Send reply via WhatsApp Cloud API ──

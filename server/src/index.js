@@ -32,6 +32,7 @@ import staffInviteRoutes from './routes/staff-invites.js';
 import riderAuthRoutes from './routes/rider-auth.js';
 import riderAppRoutes from './routes/rider-app.js';
 import contactRoutes from './routes/contact.js';
+import analyticsRoutes from './routes/analytics.js';
 
 const app = express();
 
@@ -128,6 +129,7 @@ app.use('/api/staff-invites', staffInviteRoutes);
 app.use('/api/rider-auth', riderAuthRoutes);
 app.use('/api/rider-app', riderAppRoutes);
 app.use('/api/contact', contactRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

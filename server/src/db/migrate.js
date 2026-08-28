@@ -795,6 +795,164 @@ async function migrate() {
       );
     `);
 
+    // ── Complete POS billing (impl-24, extends impl-04) ──
+
+    // Provincial sales tax — PRA/SRB/KPRA/BRA each set their own rate;
+    // unconfigured branches stay at 'NONE'/0% rather than silently assuming one.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tax_config (
+        branch_id                UUID PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
+        tenant_id                UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        tax_authority             VARCHAR(10) NOT NULL DEFAULT 'NONE' CHECK (tax_authority IN ('PRA','SRB','KPRA','BRA','NONE')),
+        tax_rate                  NUMERIC(5,2) NOT NULL DEFAULT 0,
+        tax_registration_number   VARCHAR(50),
+        updated_at                TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
+    // Split-tender: one tab settled across more than one payment method.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_tab_payments (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        pos_tab_id    UUID NOT NULL REFERENCES pos_tabs(id) ON DELETE CASCADE,
+        method        VARCHAR(20) NOT NULL CHECK (method IN ('cash','card','jazzcash','easypaisa')),
+        amount        NUMERIC(10,2) NOT NULL,
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_tab_payments_tab ON pos_tab_payments(pos_tab_id);`);
+
+    // Void (pre-settlement) / refund (post-settlement) audit trail. authorized_by
+    // is NOT NULL and always the manager/owner who approved it — requested_by is
+    // only set when a cashier initiated the request and someone else approved it.
+    // `method` is refund-only (which drawer/channel the money actually left
+    // from) — deviates from the spec's literal table shape because without it
+    // the Z-report can't tell a cash refund from a card refund when computing
+    // the cash drawer's expected closing balance.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_voids (
+        id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id       UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        pos_tab_id      UUID REFERENCES pos_tabs(id),
+        order_id        UUID REFERENCES orders(id),
+        type            VARCHAR(10) NOT NULL CHECK (type IN ('void','refund')),
+        method          VARCHAR(20) CHECK (method IN ('cash','card','jazzcash','easypaisa')),
+        amount          NUMERIC(10,2) NOT NULL,
+        reason          TEXT NOT NULL,
+        authorized_by   UUID NOT NULL REFERENCES users(id),
+        requested_by    UUID REFERENCES users(id),
+        created_at      TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_voids_tenant ON pos_voids(tenant_id);`);
+
+    // Cash drawer / shift tracking — one row per cashier's shift, not one per
+    // branch, since several staff can be on the floor with their own drawer.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_shifts (
+        id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id                 UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id                 UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        opened_by                 UUID NOT NULL REFERENCES users(id),
+        opening_cash_float        NUMERIC(10,2) NOT NULL,
+        closed_by                 UUID REFERENCES users(id),
+        closing_cash_counted      NUMERIC(10,2),
+        closing_cash_expected     NUMERIC(10,2),
+        variance                  NUMERIC(10,2),
+        status                    VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','closed')),
+        opened_at                 TIMESTAMPTZ DEFAULT NOW(),
+        closed_at                 TIMESTAMPTZ
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_shifts_open ON pos_shifts(tenant_id, branch_id, opened_by, status);`);
+
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS pos_shift_id UUID REFERENCES pos_shifts(id);`);
+    // Extend the existing status enum with 'held' (parked tabs) without
+    // touching the 'open'/'settled'/'voided' values impl-04 already relies on.
+    await client.query(`ALTER TABLE pos_tabs DROP CONSTRAINT IF EXISTS pos_tabs_status_check;`);
+    await client.query(`ALTER TABLE pos_tabs ADD CONSTRAINT pos_tabs_status_check CHECK (status IN ('open','held','settled','voided'));`);
+
+    // FBR e-invoicing hook (step 19) — schema-ready, deliberately unpopulated.
+    // No direct FBR integration is built here; this just avoids a breaking
+    // schema change whenever a licensed integrator (PRAL etc.) is connected.
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS fbr_invoice_number VARCHAR(50);`);
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS fbr_qr_code_url TEXT;`);
+
+    // ── impl-12 (2026-08-28 research-strengthened) — coupons/discounts extended,
+    // referral program. The `coupons` table already existed (built for impl-15/21
+    // before a written spec existed) with discount_type IN ('percent','fixed') —
+    // kept those column/enum names rather than renaming to the spec's
+    // 'type'/'percentage'/'flat' to avoid breaking the already-verified
+    // race-safe redemption path; only ADD what's new. ──
+    await client.query(`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS min_order_amount NUMERIC(10,2) NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS max_discount_amount NUMERIC(10,2);`);
+    await client.query(`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS first_order_only BOOLEAN NOT NULL DEFAULT false;`);
+    await client.query(`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS referral_customer_id UUID REFERENCES customers(id);`);
+    await client.query(`ALTER TABLE coupons ADD COLUMN IF NOT EXISTS starts_at TIMESTAMPTZ;`);
+    // Extend discount_type with 'free_delivery' and 'bogo' — value is NULL for
+    // both (bogo's discount is computed from the cheapest cart line at
+    // redemption time; there is no separate "target item" concept specced).
+    // Original column was VARCHAR(10), too narrow for 'free_delivery' (13
+    // chars) — a real bug caught live on first test (insert failed with
+    // "value too long"), fixed by widening it here rather than shortening
+    // the value.
+    await client.query(`ALTER TABLE coupons ALTER COLUMN discount_type TYPE VARCHAR(20);`);
+    await client.query(`ALTER TABLE coupons ALTER COLUMN discount_value DROP NOT NULL;`);
+    await client.query(`ALTER TABLE coupons DROP CONSTRAINT IF EXISTS coupons_discount_type_check;`);
+    await client.query(`ALTER TABLE coupons ADD CONSTRAINT coupons_discount_type_check CHECK (discount_type IN ('percent','fixed','free_delivery','bogo'));`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS referral_rewards (
+        id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id               UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        referrer_customer_id    UUID NOT NULL REFERENCES customers(id),
+        referred_customer_id    UUID REFERENCES customers(id),
+        referrer_coupon_id      UUID REFERENCES coupons(id),
+        referred_coupon_id      UUID REFERENCES coupons(id),
+        status                  VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','completed','expired')),
+        created_at              TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_referral_rewards_referrer ON referral_rewards(tenant_id, referrer_customer_id);`);
+    // Deliberately NOT unique on referred_coupon_id: one referrer's reusable
+    // code can be redeemed by many different friends over time — each
+    // successful referral gets its own row (referred_customer_id differs).
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_referral_rewards_referred_coupon ON referral_rewards(referred_coupon_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_referral_rewards_pending ON referral_rewards(tenant_id, referred_customer_id, status);`);
+
+    // ── impl-25 branch analytics — branch-access scoping (minimal version;
+    // impl-10's RBAC is role-based only, no branch dimension, so this is
+    // genuinely new rather than a duplicate). Design decision (stated
+    // up front per the spec): HARD-LOCKED access — a manager/staff account
+    // sees only branches they're explicitly granted, not just a UI default,
+    // per the spec's own recommendation and this project's established
+    // tenant-isolation discipline. Owner always sees every branch (checked
+    // by role, no rows needed, same shape as authorize()'s owner bypass). ──
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_branch_access (
+        user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        branch_id   UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        PRIMARY KEY (user_id, branch_id)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_user_branch_access_user ON user_branch_access(user_id);`);
+
+    // Seed every EXISTING non-owner user with access to every branch their
+    // tenant currently has — hard-locking is a brand-new restriction with
+    // no prior enforcement to preserve, so without this every manager/staff
+    // account would silently lose all branch visibility the moment this
+    // ships (the exact "accidental lockout" class of bug flagged as a risk
+    // in impl-10's own verification steps). New non-owner accounts created
+    // from here on start with zero branches until explicitly assigned
+    // (staff-invites.js grants the invited branch on accept — see there).
+    await client.query(`
+      INSERT INTO user_branch_access (user_id, branch_id)
+      SELECT u.id, b.id FROM users u
+      JOIN branches b ON b.tenant_id = u.tenant_id
+      WHERE u.role != 'owner'
+      ON CONFLICT (user_id, branch_id) DO NOTHING;
+    `);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

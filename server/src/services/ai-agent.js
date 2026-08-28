@@ -57,6 +57,7 @@ RULES:
 2. If no quantity is specified, assume 1.
 3. If the customer mentions a delivery address, extract it.
 4. If the customer mentions a payment method (cash, JazzCash, EasyPaisa, card), extract it.
+4a. If the customer mentions a promo/coupon/discount code (e.g. "apply code WELCOME10", "use SAVE20"), extract it into "coupon_code" exactly as written, uppercased. Otherwise null.
 5. Set "needs_confirmation" to true if anything is ambiguous (missing address, unclear item, etc).
 6. Set "reply_message" to a natural, friendly response in the same language the customer used.
 7. If the message is not a food order (e.g., greeting, question), set "intent" accordingly.
@@ -72,6 +73,7 @@ Always respond in valid JSON with this schema:
   "items": [{"name": "string", "quantity": number}],
   "delivery_address": "string or null",
   "payment_method": "cash" | "jazzcash" | "easypaisa" | "card" | null,
+  "coupon_code": "string or null",
   "party_size": "number or null",
   "reserved_for": "ISO 8601 datetime string or null",
   "needs_confirmation": boolean,

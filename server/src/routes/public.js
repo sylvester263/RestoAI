@@ -12,7 +12,7 @@ import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, 
 import { sendReply } from '../services/whatsapp.js';
 import { generateRecommendation } from '../services/ai-agent.js';
 import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.js';
-import { previewCoupon, redeemCoupon, attachRedemptionToOrder } from '../services/coupons.js';
+import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder, getOrCreateReferralCode } from '../services/coupons.js';
 import { estimateReadyTime } from '../services/eta-agent.js';
 import config from '../config.js';
 
@@ -109,7 +109,13 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
     let couponRedemptionId = null;
     if (data.coupon_code) {
       const subtotalForCoupon = resolvedItems.reduce((sum, i) => sum + i.total_price, 0);
-      const result = await redeemCoupon(req.tenant.id, data.coupon_code, customer.id, subtotalForCoupon);
+      // Never trust a client-supplied discount amount — the coupon code is
+      // re-validated and the discount recomputed here, server-side, at the
+      // moment the order is actually created (same principle as payment
+      // amounts never being trusted from the client).
+      const result = await validateAndApplyCoupon(req.tenant.id, customer.id, data.coupon_code, subtotalForCoupon, {
+        items: resolvedItems, deliveryFee: 100,
+      });
       discount += result.discount;
       couponRedemptionId = result.redemptionId;
     }
@@ -156,6 +162,12 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
   }
 });
 
+// Preview's delivery fee always mirrors POST /orders' actual default (100)
+// so a free_delivery coupon previews the real amount it will discount —
+// found live: without this, preview always showed Rs. 0 off for
+// free_delivery since nothing was passed and the default in coupons.js is 0.
+const PREVIEW_DELIVERY_FEE = 100;
+
 // ── GET /api/public/:tenantSlug/coupons/:code/preview ──
 // Read-only — shows the discount a code would apply before final checkout.
 // Final enforcement still happens atomically inside POST /orders.
@@ -168,12 +180,68 @@ router.get('/:tenantSlug/coupons/:code/preview', async (req, res, next) => {
       const custRes = await query('SELECT id FROM customers WHERE tenant_id = $1 AND phone = $2', [req.tenant.id, phone]);
       customerId = custRes.rows[0]?.id || null;
     }
-    const result = await previewCoupon(req.tenant.id, req.params.code, customerId, subtotal);
+    const result = await previewCoupon(req.tenant.id, req.params.code, customerId, subtotal, { deliveryFee: PREVIEW_DELIVERY_FEE });
     res.json(result);
   } catch (err) {
     if (err instanceof OrderError) {
       return res.status(err.status).json({ error: { message: err.message } });
     }
+    next(err);
+  }
+});
+
+const validateCouponSchema = z.object({
+  code: z.string().min(1).max(30),
+  phone: z.string().min(1).max(20).optional(),
+  subtotal: z.number().min(0),
+  items: z.array(z.object({
+    menu_item_id: z.string().uuid(),
+    quantity: z.number().int().min(1).max(50),
+  })).optional(),
+});
+
+// ── POST /api/public/:tenantSlug/coupons/validate ──
+// impl-12's spec-named validate endpoint — same read-only preview as the
+// GET route above (kept for backward compat with the existing checkout
+// UI), just POST + JSON body per the spec's own endpoint table. Accepts an
+// optional cart (items) so a 'bogo' coupon can preview accurately — prices
+// are always re-resolved server-side, never trusted from the client, same
+// as order creation.
+router.post('/:tenantSlug/coupons/validate', async (req, res, next) => {
+  try {
+    const data = validateCouponSchema.parse(req.body);
+    let customerId = null;
+    if (data.phone) {
+      const custRes = await query('SELECT id FROM customers WHERE tenant_id = $1 AND phone = $2', [req.tenant.id, data.phone]);
+      customerId = custRes.rows[0]?.id || null;
+    }
+    const resolvedItems = data.items && data.items.length > 0 ? await resolveOrderItems(req.tenant.id, data.items) : [];
+    const result = await previewCoupon(req.tenant.id, data.code, customerId, data.subtotal, {
+      items: resolvedItems, deliveryFee: PREVIEW_DELIVERY_FEE,
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
+    if (err instanceof OrderError) {
+      return res.status(err.status).json({ error: { message: err.message } });
+    }
+    next(err);
+  }
+});
+
+// ── GET /api/public/:tenantSlug/referral?phone=... ──
+// "Invite a friend" surface — get-or-create the customer's personal,
+// reusable referral code (impl-12 Section 1.1).
+router.get('/:tenantSlug/referral', async (req, res, next) => {
+  try {
+    const phone = (req.query.phone || '').toString().trim();
+    if (!phone) return res.status(400).json({ error: { message: 'phone is required' } });
+    const customer = await getOrCreateCustomer(req.tenant.id, phone);
+    const code = await getOrCreateReferralCode(req.tenant.id, customer.id);
+    res.json({ code });
+  } catch (err) {
     next(err);
   }
 });

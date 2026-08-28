@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
-import { filterRulesSchema, buildSegmentQuery } from '../services/segments.js';
+import { filterRulesSchema, buildSegmentQuery, computeRFM, RFM_LABELS } from '../services/segments.js';
 
 const router = Router();
 router.use(authenticate);
@@ -38,6 +38,41 @@ router.post('/', async (req, res, next) => {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
     }
+    next(err);
+  }
+});
+
+// ── GET /api/segments/rfm ──
+// Built-in RFM segment set, available immediately alongside custom
+// filter_rules segments — every scored customer (has >=1 order) grouped
+// by the 7 standard labels, with per-label counts for a quick overview.
+// Registered before /:id/customers — 'rfm' would otherwise be swallowed by
+// that route as a (nonexistent) segment id.
+router.get('/rfm', async (req, res, next) => {
+  try {
+    const scored = await computeRFM(req.user.tenant_id, query);
+    const byLabel = Object.fromEntries(RFM_LABELS.map((l) => [l, []]));
+    for (const row of scored) byLabel[row.segment].push(row);
+    const summary = RFM_LABELS.map((label) => ({ label, count: byLabel[label].length }));
+    res.json({ summary, customers: scored });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── GET /api/segments/rfm/customers?label=... ──
+// Also registered before /:id/customers for the same reason — 'rfm/customers'
+// would otherwise match :id='rfm' first.
+router.get('/rfm/customers', async (req, res, next) => {
+  try {
+    const label = req.query.label;
+    if (!RFM_LABELS.includes(label)) {
+      return res.status(400).json({ error: { message: `label must be one of: ${RFM_LABELS.join(', ')}` } });
+    }
+    const scored = await computeRFM(req.user.tenant_id, query);
+    const customers = scored.filter((c) => c.segment === label);
+    res.json({ label, customers, count: customers.length });
+  } catch (err) {
     next(err);
   }
 });

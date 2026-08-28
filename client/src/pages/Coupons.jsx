@@ -65,12 +65,18 @@ export default function Coupons() {
                 <tr key={c.id}>
                   <td className="px-4 py-3 font-mono font-medium text-gray-900">{c.code}</td>
                   <td className="px-4 py-3 text-gray-700">
-                    {c.discount_type === 'percent' ? `${Number(c.discount_value)}%` : `Rs. ${Number(c.discount_value).toLocaleString()}`}
+                    {c.discount_type === 'percent' && `${Number(c.discount_value)}%${c.max_discount_amount ? ` (up to Rs. ${Number(c.max_discount_amount).toLocaleString()})` : ''}`}
+                    {c.discount_type === 'fixed' && `Rs. ${Number(c.discount_value).toLocaleString()}`}
+                    {c.discount_type === 'free_delivery' && 'Free delivery'}
+                    {c.discount_type === 'bogo' && 'BOGO (cheapest item free)'}
+                    {Number(c.min_order_amount) > 0 && <span className="block text-xs text-gray-400">Min. Rs. {Number(c.min_order_amount).toLocaleString()}</span>}
                   </td>
                   <td className="px-4 py-3 text-gray-500">
                     {c.customer_id ? (
                       <span className="flex items-center gap-1"><Sparkles className="h-3 w-3 text-brand-500" /> {c.customer_name || c.customer_phone}</span>
                     ) : 'Anyone'}
+                    {c.first_order_only && <span className="badge ml-1 bg-blue-100 text-blue-700">First order</span>}
+                    {c.referral_customer_id && <span className="badge ml-1 bg-purple-100 text-purple-700">Referral</span>}
                   </td>
                   <td className="px-4 py-3 text-right text-gray-500">{c.redemption_count}{c.max_redemptions ? ` / ${c.max_redemptions}` : ''}</td>
                   <td className="px-4 py-3 text-gray-500">{c.expires_at ? new Date(c.expires_at).toLocaleDateString() : 'Never'}</td>
@@ -99,21 +105,27 @@ export default function Coupons() {
 }
 
 function CouponFormModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ code: '', discount_type: 'percent', discount_value: '', max_redemptions: '', expires_at: '' });
+  const [form, setForm] = useState({
+    code: '', discount_type: 'percent', discount_value: '', max_redemptions: '', expires_at: '',
+    min_order_amount: '', max_discount_amount: '', first_order_only: false,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const needsValue = form.discount_type === 'percent' || form.discount_type === 'fixed';
 
   async function handleCreate() {
     setSaving(true);
     setError('');
     try {
-      const payload = {
-        discount_type: form.discount_type,
-        discount_value: Number(form.discount_value),
-      };
+      const payload = { discount_type: form.discount_type };
+      if (needsValue) payload.discount_value = Number(form.discount_value);
       if (form.code) payload.code = form.code.toUpperCase();
       if (form.max_redemptions) payload.max_redemptions = Number(form.max_redemptions);
       if (form.expires_at) payload.expires_at = new Date(`${form.expires_at}T23:59:59`).toISOString();
+      if (form.min_order_amount) payload.min_order_amount = Number(form.min_order_amount);
+      if (form.max_discount_amount) payload.max_discount_amount = Number(form.max_discount_amount);
+      if (form.first_order_only) payload.first_order_only = true;
       await api.createCoupon(payload);
       onCreated();
     } catch (err) {
@@ -141,12 +153,26 @@ function CouponFormModal({ onClose, onCreated }) {
               <select className="input" value={form.discount_type} onChange={(e) => setForm({ ...form, discount_type: e.target.value })}>
                 <option value="percent">Percent off</option>
                 <option value="fixed">Fixed amount (PKR)</option>
+                <option value="free_delivery">Free delivery</option>
+                <option value="bogo">Buy one get one</option>
               </select>
             </div>
+            {needsValue && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Value</label>
+                <input type="number" className="input" min="0" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} />
+              </div>
+            )}
+          </div>
+          {form.discount_type === 'percent' && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Value</label>
-              <input type="number" className="input" min="0" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} />
+              <label className="mb-1 block text-xs font-medium text-gray-600">Max discount cap (optional)</label>
+              <input type="number" className="input" min="0" placeholder="Uncapped" value={form.max_discount_amount} onChange={(e) => setForm({ ...form, max_discount_amount: e.target.value })} />
             </div>
+          )}
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Minimum order amount (optional)</label>
+            <input type="number" className="input" min="0" placeholder="No minimum" value={form.min_order_amount} onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -158,11 +184,15 @@ function CouponFormModal({ onClose, onCreated }) {
               <input type="date" className="input" value={form.expires_at} onChange={(e) => setForm({ ...form, expires_at: e.target.value })} />
             </div>
           </div>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} />
+            First order only (new customers)
+          </label>
         </div>
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         <div className="mt-6 flex justify-end gap-2">
           <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleCreate} disabled={saving || !form.discount_value} className="btn-primary">Create Coupon</button>
+          <button onClick={handleCreate} disabled={saving || (needsValue && !form.discount_value)} className="btn-primary">Create Coupon</button>
         </div>
       </div>
     </div>

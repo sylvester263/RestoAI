@@ -138,6 +138,15 @@ router.post('/:token/accept', async (req, res, next) => {
        VALUES ($1, $2, $3, $4, $5) RETURNING id, name, email, role, tenant_id`,
       [invite.tenant_id, data.name, invite.email, passwordHash, invite.role],
     );
+    // impl-25: a manager/staff invited to a specific branch starts with
+    // access to exactly that branch (hard-locked by default otherwise —
+    // see migrate.js's user_branch_access seeding note).
+    if (invite.branch_id) {
+      await query(
+        `INSERT INTO user_branch_access (user_id, branch_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [userRes.rows[0].id, invite.branch_id],
+      );
+    }
     await query(`UPDATE staff_invites SET status = 'accepted' WHERE id = $1`, [invite.id]);
 
     res.status(201).json({ user: userRes.rows[0] });

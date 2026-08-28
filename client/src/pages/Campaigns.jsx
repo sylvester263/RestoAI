@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { Megaphone, Plus, Send, Users, CheckCircle2, XCircle, Clock, Eye } from 'lucide-react';
+import { Megaphone, Plus, Send, Users, CheckCircle2, XCircle, Clock, Eye, Loader2 } from 'lucide-react';
 
 const STATUS_COLORS = {
   draft: 'bg-gray-100 text-gray-600',
@@ -18,6 +18,7 @@ export default function Campaigns() {
   const [selected, setSelected] = useState(null);
   const [stats, setStats] = useState(null);
   const [actionLoading, setActionLoading] = useState('');
+  const [recipientPickerFor, setRecipientPickerFor] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -45,10 +46,10 @@ export default function Campaigns() {
     }
   }
 
-  async function handleAddRecipients(id) {
+  async function handleAddRecipients(id, body) {
     setActionLoading('recipients-' + id);
     try {
-      const res = await api.addRecipients(id);
+      const res = await api.addRecipients(id, body);
       alert(`Added ${res.added} recipients`);
       load();
     } catch (err) {
@@ -147,7 +148,7 @@ export default function Campaigns() {
                   {c.status === 'draft' && (
                     <>
                       <button
-                        onClick={() => handleAddRecipients(c.id)}
+                        onClick={() => setRecipientPickerFor(c.id)}
                         disabled={actionLoading === 'recipients-' + c.id}
                         className="btn-secondary text-xs"
                       >
@@ -205,6 +206,14 @@ export default function Campaigns() {
         </div>
       )}
 
+      {/* Recipient source picker */}
+      {recipientPickerFor && (
+        <RecipientPickerModal
+          onClose={() => setRecipientPickerFor(null)}
+          onPick={(body) => { handleAddRecipients(recipientPickerFor, body); setRecipientPickerFor(null); }}
+        />
+      )}
+
       {/* Status detail modal */}
       {selected && stats && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setSelected(null); setStats(null); }}>
@@ -229,6 +238,76 @@ export default function Campaigns() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function RecipientPickerModal({ onClose, onPick }) {
+  const [source, setSource] = useState('all'); // 'all' | 'segment' | 'rfm'
+  const [segments, setSegments] = useState([]);
+  const [segmentId, setSegmentId] = useState('');
+  const [rfmSummary, setRfmSummary] = useState([]);
+  const [rfmLabel, setRfmLabel] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    Promise.all([api.getSegments(), api.getRfmSegments()])
+      .then(([segRes, rfmRes]) => {
+        setSegments(segRes.segments);
+        setRfmSummary(rfmRes.summary);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  function handleConfirm() {
+    if (source === 'segment' && segmentId) return onPick({ segment_id: segmentId });
+    if (source === 'rfm' && rfmLabel) return onPick({ rfm_label: rfmLabel });
+    onPick({});
+  }
+
+  const confirmDisabled = (source === 'segment' && !segmentId) || (source === 'rfm' && !rfmLabel);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <h3 className="mb-4 text-lg font-semibold">Choose recipients</h3>
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+        ) : (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+              <input type="radio" name="source" checked={source === 'all'} onChange={() => setSource('all')} />
+              All customers
+            </label>
+
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+              <input type="radio" name="source" checked={source === 'segment'} onChange={() => setSource('segment')} disabled={segments.length === 0} />
+              A saved segment {segments.length === 0 && <span className="text-xs text-gray-400">(none yet)</span>}
+            </label>
+            {source === 'segment' && (
+              <select className="input ml-6 w-[calc(100%-1.5rem)]" value={segmentId} onChange={(e) => setSegmentId(e.target.value)}>
+                <option value="">Select a segment…</option>
+                {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+            )}
+
+            <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+              <input type="radio" name="source" checked={source === 'rfm'} onChange={() => setSource('rfm')} />
+              An RFM segment
+            </label>
+            {source === 'rfm' && (
+              <select className="input ml-6 w-[calc(100%-1.5rem)]" value={rfmLabel} onChange={(e) => setRfmLabel(e.target.value)}>
+                <option value="">Select a segment…</option>
+                {rfmSummary.map((s) => <option key={s.label} value={s.label}>{s.label} ({s.count})</option>)}
+              </select>
+            )}
+          </div>
+        )}
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={onClose} className="btn-secondary">Cancel</button>
+          <button onClick={handleConfirm} disabled={loading || confirmDisabled} className="btn-primary">Add Recipients</button>
+        </div>
+      </div>
     </div>
   );
 }

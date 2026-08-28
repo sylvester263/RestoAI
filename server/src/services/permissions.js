@@ -14,6 +14,7 @@ export const PERMISSIONS = [
   { key: 'orders.view', description: 'View orders and order details' },
   { key: 'orders.status_update', description: 'Advance order/delivery status' },
   { key: 'discounts.apply', description: 'Apply a discount on a POS tab' },
+  { key: 'pos.void_item', description: 'Void a line item on an open POS tab before settlement' },
   { key: 'coupons.manage', description: 'Create and manage discount coupon codes' },
   { key: 'reports.view', description: 'Ask the AI insights assistant business questions' },
   { key: 'branches.manage', description: 'Create/edit branches and dine-in tables' },

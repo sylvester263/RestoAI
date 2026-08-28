@@ -10,13 +10,28 @@ import { query } from '../db/pool.js';
 import { generateAgentText } from './ai-agent.js';
 import { sendReply } from './whatsapp.js';
 import { createCustomerCoupon } from './coupons.js';
+import { computeRFM } from './segments.js';
 
 const DEFAULT_THRESHOLD_DAYS = 20;
+
+// impl-10's RFM segmentation sharpens win-back beyond a flat days-lapsed
+// threshold: a high-value customer going quiet ('Cannot lose them') gets a
+// stronger offer and gets processed first; 'About to sleep' is next;
+// everyone else keeps the original flat-threshold treatment. Segments not
+// listed here (Champions/Loyal/Recent/Needs attention/Lost) don't change
+// win-back urgency — Champions/Loyal aren't lapsed by definition, Lost is
+// already the lowest-priority bucket the flat threshold alone handles fine.
+const SEGMENT_PRIORITY = { 'Cannot lose them': 0, 'About to sleep': 1 };
+const SEGMENT_DISCOUNT = { 'Cannot lose them': 20, 'About to sleep': 15 };
+const DEFAULT_DISCOUNT = 10;
 
 /**
  * Customers whose most recent (non-cancelled) order is older than
  * thresholdDays, excluding anyone already win-back-messaged within the
  * same cooldown window (so a lapsed customer isn't re-messaged every run).
+ * Each result is tagged with its RFM segment (null if they don't have
+ * enough order history to score) and the list is sorted so 'Cannot lose
+ * them' and 'About to sleep' customers are processed first.
  */
 export async function findLapsedCustomers(tenantId, thresholdDays = DEFAULT_THRESHOLD_DAYS) {
   const lapsedRes = await query(
@@ -43,12 +58,16 @@ export async function findLapsedCustomers(tenantId, thresholdDays = DEFAULT_THRE
   );
   const excluded = new Set(recentRes.rows.map((r) => r.customer_id));
 
+  const rfmByCustomer = new Map((await computeRFM(tenantId, query)).map((r) => [r.id, r.segment]));
+
   return lapsedRes.rows
     .filter((c) => !excluded.has(c.id))
     .map((c) => ({
       ...c,
       days_since_last_order: Math.floor((Date.now() - new Date(c.last_order_at).getTime()) / 86400000),
-    }));
+      rfm_segment: rfmByCustomer.get(c.id) || null,
+    }))
+    .sort((a, b) => (SEGMENT_PRIORITY[a.rfm_segment] ?? 99) - (SEGMENT_PRIORITY[b.rfm_segment] ?? 99));
 }
 
 async function craftWinbackMessage(customer, tenant, coupon) {
@@ -80,7 +99,8 @@ async function craftWinbackMessage(customer, tenant, coupon) {
 }
 
 export async function sendWinbackToCustomer(tenantId, customer, tenant) {
-  const coupon = await createCustomerCoupon(tenantId, customer.id, { discountType: 'percent', discountValue: 10, expiryDays: 7 });
+  const discountValue = SEGMENT_DISCOUNT[customer.rfm_segment] ?? DEFAULT_DISCOUNT;
+  const coupon = await createCustomerCoupon(tenantId, customer.id, { discountType: 'percent', discountValue, expiryDays: 7 });
   const message = await craftWinbackMessage(customer, tenant, coupon);
   await sendReply(customer.phone, message);
   await query(

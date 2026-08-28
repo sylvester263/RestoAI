@@ -4,7 +4,7 @@ import { marketingApi } from '../../lib/api';
 import {
   ChefHat, MessageCircle, Camera, Globe, QrCode, CalendarCheck, Megaphone,
   Star, MonitorPlay, ShieldCheck, Users, Bike, ArrowRight, CheckCircle2,
-  Loader2, Menu as MenuIcon, X,
+  Loader2, Menu as MenuIcon, X, Receipt, UserCircle, Tag, Package,
 } from 'lucide-react';
 
 const FEATURES = [
@@ -16,6 +16,11 @@ const FEATURES = [
   { icon: Megaphone, title: 'WhatsApp broadcasts', desc: 'Reach your customer list directly for promotions — channel you own, not one you rent.' },
   { icon: Star, title: 'Loyalty, reviews & push', desc: 'Points, reviews, and re-engagement — built to bring customers back without a commission cut.' },
   { icon: MonitorPlay, title: 'Kitchen & display boards', desc: 'A live kitchen display and order-ready/menu boards for the counter or dining room.' },
+  { icon: Receipt, title: 'Multi-branch point of sale', desc: 'Ring up counter, dine-in, and phone orders across every branch from one till.' },
+  { icon: Bike, title: 'Rider dispatch & delivery tracking', desc: 'Assign riders in one tap and follow every delivery from kitchen to doorstep.' },
+  { icon: UserCircle, title: 'Customer profiles & segments', desc: "See every customer's order history and group them for the campaigns that actually land." },
+  { icon: Tag, title: 'Coupons & discounts', desc: 'Run a promo code or a one-off discount without touching a spreadsheet.' },
+  { icon: Package, title: 'Inventory & auto-reorder', desc: 'Track stock by ingredient, with recipes that deplete automatically and low-stock alerts before you run out.' },
 ];
 
 const STATS = [
@@ -203,7 +208,7 @@ function FeatureGrid() {
         </div>
         <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-white p-5 text-center">
           <p className="text-sm font-medium text-gray-700">Coming soon</p>
-          <p className="mt-1 text-sm text-gray-500">Multi-branch point of sale, deeper branch-level analytics, discount coupons, and a full customer CRM.</p>
+          <p className="mt-1 text-sm text-gray-500">Online payment gateway (JazzCash, EasyPaisa, card), and wallet / store credit.</p>
         </div>
       </div>
     </section>

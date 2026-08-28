@@ -75,9 +75,14 @@ export async function resolveOrderItems(tenantId, cartItems) {
 // ── Compute subtotal/tax/delivery/total from resolved order items ──
 // deliveryFee defaults to the existing flat fee; dine-in orders pass 0.
 // discount (e.g. redeemed loyalty points) is subtracted from the total, floored at 0.
-export function calculatePricing(orderItems, { deliveryFee = 100, discount = 0 } = {}) {
+// taxRate is a fraction (0.05 = 5%) and defaults to the pre-impl-24 flat rate
+// for every channel except POS, which passes the branch's configured
+// tax_config rate instead (see routes/pos.js) — POS settlement then
+// recomputes tax on the post-discount subtotal anyway (services/pos-billing.js),
+// so this per-round figure is a provisional/display value until settled.
+export function calculatePricing(orderItems, { deliveryFee = 100, discount = 0, taxRate = 0.05 } = {}) {
   const subtotal = orderItems.reduce((sum, i) => sum + i.total_price, 0);
-  const tax = Math.round(subtotal * 0.05);
+  const tax = Math.round(subtotal * taxRate);
   const total = Math.max(0, subtotal + tax + deliveryFee - discount);
   return { subtotal, tax, delivery_fee: deliveryFee, discount, total };
 }

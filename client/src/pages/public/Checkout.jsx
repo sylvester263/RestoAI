@@ -59,7 +59,12 @@ export default function Checkout() {
     setApplyingCoupon(true);
     setCouponError('');
     try {
-      const res = await publicApi.previewCoupon(tenantSlug, couponInput.trim(), form.phone, subtotal);
+      const res = await publicApi.validateCoupon(tenantSlug, {
+        code: couponInput.trim(),
+        phone: form.phone || undefined,
+        subtotal,
+        items: cart.map((i) => ({ menu_item_id: i.menu_item_id, quantity: i.quantity })),
+      });
       setCoupon({ code: couponInput.trim().toUpperCase(), discount: res.discount });
     } catch (err) {
       setCoupon(null);

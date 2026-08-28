@@ -27,12 +27,19 @@ router.get('/', authorize('coupons.manage'), async (req, res, next) => {
 
 const createSchema = z.object({
   code: z.string().min(3).max(30).optional(),
-  discount_type: z.enum(['percent', 'fixed']),
-  discount_value: z.number().positive(),
+  discount_type: z.enum(['percent', 'fixed', 'free_delivery', 'bogo']),
+  discount_value: z.number().positive().optional(),
   usage_limit_per_customer: z.number().int().positive().default(1),
   max_redemptions: z.number().int().positive().optional(),
   expires_at: z.string().datetime({ offset: true }).or(z.string().datetime()).optional(),
-});
+  starts_at: z.string().datetime({ offset: true }).or(z.string().datetime()).optional(),
+  min_order_amount: z.number().min(0).optional(),
+  max_discount_amount: z.number().positive().optional(),
+  first_order_only: z.boolean().optional(),
+}).refine(
+  (d) => (d.discount_type === 'percent' || d.discount_type === 'fixed') ? d.discount_value != null : true,
+  { message: 'discount_value is required for percent/fixed coupons', path: ['discount_value'] },
+);
 
 // ── POST /api/coupons ──
 router.post('/', authorize('coupons.manage'), async (req, res, next) => {

@@ -3,7 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getIdentity } from '../../lib/publicOrderStore';
 import { subscribeToPush, pushSupported } from '../../lib/push';
-import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell, Gift, Copy, Check } from 'lucide-react';
 
 const STEPS = [
   { key: 'new', label: 'Order received', icon: AlertCircle },
@@ -135,7 +135,41 @@ export default function TrackOrder() {
         {order.status === 'delivered' && (
           <ReviewPrompt tenantSlug={tenantSlug} orderId={order.id} phone={phone} />
         )}
+
+        <ReferralCard tenantSlug={tenantSlug} phone={phone} />
       </div>
+    </div>
+  );
+}
+
+function ReferralCard({ tenantSlug, phone }) {
+  const [code, setCode] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!phone) return;
+    publicApi.getReferralCode(tenantSlug, phone).then((res) => setCode(res.code)).catch(() => {});
+  }, [tenantSlug, phone]);
+
+  if (!code) return null;
+
+  function handleCopy() {
+    navigator.clipboard?.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <div className="card mt-4 flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2 text-sm text-gray-700">
+        <Gift className="h-4 w-4 shrink-0 text-brand-600" />
+        <span>Share code <span className="font-mono font-semibold text-gray-900">{code}</span> — your friend gets a discount on their first order, and you earn a reward once it's delivered.</span>
+      </div>
+      <button onClick={handleCopy} className="btn-secondary shrink-0 px-3 py-1.5 text-xs">
+        {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+        {copied ? 'Copied' : 'Copy'}
+      </button>
     </div>
   );
 }

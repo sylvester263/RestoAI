@@ -47,3 +47,57 @@ export function buildSegmentQuery(tenantId, filterRules) {
   const sql = `SELECT DISTINCT c.* FROM customers c ${joins} WHERE ${conditions.join(' AND ')} ORDER BY c.total_spent DESC`;
   return { sql, params };
 }
+
+// ── RFM segmentation (2026-08-28 addition) ──
+// Recency/Frequency/Monetary, scored 1-5 by tenant-relative quintile
+// (NTILE(5) — Postgres handles uneven bucket sizes fine on small N).
+// Only customers with at least one non-cancelled order are scored; a
+// customer who's never ordered hasn't "lapsed," they never started, so
+// they don't fit any RFM label.
+export const RFM_LABELS = [
+  'Champions', 'Loyal customers', 'Recent/promising', 'Needs attention',
+  'About to sleep', 'Cannot lose them', 'Lost',
+];
+
+// Deterministic, priority-ordered classifier — checked most-specific/most-
+// actionable first so every one of the 125 possible (R,F,M) score
+// combinations lands in exactly one label, with 'Needs attention' as the
+// mid-mid-mid catch-all the spec describes.
+function classifyRFM(r, f, m) {
+  if (r <= 2 && f >= 4 && m >= 4) return 'Cannot lose them';
+  if (r >= 4 && f >= 4 && m >= 4) return 'Champions';
+  if (r >= 3 && f >= 4 && m >= 3) return 'Loyal customers';
+  if (r >= 4 && f <= 2) return 'Recent/promising';
+  if (r <= 3 && f <= 2 && m >= 3) return 'About to sleep';
+  if (r <= 2 && f <= 2 && m < 3) return 'Lost';
+  return 'Needs attention';
+}
+
+/**
+ * Scores every tenant customer with >=1 non-cancelled order on R/F/M and
+ * assigns the standard labeled segment. Returns one row per customer.
+ */
+export async function computeRFM(tenantId, queryFn) {
+  const res = await queryFn(
+    `WITH stats AS (
+       SELECT c.id, c.name, c.phone,
+              EXTRACT(DAY FROM NOW() - MAX(o.created_at))::int as days_since_last_order,
+              COUNT(o.id) as order_count,
+              COALESCE(SUM(o.total), 0) as total_spent
+       FROM customers c
+       JOIN orders o ON o.customer_id = c.id AND o.status != 'cancelled'
+       WHERE c.tenant_id = $1
+       GROUP BY c.id
+     )
+     SELECT *,
+       NTILE(5) OVER (ORDER BY days_since_last_order DESC, id) as r_score,
+       NTILE(5) OVER (ORDER BY order_count ASC, id) as f_score,
+       NTILE(5) OVER (ORDER BY total_spent ASC, id) as m_score
+     FROM stats`,
+    [tenantId],
+  );
+  return res.rows.map((row) => ({
+    ...row,
+    segment: classifyRFM(row.r_score, row.f_score, row.m_score),
+  }));
+}

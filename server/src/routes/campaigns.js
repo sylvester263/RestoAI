@@ -9,6 +9,7 @@ import { waitUntil } from '@vercel/functions';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { query, withTransaction } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
+import { buildSegmentQuery, computeRFM, RFM_LABELS } from '../services/segments.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -58,10 +59,19 @@ router.post('/', authorize('campaigns.manage'), async (req, res, next) => {
   }
 });
 
+const recipientsSchema = z.object({
+  segment_id: z.string().uuid().optional(),
+  rfm_label: z.enum(RFM_LABELS).optional(),
+}).refine((d) => !(d.segment_id && d.rfm_label), { message: 'Pass segment_id or rfm_label, not both' });
+
 // ── POST /api/campaigns/:id/recipients ──
-// Populate recipients from all customers for this tenant
+// Populate recipients from all customers for this tenant by default, or —
+// impl-10's broadcast tie-in — from one custom segment (segment_id) or one
+// built-in RFM label (rfm_label) when given.
 router.post('/:id/recipients', authorize('campaigns.manage'), async (req, res, next) => {
   try {
+    const data = recipientsSchema.parse(req.body);
+
     // Verify campaign ownership
     const campRes = await query(
       'SELECT id FROM broadcast_campaigns WHERE id = $1 AND tenant_id = $2',
@@ -74,17 +84,42 @@ router.post('/:id/recipients', authorize('campaigns.manage'), async (req, res, n
     // Clear existing recipients (allow re-population)
     await query('DELETE FROM broadcast_recipients WHERE campaign_id = $1', [req.params.id]);
 
-    // Add all customers as recipients
-    const result = await query(
-      `INSERT INTO broadcast_recipients (campaign_id, customer_id, status)
-       SELECT $1, c.id, 'pending'
-       FROM customers c
-       WHERE c.tenant_id = $2 AND c.phone IS NOT NULL
-       RETURNING id`,
-      [req.params.id, req.user.tenant_id],
-    );
+    let customerIds = null; // null = no restriction, every customer with a phone
+    if (data.segment_id) {
+      const segRes = await query('SELECT * FROM customer_segments WHERE id = $1 AND tenant_id = $2', [data.segment_id, req.user.tenant_id]);
+      if (segRes.rows.length === 0) {
+        return res.status(404).json({ error: { message: 'Segment not found' } });
+      }
+      const { sql, params } = buildSegmentQuery(req.user.tenant_id, segRes.rows[0].filter_rules);
+      const matched = await query(sql, params);
+      customerIds = matched.rows.map((c) => c.id);
+    } else if (data.rfm_label) {
+      const scored = await computeRFM(req.user.tenant_id, query);
+      customerIds = scored.filter((c) => c.segment === data.rfm_label).map((c) => c.id);
+    }
+
+    const result = customerIds === null
+      ? await query(
+          `INSERT INTO broadcast_recipients (campaign_id, customer_id, status)
+           SELECT $1, c.id, 'pending'
+           FROM customers c
+           WHERE c.tenant_id = $2 AND c.phone IS NOT NULL
+           RETURNING id`,
+          [req.params.id, req.user.tenant_id],
+        )
+      : await query(
+          `INSERT INTO broadcast_recipients (campaign_id, customer_id, status)
+           SELECT $1, c.id, 'pending'
+           FROM customers c
+           WHERE c.tenant_id = $2 AND c.phone IS NOT NULL AND c.id = ANY($3::uuid[])
+           RETURNING id`,
+          [req.params.id, req.user.tenant_id, customerIds],
+        );
     res.json({ added: result.rows.length });
   } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: { message: err.errors[0].message } });
+    }
     next(err);
   }
 });

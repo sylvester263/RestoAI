@@ -207,13 +207,28 @@ function CustomerProfile({ id, onTagsChanged }) {
   );
 }
 
+const RFM_COLORS = {
+  'Champions': 'bg-emerald-50 border-emerald-200 text-emerald-700',
+  'Loyal customers': 'bg-teal-50 border-teal-200 text-teal-700',
+  'Recent/promising': 'bg-blue-50 border-blue-200 text-blue-700',
+  'Needs attention': 'bg-amber-50 border-amber-200 text-amber-700',
+  'About to sleep': 'bg-orange-50 border-orange-200 text-orange-700',
+  'Cannot lose them': 'bg-red-50 border-red-200 text-red-700',
+  'Lost': 'bg-gray-50 border-gray-200 text-gray-500',
+};
+
 function Segments() {
   const [segments, setSegments] = useState([]);
+  const [rfmSummary, setRfmSummary] = useState([]);
+  const [rfmLoading, setRfmLoading] = useState(true);
   const [showNew, setShowNew] = useState(false);
   const [preview, setPreview] = useState(null);
+  const [rfmPreview, setRfmPreview] = useState(null);
 
   const load = useCallback(() => {
     api.getSegments().then((res) => setSegments(res.segments));
+    setRfmLoading(true);
+    api.getRfmSegments().then((res) => setRfmSummary(res.summary)).finally(() => setRfmLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -223,9 +238,36 @@ function Segments() {
     setPreview({ segment: seg, ...res });
   }
 
+  async function handleRfmPreview(label) {
+    const res = await api.getRfmSegmentCustomers(label);
+    setRfmPreview(res);
+  }
+
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-6">
+        <h2 className="mb-1 text-sm font-semibold text-gray-700">RFM segments</h2>
+        <p className="mb-3 text-xs text-gray-500">Built in — every customer with an order, scored by recency, frequency, and spend.</p>
+        {rfmLoading ? (
+          <p className="text-sm text-gray-400">Scoring customers...</p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {rfmSummary.map((s) => (
+              <button
+                key={s.label}
+                onClick={() => handleRfmPreview(s.label)}
+                className={`rounded-lg border p-3 text-left transition-opacity hover:opacity-80 ${RFM_COLORS[s.label] || 'bg-gray-50 border-gray-200 text-gray-600'}`}
+              >
+                <p className="text-lg font-bold">{s.count}</p>
+                <p className="text-xs font-medium">{s.label}</p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-700">Custom segments</h2>
         <button onClick={() => setShowNew(true)} className="btn-primary"><Users className="h-4 w-4" /> New Segment</button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -246,6 +288,12 @@ function Segments() {
 
       {showNew && <NewSegmentModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load(); }} />}
       {preview && <PreviewModal data={preview} onClose={() => setPreview(null)} />}
+      {rfmPreview && (
+        <PreviewModal
+          data={{ segment: { name: rfmPreview.label }, customers: rfmPreview.customers, count: rfmPreview.count }}
+          onClose={() => setRfmPreview(null)}
+        />
+      )}
     </div>
   );
 }

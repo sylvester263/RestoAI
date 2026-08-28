@@ -100,3 +100,52 @@ export function authorize(...permissionKeys) {
     }
   };
 }
+
+// ── impl-25 branch-access scoping ──
+// Hard-locked, not a UI default: a non-owner sees only branches they're
+// explicitly granted in user_branch_access (see migrate.js for the seeding
+// rationale). Cached the same shape as getRolePermissions above — per
+// (tenant, user), short TTL, explicitly invalidated on a grant change.
+const branchAccessCache = new Map(); // `${tenantId}:${userId}` -> { at, branchIds: Set<string> }
+
+async function getBranchAccessRows(tenantId, userId) {
+  const key = `${tenantId}:${userId}`;
+  const cached = branchAccessCache.get(key);
+  if (cached && Date.now() - cached.at < CACHE_TTL_MS) {
+    return cached.branchIds;
+  }
+  const result = await query('SELECT branch_id FROM user_branch_access WHERE user_id = $1', [userId]);
+  const branchIds = new Set(result.rows.map((r) => r.branch_id));
+  branchAccessCache.set(key, { at: Date.now(), branchIds });
+  return branchIds;
+}
+
+export function invalidateBranchAccessCache(tenantId, userId) {
+  branchAccessCache.delete(`${tenantId}:${userId}`);
+}
+
+/**
+ * Attaches req.user.branchAccess: `null` means unrestricted (owner — checked
+ * by role, no DB row needed, same shape as authorize()'s owner bypass), a
+ * `Set` means restricted to exactly those branch_ids (possibly empty, for a
+ * non-owner with nothing assigned yet). Must follow authenticate(). Routes
+ * using this must never trust a client-supplied branch_id alone — always
+ * check it against req.user.branchAccess.
+ */
+export async function attachBranchAccess(req, res, next) {
+  if (req.user.role === 'owner') {
+    req.user.branchAccess = null;
+    return next();
+  }
+  try {
+    req.user.branchAccess = await getBranchAccessRows(req.user.tenant_id, req.user.id);
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/** true if req.user (after attachBranchAccess) may see this branch_id. */
+export function canSeeBranch(req, branchId) {
+  return req.user.branchAccess === null || req.user.branchAccess.has(branchId);
+}
