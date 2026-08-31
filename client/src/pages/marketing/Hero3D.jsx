@@ -31,6 +31,22 @@ function usePrefersReducedMotion() {
   return reduced;
 }
 
+// Matches Tailwind's `sm` breakpoint used everywhere else on this page —
+// below it the WebGL scene never even loads, per the perf budget in
+// impl-26 (mid-range phones are the actual audience here).
+function useIsMobile() {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 639px)');
+    setMobile(mq.matches);
+    const handler = (e) => setMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
+  return mobile;
+}
+
 // Same physical footprint as the 3D phone, so swapping between the two
 // never shifts hero layout.
 function StaticPhoneFallback() {
@@ -49,14 +65,17 @@ function StaticPhoneFallback() {
 export default function Hero3D() {
   const [webglOk, setWebglOk] = useState(null);
   const reducedMotion = usePrefersReducedMotion();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     setWebglOk(supportsWebGL());
   }, []);
 
-  // Still checking capability, or no WebGL — the static image never leaves
-  // a blank hero, on this first render or on an incapable device.
-  if (webglOk === null || webglOk === false) {
+  // Mobile skips the 3D scene entirely — the static image, not the WebGL
+  // canvas or its lazy chunk, so nothing 3D-related loads on a phone.
+  // Same fallback while capability is still being checked, or on a device
+  // with no WebGL at all.
+  if (isMobile || webglOk === null || webglOk === false) {
     return <StaticPhoneFallback />;
   }
 
