@@ -5,7 +5,7 @@ import {
   ChefHat, ArrowRight, CheckCircle2, Loader2, Menu as MenuIcon, X, ChevronDown,
   ShieldCheck, Users, Bike, TrendingDown, Scale, Flame,
 } from 'lucide-react';
-import Hero3D from './Hero3D';
+import HeroImage from './HeroImage';
 import ScrollReveal from './ScrollReveal';
 import ScreenshotFrame from './ScreenshotFrame';
 import AITeamSection from './AITeamSection';
@@ -252,7 +252,7 @@ function Hero() {
         </div>
       </div>
       <div className="h-80 sm:h-96 lg:h-[30rem]">
-        <Hero3D />
+        <HeroImage />
       </div>
     </section>
   );
