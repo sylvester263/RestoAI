@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { toast, confirmAction } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import { Plus, QrCode, X } from 'lucide-react';
 
 export default function Tables() {
@@ -45,17 +48,19 @@ export default function Tables() {
       setNewTableNumber('');
       loadTables();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
   async function handleCloseSession(sessionId) {
-    if (!confirm('Close this table session? This should only be done after the bill is settled.')) return;
+    const ok = await confirmAction('Close this table session?', 'This should only be done after the bill is settled.');
+    if (!ok) return;
     try {
       await api.closeTableSession(sessionId);
+      toast.success('Session closed');
       loadTables();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -84,7 +89,7 @@ export default function Tables() {
       </form>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">Loading tables...</div>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"><Skeleton.Card /><Skeleton.Card /><Skeleton.Card /><Skeleton.Card /></div>
       ) : (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {tables.map((t) => (
@@ -114,19 +119,13 @@ export default function Tables() {
       )}
 
       {qrTable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setQrTable(null)}>
-          <div className="card w-full max-w-xs text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Table {qrTable.table_number}</h2>
-              <button onClick={() => setQrTable(null)}><X className="h-5 w-5 text-gray-400" /></button>
-            </div>
-            <div className="flex justify-center rounded-lg bg-white p-4">
-              <QRCodeSVG value={qrUrl} size={200} />
-            </div>
-            <p className="mt-3 break-all text-xs text-gray-400">{qrUrl}</p>
-            <p className="mt-2 text-xs text-gray-500">{tenant?.name}</p>
+        <Modal open={true} onClose={() => setQrTable(null)} title={`Table ${qrTable.table_number}`} size="sm">
+          <div className="flex justify-center rounded-lg bg-white p-4">
+            <QRCodeSVG value={qrUrl} size={200} />
           </div>
-        </div>
+          <p className="mt-3 break-all text-xs text-gray-400">{qrUrl}</p>
+          <p className="mt-2 text-xs text-gray-500">{tenant?.name}</p>
+        </Modal>
       )}
     </div>
   );

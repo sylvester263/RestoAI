@@ -29,7 +29,11 @@ async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
 
   if (res.status === 401) {
+    // Clear all auth state — not just the token — so AuthProvider doesn't
+    // restore a stale user from localStorage after the redirect.
     localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('tenant');
     window.location.href = '/login';
     throw new Error('Session expired');
   }
@@ -266,6 +270,10 @@ export const api = {
   checkSubdomain: (value) => request(`/landing-page/subdomain-check?value=${encodeURIComponent(value)}`),
   publishLandingPage: (published = true) =>
     request('/landing-page/publish', { method: 'POST', body: JSON.stringify({ published }) }),
+  submitCustomDomain: (domain) =>
+    request('/landing-page/custom-domain', { method: 'POST', body: JSON.stringify({ domain }) }),
+  verifyCustomDomain: () =>
+    request('/landing-page/custom-domain/verify', { method: 'POST', body: JSON.stringify({}) }),
 
   // Agentic AI systems (impl-14..21)
   getAgentSettings: () => request('/agents/settings'),

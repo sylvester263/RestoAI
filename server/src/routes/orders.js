@@ -7,6 +7,7 @@ import { awardPointsForOrder } from '../services/loyalty.js';
 import { sendPushToCustomer } from '../services/push.js';
 import { markCodPaidOnDelivery, getPaymentsForOrders } from '../services/payments.js';
 import { completeReferralIfEligible } from '../services/coupons.js';
+import { emit } from '../services/event-bus.js';
 
 const router = Router();
 router.use(authenticate);
@@ -211,6 +212,12 @@ router.patch('/:id/status', authorize('orders.status_update'), async (req, res, 
 
     // Fire-and-forget: WhatsApp/push notification, loyalty, COD payment mark-paid
     fireStatusChangeSideEffects(req.user.tenant_id, result.rows[0], status);
+
+    // Real-time: notify kitchen display and other connected clients
+    emit(`kitchen:${req.user.tenant_id}`, 'order:status', { orderId: req.params.id, status });
+    if (result.rows[0].branch_id) {
+      emit(`token-board:${result.rows[0].branch_id}`, 'tokens:changed', {});
+    }
   } catch (err) {
     next(err);
   }

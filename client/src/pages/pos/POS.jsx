@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
+import { toast, confirmAction } from '../../components/ui/toast';
+import Modal from '../../components/ui/Modal';
+import usePolling from '../../hooks/usePolling';
+import useKeyboardShortcuts from '../../hooks/useKeyboardShortcuts';
+import useEvents from '../../hooks/useEvents';
 import {
   Plus, Minus, X, Receipt, Phone, UtensilsCrossed,
   Clock, Percent, CreditCard, Loader2, Trash2, Pause, Play,
@@ -36,6 +41,7 @@ export default function POS() {
   const [shift, setShift] = useState(null);
   const [showTaxSettings, setShowTaxSettings] = useState(false);
   const [receiptOrderId, setReceiptOrderId] = useState(null);
+  const [voidItemTarget, setVoidItemTarget] = useState(null);
 
   const loadTabs = useCallback(async (bId) => {
     if (!bId) return;
@@ -76,20 +82,25 @@ export default function POS() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!branchId) return;
+  // Adaptive polling — tabs list + shift
+  usePolling(() => {
     loadTabs(branchId);
     loadShift(branchId);
-    const interval = setInterval(() => loadTabs(branchId), 10000);
-    return () => clearInterval(interval);
-  }, [branchId, loadTabs, loadShift]);
+  }, 10000, { enabled: !!branchId });
 
-  useEffect(() => {
-    loadDetail(selectedId);
-    if (!selectedId) return;
-    const interval = setInterval(() => loadDetail(selectedId), 8000);
-    return () => clearInterval(interval);
-  }, [selectedId, loadDetail]);
+  // Adaptive polling — selected tab detail
+  usePolling(() => loadDetail(selectedId), 8000, { enabled: !!selectedId });
+
+  // SSE real-time push for POS tab updates
+  useEvents(`pos:${branchId}`, () => { loadTabs(branchId); if (selectedId) loadDetail(selectedId); }, 10000, { enabled: !!branchId });
+
+  // POS keyboard shortcuts
+  useKeyboardShortcuts([
+    { key: 'n', callback: () => setShowNewTab(true) },
+    { key: 'Enter', ctrl: true, callback: () => sendRound(), when: 'always' },
+    { key: 'h', ctrl: true, callback: () => { if (selectedId) handleHold(); } },
+    { key: 'Escape', callback: () => { if (selectedId) selectTab(null); } },
+  ]);
 
   function selectTab(id) {
     setSelectedId(id);
@@ -131,13 +142,25 @@ export default function POS() {
   }
 
   async function handleVoid() {
-    if (!confirm('Void this tab? This cannot be undone.')) return;
+    const ok = await confirmAction('Void this tab?', 'This cannot be undone.');
+    if (!ok) return;
     try {
       await api.voidPosTab(selectedId);
       setSelectedId(null);
       loadTabs(branchId);
     } catch (err) {
       setError(err.message);
+    }
+  }
+
+  async function confirmVoidItem() {
+    if (!voidItemTarget) return;
+    try {
+      await api.voidPosTabItem(voidItemTarget.tabId, { order_item_id: voidItemTarget.itemId, reason: voidItemTarget.reason });
+      loadDetail(selectedId);
+      setVoidItemTarget(null);
+    } catch (err) {
+      toast.error(err.message);
     }
   }
 
@@ -248,6 +271,7 @@ export default function POS() {
             onDiscounted={() => loadDetail(selectedId)}
             onChanged={() => loadDetail(selectedId)}
             onSettled={(orderId) => { setSelectedId(null); loadTabs(branchId); setReceiptOrderId(orderId); }}
+            onShowVoidModal={setVoidItemTarget}
           />
         )}
       </div>
@@ -261,6 +285,18 @@ export default function POS() {
       )}
       {showTaxSettings && <TaxSettingsModal branchId={branchId} onClose={() => setShowTaxSettings(false)} />}
       {receiptOrderId && <ReceiptModal orderId={receiptOrderId} canRefund={canRefund} onClose={() => setReceiptOrderId(null)} />}
+
+      {/* Void item reason modal */}
+      <Modal open={!!voidItemTarget} onClose={() => setVoidItemTarget(null)} title="Void Item" size="sm" confirmLabel="Void Item" onConfirm={confirmVoidItem} variant="danger">
+        <p className="mb-2 text-sm text-gray-600">Enter the reason for voiding this item:</p>
+        <textarea
+          className="input min-h-[80px]"
+          placeholder="Reason for voiding…"
+          value={voidItemTarget?.reason || ''}
+          onChange={(e) => setVoidItemTarget({ ...voidItemTarget, reason: e.target.value })}
+          autoFocus
+        />
+      </Modal>
     </div>
   );
 }
@@ -337,20 +373,17 @@ function OpenShiftModal({ branchId, onClose, onOpened }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-80 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold">Open Shift</h3>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Opening cash float (Rs.)</label>
-        <input type="number" min="0" className="input mb-4" value={floatAmount} onChange={(e) => setFloatAmount(e.target.value)} autoFocus />
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleOpen} disabled={saving} className="btn-primary">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Open Shift'}
-          </button>
-        </div>
+    <Modal open={true} onClose={onClose} title="Open Shift" size="sm">
+      <label className="mb-1 block text-xs font-medium text-gray-600">Opening cash float (Rs.)</label>
+      <input type="number" min="0" className="input mb-4" value={floatAmount} onChange={(e) => setFloatAmount(e.target.value)} autoFocus />
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleOpen} disabled={saving} className="btn-primary">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Open Shift'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -378,66 +411,60 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
     const { shift: closed, report } = result;
     const variance = Number(closed.variance);
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-        <div className="max-h-[85vh] w-96 overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-          <h3 className="mb-1 text-lg font-semibold">Z-Report</h3>
-          <p className="mb-4 text-xs text-gray-500">Shift closed {new Date(closed.closed_at).toLocaleString()}</p>
+      <Modal open={true} onClose={onClosed} title="Z-Report" size="md">
+        <p className="mb-4 text-xs text-gray-500">Shift closed {new Date(closed.closed_at).toLocaleString()}</p>
 
-          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">By payment method</p>
-          <div className="mb-4 space-y-1 text-sm">
-            {report.sales_by_method.length === 0 && <p className="text-gray-400">No sales this shift</p>}
-            {report.sales_by_method.map((m) => (
-              <div key={m.method} className="flex justify-between"><span className="text-gray-500">{METHOD_LABEL[m.method] || m.method}</span><span>Rs. {m.total.toLocaleString()}</span></div>
-            ))}
-          </div>
-
-          {report.sales_by_category.length > 0 && (
-            <>
-              <p className="mb-1 border-t border-gray-100 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">By category</p>
-              <div className="mb-4 space-y-1 text-sm text-gray-600">
-                {report.sales_by_category.map((c) => (
-                  <div key={c.category} className="flex justify-between"><span>{c.category}</span><span>Rs. {c.total.toLocaleString()}</span></div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <div className="mb-4 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-600">
-            <div className="flex justify-between"><span>Discounts given</span><span>-Rs. {report.discount_total.toLocaleString()}</span></div>
-            <div className="flex justify-between"><span>Voids ({report.voids.count})</span><span>Rs. {report.voids.total.toLocaleString()}</span></div>
-            <div className="flex justify-between"><span>Refunds ({report.refunds.count})</span><span>Rs. {report.refunds.total.toLocaleString()}</span></div>
-          </div>
-
-          <div className="space-y-1 border-t border-gray-100 pt-3 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Opening float</span><span>Rs. {Number(closed.opening_cash_float).toLocaleString()}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Expected cash</span><span>Rs. {Number(closed.closing_cash_expected).toLocaleString()}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Counted cash</span><span>Rs. {Number(closed.closing_cash_counted).toLocaleString()}</span></div>
-            <div className={`flex justify-between font-bold ${variance === 0 ? 'text-gray-900' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>
-              <span>Variance</span><span>{variance > 0 ? '+' : ''}Rs. {variance.toLocaleString()}</span>
-            </div>
-          </div>
-
-          <button onClick={onClosed} className="btn-primary mt-4 w-full justify-center">Done</button>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">By payment method</p>
+        <div className="mb-4 space-y-1 text-sm">
+          {report.sales_by_method.length === 0 && <p className="text-gray-400">No sales this shift</p>}
+          {report.sales_by_method.map((m) => (
+            <div key={m.method} className="flex justify-between"><span className="text-gray-500">{METHOD_LABEL[m.method] || m.method}</span><span>Rs. {m.total.toLocaleString()}</span></div>
+          ))}
         </div>
-      </div>
+
+        {report.sales_by_category.length > 0 && (
+          <>
+            <p className="mb-1 border-t border-gray-100 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">By category</p>
+            <div className="mb-4 space-y-1 text-sm text-gray-600">
+              {report.sales_by_category.map((c) => (
+                <div key={c.category} className="flex justify-between"><span>{c.category}</span><span>Rs. {c.total.toLocaleString()}</span></div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="mb-4 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-600">
+          <div className="flex justify-between"><span>Discounts given</span><span>-Rs. {report.discount_total.toLocaleString()}</span></div>
+          <div className="flex justify-between"><span>Voids ({report.voids.count})</span><span>Rs. {report.voids.total.toLocaleString()}</span></div>
+          <div className="flex justify-between"><span>Refunds ({report.refunds.count})</span><span>Rs. {report.refunds.total.toLocaleString()}</span></div>
+        </div>
+
+        <div className="space-y-1 border-t border-gray-100 pt-3 text-sm">
+          <div className="flex justify-between"><span className="text-gray-500">Opening float</span><span>Rs. {Number(closed.opening_cash_float).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Expected cash</span><span>Rs. {Number(closed.closing_cash_expected).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Counted cash</span><span>Rs. {Number(closed.closing_cash_counted).toLocaleString()}</span></div>
+          <div className={`flex justify-between font-bold ${variance === 0 ? 'text-gray-900' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+            <span>Variance</span><span>{variance > 0 ? '+' : ''}Rs. {variance.toLocaleString()}</span>
+          </div>
+        </div>
+
+        <button onClick={onClosed} className="btn-primary mt-4 w-full justify-center">Done</button>
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-80 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold">Close Shift</h3>
-        <label className="mb-1 block text-xs font-medium text-gray-600">Counted cash in drawer (Rs.)</label>
-        <input type="number" min="0" className="input mb-4" value={counted} onChange={(e) => setCounted(e.target.value)} autoFocus />
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleClose} disabled={saving} className="btn-primary">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Close & View Z-Report'}
-          </button>
-        </div>
+    <Modal open={true} onClose={onClose} title="Close Shift" size="sm">
+      <label className="mb-1 block text-xs font-medium text-gray-600">Counted cash in drawer (Rs.)</label>
+      <input type="number" min="0" className="input mb-4" value={counted} onChange={(e) => setCounted(e.target.value)} autoFocus />
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleClose} disabled={saving} className="btn-primary">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Close & View Z-Report'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -472,38 +499,35 @@ function TaxSettingsModal({ branchId, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold">Tax Settings</h3>
-        {!config ? <Loader2 className="h-5 w-5 animate-spin text-gray-400" /> : (
-          <>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Tax authority</label>
-            <select className="input mb-3" value={authority} onChange={(e) => setAuthority(e.target.value)}>
-              <option value="NONE">Not registered / no tax</option>
-              <option value="PRA">PRA — Punjab</option>
-              <option value="SRB">SRB — Sindh</option>
-              <option value="KPRA">KPRA — Khyber Pakhtunkhwa</option>
-              <option value="BRA">BRA — Balochistan</option>
-            </select>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Tax rate (%)</label>
-            <input type="number" min="0" max="100" step="0.01" className="input mb-3" value={rate} onChange={(e) => setRate(e.target.value)} />
-            <label className="mb-1 block text-xs font-medium text-gray-600">Registration number (NTN/STRN, optional)</label>
-            <input className="input mb-4" value={regNumber} onChange={(e) => setRegNumber(e.target.value)} placeholder="e.g. 1234567-8" />
-            {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="btn-secondary">Cancel</button>
-              <button onClick={handleSave} disabled={saving} className="btn-primary">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <Modal open={true} onClose={onClose} title="Tax Settings">
+      {!config ? <Loader2 className="h-5 w-5 animate-spin text-gray-400" /> : (
+        <>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Tax authority</label>
+          <select className="input mb-3" value={authority} onChange={(e) => setAuthority(e.target.value)}>
+            <option value="NONE">Not registered / no tax</option>
+            <option value="PRA">PRA — Punjab</option>
+            <option value="SRB">SRB — Sindh</option>
+            <option value="KPRA">KPRA — Khyber Pakhtunkhwa</option>
+            <option value="BRA">BRA — Balochistan</option>
+          </select>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Tax rate (%)</label>
+          <input type="number" min="0" max="100" step="0.01" className="input mb-3" value={rate} onChange={(e) => setRate(e.target.value)} />
+          <label className="mb-1 block text-xs font-medium text-gray-600">Registration number (NTN/STRN, optional)</label>
+          <input className="input mb-4" value={regNumber} onChange={(e) => setRegNumber(e.target.value)} placeholder="e.g. 1234567-8" />
+          {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={handleSave} disabled={saving} className="btn-primary">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
-function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error, canDiscount, canRefund, onAddToCart, onChangeQty, onSendRound, onVoid, onHold, onDiscounted, onChanged, onSettled }) {
+function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error, canDiscount, canRefund, onAddToCart, onChangeQty, onSendRound, onVoid, onHold, onDiscounted, onChanged, onSettled, onShowVoidModal }) {
   const { tab, orders, subtotal } = detail;
   const [discountAmount, setDiscountAmount] = useState(tab.discount_amount > 0 ? String(tab.discount_amount) : '');
   const [discountReason, setDiscountReason] = useState(tab.discount_reason || '');
@@ -517,19 +541,12 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
       await api.applyPosTabDiscount(tab.id, { discount_amount: Number(discountAmount) || 0, discount_reason: discountReason || undefined });
       onDiscounted();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
-  async function handleVoidItem(orderItemId) {
-    const reason = prompt('Reason for voiding this item?');
-    if (!reason) return;
-    try {
-      await api.voidPosTabItem(tab.id, { order_item_id: orderItemId, reason });
-      onChanged();
-    } catch (err) {
-      alert(err.message);
-    }
+  function handleVoidItem(orderItemId) {
+    onShowVoidModal({ tabId: tab.id, itemId: orderItemId, reason: '' });
   }
 
   return (
@@ -701,45 +718,42 @@ function SettleModal({ tabId, estimatedTotal, onClose, onSettled }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-1 text-lg font-semibold">Settle Bill</h3>
-        <p className="mb-4 text-2xl font-bold text-gray-900">Rs. {estimatedTotal.toLocaleString()}</p>
+    <Modal open={true} onClose={onClose} title="Settle Bill">
+      <p className="mb-4 text-2xl font-bold text-gray-900">Rs. {estimatedTotal.toLocaleString()}</p>
 
-        <div className="mb-3 space-y-2">
-          {lines.map((line, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <select className="input" value={line.method} onChange={(e) => updateLine(i, 'method', e.target.value)}>
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="jazzcash">JazzCash</option>
-                <option value="easypaisa">EasyPaisa</option>
-              </select>
-              <input type="number" min="0" className="input" placeholder="Amount" value={line.amount} onChange={(e) => updateLine(i, 'amount', e.target.value)} />
-              {lines.length > 1 && (
-                <button onClick={() => removeLine(i)} className="shrink-0 text-gray-300 hover:text-red-500"><X className="h-4 w-4" /></button>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <button onClick={addLine} className="mb-4 text-xs font-medium text-brand-600 hover:underline">+ Split across another method</button>
-
-        {lines.length > 1 && (
-          <p className={`mb-3 text-sm ${Math.abs(remaining) < 1 ? 'text-green-600' : 'text-gray-500'}`}>
-            {Math.abs(remaining) < 1 ? 'Fully covered' : remaining > 0 ? `Rs. ${remaining.toLocaleString()} remaining` : `Rs. ${Math.abs(remaining).toLocaleString()} over`}
-          </p>
-        )}
-
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleSettle} disabled={settling} className="btn-primary">
-            {settling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm & Close Tab'}
-          </button>
-        </div>
+      <div className="mb-3 space-y-2">
+        {lines.map((line, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <select className="input" value={line.method} onChange={(e) => updateLine(i, 'method', e.target.value)}>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="jazzcash">JazzCash</option>
+              <option value="easypaisa">EasyPaisa</option>
+            </select>
+            <input type="number" min="0" className="input" placeholder="Amount" value={line.amount} onChange={(e) => updateLine(i, 'amount', e.target.value)} />
+            {lines.length > 1 && (
+              <button onClick={() => removeLine(i)} className="shrink-0 text-gray-300 hover:text-red-500"><X className="h-4 w-4" /></button>
+            )}
+          </div>
+        ))}
       </div>
-    </div>
+
+      <button onClick={addLine} className="mb-4 text-xs font-medium text-brand-600 hover:underline">+ Split across another method</button>
+
+      {lines.length > 1 && (
+        <p className={`mb-3 text-sm ${Math.abs(remaining) < 1 ? 'text-green-600' : 'text-gray-500'}`}>
+          {Math.abs(remaining) < 1 ? 'Fully covered' : remaining > 0 ? `Rs. ${remaining.toLocaleString()} remaining` : `Rs. ${Math.abs(remaining).toLocaleString()} over`}
+        </p>
+      )}
+
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleSettle} disabled={settling} className="btn-primary">
+          {settling ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm & Close Tab'}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -766,22 +780,19 @@ function TransferModal({ tabId, branchId, onClose, onTransferred }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-80 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold">Transfer Table</h3>
-        <select className="input mb-4" value={tableId} onChange={(e) => setTableId(e.target.value)}>
-          <option value="">Select a table…</option>
-          {tables.map((t) => <option key={t.id} value={t.id}>Table {t.table_number}{t.open_session_id ? ' (occupied)' : ''}</option>)}
-        </select>
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleTransfer} disabled={saving} className="btn-primary">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Move Table'}
-          </button>
-        </div>
+    <Modal open={true} onClose={onClose} title="Transfer Table" size="sm">
+      <select className="input mb-4" value={tableId} onChange={(e) => setTableId(e.target.value)}>
+        <option value="">Select a table…</option>
+        {tables.map((t) => <option key={t.id} value={t.id}>Table {t.table_number}{t.open_session_id ? ' (occupied)' : ''}</option>)}
+      </select>
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <div className="flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleTransfer} disabled={saving} className="btn-primary">
+          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Move Table'}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -880,32 +891,28 @@ function RefundModal({ orderId, maxAmount, onClose, onRefunded }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 print:hidden" onClick={onClose}>
-      <div className="w-80 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        {done ? (
-          <>
-            <h3 className="mb-2 text-lg font-semibold">Refund recorded</h3>
-            <p className="mb-4 text-sm text-gray-500">Rs. {(Number(amount) || 0).toLocaleString()} logged with an audit trail entry.</p>
-            <button onClick={onRefunded} className="btn-primary w-full justify-center">Done</button>
-          </>
-        ) : (
-          <>
-            <h3 className="mb-4 text-lg font-semibold">Refund</h3>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Amount (Rs.)</label>
-            <input type="number" min="0" max={maxAmount} className="input mb-3" value={amount} onChange={(e) => setAmount(e.target.value)} />
-            <label className="mb-1 block text-xs font-medium text-gray-600">Reason</label>
-            <input className="input mb-4" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. customer complaint" />
-            {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-            <div className="flex justify-end gap-2">
-              <button onClick={onClose} className="btn-secondary">Cancel</button>
-              <button onClick={handleRefund} disabled={saving} className="btn-primary">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm Refund'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+    <Modal open={true} onClose={onClose} title={done ? 'Refund recorded' : 'Refund'} size="sm" hideCloseButton={done}>
+      {done ? (
+        <>
+          <p className="mb-4 text-sm text-gray-500">Rs. {(Number(amount) || 0).toLocaleString()} logged with an audit trail entry.</p>
+          <button onClick={onRefunded} className="btn-primary w-full justify-center">Done</button>
+        </>
+      ) : (
+        <>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Amount (Rs.)</label>
+          <input type="number" min="0" max={maxAmount} className="input mb-3" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <label className="mb-1 block text-xs font-medium text-gray-600">Reason</label>
+          <input className="input mb-4" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. customer complaint" />
+          {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="btn-secondary">Cancel</button>
+            <button onClick={handleRefund} disabled={saving} className="btn-primary">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm Refund'}
+            </button>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
@@ -948,54 +955,48 @@ function NewTabModal({ branchId, onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">New Tab</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="mb-4 grid grid-cols-3 gap-2">
-          {['counter', 'dine_in', 'phone'].map((t) => {
-            const Icon = TYPE_ICON[t];
-            return (
-              <button
-                key={t}
-                onClick={() => setOrderType(t)}
-                className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-xs font-medium ${orderType === t ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600'}`}
-              >
-                <Icon className="h-5 w-5" />
-                {TYPE_LABEL[t]}
-              </button>
-            );
-          })}
-        </div>
-
-        {orderType === 'dine_in' && (
-          <div className="mb-3">
-            <label className="mb-1 block text-xs font-medium text-gray-600">Table</label>
-            <select className="input" value={tableId} onChange={(e) => setTableId(e.target.value)}>
-              <option value="">Select a table…</option>
-              {tables.map((t) => (
-                <option key={t.id} value={t.id}>Table {t.table_number}{t.open_session_id ? ' (occupied)' : ''}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        <div className="mb-3">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Customer name (optional)</label>
-          <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-        </div>
-        <div className="mb-4">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Phone (optional)</label>
-          <input className="input" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-        </div>
-
-        {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-        <button onClick={handleCreate} disabled={creating} className="btn-primary w-full justify-center">
-          {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Open Tab'}
-        </button>
+    <Modal open={true} onClose={onClose} title="New Tab">
+      <div className="mb-4 grid grid-cols-3 gap-2">
+        {['counter', 'dine_in', 'phone'].map((t) => {
+          const Icon = TYPE_ICON[t];
+          return (
+            <button
+              key={t}
+              onClick={() => setOrderType(t)}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-xs font-medium ${orderType === t ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600'}`}
+            >
+              <Icon className="h-5 w-5" />
+              {TYPE_LABEL[t]}
+            </button>
+          );
+        })}
       </div>
-    </div>
+
+      {orderType === 'dine_in' && (
+        <div className="mb-3">
+          <label className="mb-1 block text-xs font-medium text-gray-600">Table</label>
+          <select className="input" value={tableId} onChange={(e) => setTableId(e.target.value)}>
+            <option value="">Select a table…</option>
+            {tables.map((t) => (
+              <option key={t.id} value={t.id}>Table {t.table_number}{t.open_session_id ? ' (occupied)' : ''}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      <div className="mb-3">
+        <label className="mb-1 block text-xs font-medium text-gray-600">Customer name (optional)</label>
+        <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+      </div>
+      <div className="mb-4">
+        <label className="mb-1 block text-xs font-medium text-gray-600">Phone (optional)</label>
+        <input className="input" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
+      </div>
+
+      {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+      <button onClick={handleCreate} disabled={creating} className="btn-primary w-full justify-center">
+        {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Open Tab'}
+      </button>
+    </Modal>
   );
 }

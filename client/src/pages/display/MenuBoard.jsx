@@ -1,27 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { displayApi } from '../../lib/api';
+import usePolling from '../../hooks/usePolling';
 
 export default function MenuBoard() {
   const { branchId } = useParams();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await displayApi.getMenuBoard(branchId);
-        setItems(res.items);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    try {
+      const res = await displayApi.getMenuBoard(branchId);
+      setItems(res.items);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    load();
-    const interval = setInterval(load, 45000);
-    return () => clearInterval(interval);
   }, [branchId]);
+
+  usePolling(load, 30000, { bgInterval: 120000, enabled: !!branchId });
 
   if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-950 text-3xl text-gray-500">Loading menu...</div>;
 

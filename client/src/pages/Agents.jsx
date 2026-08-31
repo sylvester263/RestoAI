@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
 import {
   Sparkles, UserX, ShieldAlert, Wallet, Bike, ToggleLeft, ToggleRight,
 } from 'lucide-react';
@@ -51,7 +53,7 @@ export default function Agents() {
       const updated = await api.updateAgentSettings({ winback_enabled: !settings.winback_enabled });
       setSettings(updated);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setSavingSettings(false);
     }
@@ -62,8 +64,9 @@ export default function Agents() {
     try {
       const updated = await api.updateAgentSettings({ dispatch_mode: mode });
       setSettings(updated);
+      toast.success('Dispatch mode updated');
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setSavingSettings(false);
     }
@@ -73,8 +76,9 @@ export default function Agents() {
     try {
       await api.updateReconciliationFlagStatus(id, status);
       setReconFlags((flags) => flags.filter((f) => f.id !== id));
+      toast.success('Flag updated');
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -82,12 +86,13 @@ export default function Agents() {
     try {
       await api.updateAbuseFlagStatus(id, status);
       setAbuseFlags((flags) => flags.filter((f) => f.id !== id));
+      toast.success('Flag updated');
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading agents...</div>;
+  if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-40" /><div className="grid gap-6 lg:grid-cols-2"><Skeleton.Card /><Skeleton.Card /></div></div>;
 
   return (
     <div>

@@ -1,5 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../lib/api';
+import { toast, confirmAction } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Image, X, Beaker } from 'lucide-react';
 
 export default function Menu() {
@@ -44,14 +47,20 @@ export default function Menu() {
       }
       setEditing(null);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
   async function handleDelete(id) {
-    if (!confirm('Delete this item?')) return;
-    await api.deleteMenuItem(id);
-    setItems((prev) => prev.filter((i) => i.id !== id));
+    const ok = await confirmAction('Delete this item?', 'This cannot be undone.');
+    if (!ok) return;
+    try {
+      await api.deleteMenuItem(id);
+      setItems((prev) => prev.filter((i) => i.id !== id));
+      toast.success('Item deleted');
+    } catch (err) {
+      toast.error(err.message);
+    }
   }
 
   async function toggleAvailability(item) {
@@ -103,7 +112,7 @@ export default function Menu() {
       const res = await api.setMenuItemRecipe(editing.id, validLines);
       setRecipe(res.recipe);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setRecipeSaving(false);
     }
@@ -118,7 +127,7 @@ export default function Menu() {
       setItems((prev) => prev.map((i) => (i.id === editing.id ? res.item : i)));
       setForm((f) => ({ ...f, image_url: res.item.image_url }));
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setImgUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -127,13 +136,14 @@ export default function Menu() {
 
   async function handleImageRemove() {
     if (editing === 'new' || !form.image_url) return;
-    if (!confirm('Remove this photo?')) return;
+    const ok = await confirmAction('Remove this photo?');
+    if (!ok) return;
     try {
       await api.deleteMenuItemImage(editing.id);
       setItems((prev) => prev.map((i) => (i.id === editing.id ? { ...i, image_url: null } : i)));
       setForm((f) => ({ ...f, image_url: null }));
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -143,7 +153,7 @@ export default function Menu() {
     (i.category_name || '').toLowerCase().includes(search.toLowerCase()),
   );
 
-  if (loading) return <div className="flex items-center justify-center py-20">Loading menu...</div>;
+  if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-32" /><Skeleton.Table rows={8} cols={5} /></div>;
 
   return (
     <div>

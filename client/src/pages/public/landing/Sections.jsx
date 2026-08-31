@@ -103,8 +103,9 @@ export function About({ content, config, dark, bg }) {
   );
 }
 
-export function MenuHighlights({ menuItems, tenant, config, dark, bg, currency }) {
+export function MenuHighlights({ menuItems, tenant, config, dark, bg, currency, theme }) {
   if (!menuItems || menuItems.length === 0) return null;
+  const accent = theme?.accent_color || '#16a34a';
   return (
     <section className="px-6 py-16 sm:px-12" style={{ backgroundColor: bg }}>
       <div className="mx-auto max-w-5xl">
@@ -120,7 +121,7 @@ export function MenuHighlights({ menuItems, tenant, config, dark, bg, currency }
                 {item.description && (
                   <p className={`mt-1 text-sm line-clamp-2 ${dark ? 'text-gray-400' : 'text-gray-500'}`}>{item.description}</p>
                 )}
-                <p className="mt-2 text-sm font-semibold" style={{ color: '#16a34a' }}>
+                <p className="mt-2 text-sm font-semibold" style={{ color: accent }}>
                   {currency} {Number(item.price).toLocaleString()}
                 </p>
               </div>
@@ -128,7 +129,7 @@ export function MenuHighlights({ menuItems, tenant, config, dark, bg, currency }
           ))}
         </div>
         <div className="mt-8 text-center">
-          <a href={`/order/${tenant.slug}`} className="text-sm font-semibold underline" style={{ color: dark ? '#fff' : '#16a34a' }}>
+          <a href={`/order/${tenant.slug}`} className="text-sm font-semibold underline" style={{ color: dark ? '#fff' : accent }}>
             View full menu &amp; order →
           </a>
         </div>
@@ -178,9 +179,10 @@ export function Testimonials({ testimonials, config, dark, bg }) {
   );
 }
 
-export function HoursLocation({ content, config, dark, bg }) {
+export function HoursLocation({ content, config, dark, bg, theme }) {
   const hl = content?.hours_location || {};
   if (!hl.address && !hl.hours) return null;
+  const accent = theme?.accent_color || '#16a34a';
   return (
     <section className="px-6 py-16 sm:px-12" style={{ backgroundColor: bg }}>
       <div className="mx-auto grid max-w-3xl gap-8 sm:grid-cols-2">
@@ -194,7 +196,7 @@ export function HoursLocation({ content, config, dark, bg }) {
               href={`https://maps.google.com/?q=${encodeURIComponent(hl.address)}`}
               target="_blank" rel="noreferrer"
               className="mt-2 inline-block text-sm font-medium underline"
-              style={{ color: dark ? '#fff' : '#16a34a' }}
+              style={{ color: dark ? '#fff' : accent }}
             >
               View on Google Maps
             </a>

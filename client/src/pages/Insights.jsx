@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
+import { toast } from '../components/ui/toast';
 import { Send, Sparkles, Loader2, TrendingUp } from 'lucide-react';
 
 const INSIGHT_STYLES = {
@@ -34,7 +35,7 @@ export default function Insights() {
       await api.updateMenuInsightStatus(id, status);
       setMenuInsights((prev) => prev.filter((i) => i.id !== id));
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 

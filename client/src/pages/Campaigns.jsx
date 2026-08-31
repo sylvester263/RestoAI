@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { toast, confirmAction } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import { Megaphone, Plus, Send, Users, CheckCircle2, XCircle, Clock, Eye, Loader2 } from 'lucide-react';
 
 const STATUS_COLORS = {
@@ -42,7 +45,7 @@ export default function Campaigns() {
       setForm({ name: '', message_template: '' });
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -50,24 +53,25 @@ export default function Campaigns() {
     setActionLoading('recipients-' + id);
     try {
       const res = await api.addRecipients(id, body);
-      alert(`Added ${res.added} recipients`);
+      toast.success(`Added ${res.added} recipients`);
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setActionLoading('');
     }
   }
 
   async function handleSend(id) {
-    if (!confirm('Send this campaign to all recipients?')) return;
+    const ok = await confirmAction('Send this campaign to all recipients?');
+    if (!ok) return;
     setActionLoading('send-' + id);
     try {
       await api.sendCampaign(id);
       load();
       pollCampaignStatus(id);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
       setActionLoading('');
     }
   }
@@ -116,7 +120,7 @@ export default function Campaigns() {
       </div>
 
       {loading ? (
-        <div className="py-20 text-center text-gray-400">Loading campaigns...</div>
+        <Skeleton.List rows={4} />
       ) : campaigns.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400">
           <Megaphone className="mb-4 h-16 w-16" />
@@ -172,39 +176,34 @@ export default function Campaigns() {
       )}
 
       {/* Create campaign modal */}
-      {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowForm(false)}>
-          <div className="w-[32rem] rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">New Broadcast Campaign</h3>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Campaign Name</label>
-                <input className="input" placeholder="e.g. Weekend Special Offer" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Message Template</label>
-                <p className="mb-2 text-xs text-gray-400">Use <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{'{{name}}'}</code> for customer's name</p>
-                <textarea
-                  className="input min-h-[120px]"
-                  placeholder="Hi {{name}}! This weekend enjoy 20% off on all Karahi dishes. Order now!"
-                  value={form.message_template}
-                  onChange={(e) => setForm({ ...form, message_template: e.target.value })}
-                />
-              </div>
-              {previewMessage && form.message_template && (
-                <div className="rounded-lg bg-green-50 p-3">
-                  <p className="mb-1 text-xs font-medium text-green-700">Preview (as seen by customer):</p>
-                  <p className="text-sm whitespace-pre-wrap text-green-900">{previewMessage}</p>
-                </div>
-              )}
-            </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
-              <button onClick={handleCreate} disabled={!form.name || !form.message_template} className="btn-primary">Create Campaign</button>
-            </div>
+      <Modal open={showForm} onClose={() => setShowForm(false)} title="New Broadcast Campaign" size="lg">
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Campaign Name</label>
+            <input className="input" placeholder="e.g. Weekend Special Offer" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Message Template</label>
+            <p className="mb-2 text-xs text-gray-400">Use <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{'{{name}}'}</code> for customer's name</p>
+            <textarea
+              className="input min-h-[120px]"
+              placeholder="Hi {{name}}! This weekend enjoy 20% off on all Karahi dishes. Order now!"
+              value={form.message_template}
+              onChange={(e) => setForm({ ...form, message_template: e.target.value })}
+            />
+          </div>
+          {previewMessage && form.message_template && (
+            <div className="rounded-lg bg-green-50 p-3">
+              <p className="mb-1 text-xs font-medium text-green-700">Preview (as seen by customer):</p>
+              <p className="text-sm whitespace-pre-wrap text-green-900">{previewMessage}</p>
+            </div>
+          )}
         </div>
-      )}
+        <div className="mt-6 flex justify-end gap-2">
+          <button onClick={() => setShowForm(false)} className="btn-secondary">Cancel</button>
+          <button onClick={handleCreate} disabled={!form.name || !form.message_template} className="btn-primary">Create Campaign</button>
+        </div>
+      </Modal>
 
       {/* Recipient source picker */}
       {recipientPickerFor && (
@@ -215,29 +214,24 @@ export default function Campaigns() {
       )}
 
       {/* Status detail modal */}
-      {selected && stats && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setSelected(null); setStats(null); }}>
-          <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-2 text-lg font-semibold">{selected.name}</h3>
-            <span className={`badge mb-4 inline-block ${STATUS_COLORS[selected.status] || ''}`}>{selected.status}</span>
-            <div className="mb-4 rounded-lg bg-gray-50 p-3">
-              <p className="text-sm whitespace-pre-wrap text-gray-700">{selected.message_template}</p>
-            </div>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between"><span className="text-gray-500">Total recipients</span><span className="font-semibold">{stats.pending + stats.sent + stats.failed + stats.skipped_no_window}</span></div>
-              <div className="flex justify-between text-green-600"><span>Sent</span><span className="font-semibold">{stats.sent}</span></div>
-              <div className="flex justify-between text-red-600"><span>Failed</span><span className="font-semibold">{stats.failed}</span></div>
-              <div className="flex justify-between text-gray-400"><span>Pending</span><span className="font-semibold">{stats.pending}</span></div>
-              {stats.skipped_no_window > 0 && (
-                <div className="flex justify-between text-yellow-600"><span>Skipped (outside window)</span><span className="font-semibold">{stats.skipped_no_window}</span></div>
-              )}
-            </div>
-            <div className="mt-6 flex justify-end">
-              <button onClick={() => { setSelected(null); setStats(null); }} className="btn-secondary">Close</button>
-            </div>
-          </div>
+      <Modal open={!!(selected && stats)} onClose={() => { setSelected(null); setStats(null); }} title={selected?.name || ''}>
+        <span className={`badge mb-4 inline-block ${STATUS_COLORS[selected?.status] || ''}`}>{selected?.status}</span>
+        <div className="mb-4 rounded-lg bg-gray-50 p-3">
+          <p className="text-sm whitespace-pre-wrap text-gray-700">{selected?.message_template}</p>
         </div>
-      )}
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between"><span className="text-gray-500">Total recipients</span><span className="font-semibold">{stats?.pending + stats?.sent + stats?.failed + stats?.skipped_no_window}</span></div>
+          <div className="flex justify-between text-green-600"><span>Sent</span><span className="font-semibold">{stats?.sent}</span></div>
+          <div className="flex justify-between text-red-600"><span>Failed</span><span className="font-semibold">{stats?.failed}</span></div>
+          <div className="flex justify-between text-gray-400"><span>Pending</span><span className="font-semibold">{stats?.pending}</span></div>
+          {stats?.skipped_no_window > 0 && (
+            <div className="flex justify-between text-yellow-600"><span>Skipped (outside window)</span><span className="font-semibold">{stats.skipped_no_window}</span></div>
+          )}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <button onClick={() => { setSelected(null); setStats(null); }} className="btn-secondary">Close</button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -268,46 +262,43 @@ function RecipientPickerModal({ onClose, onPick }) {
   const confirmDisabled = (source === 'segment' && !segmentId) || (source === 'rfm' && !rfmLabel);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="mb-4 text-lg font-semibold">Choose recipients</h3>
-        {loading ? (
-          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
-        ) : (
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
-              <input type="radio" name="source" checked={source === 'all'} onChange={() => setSource('all')} />
-              All customers
-            </label>
+    <Modal open={true} onClose={onClose} title="Choose recipients">
+      {loading ? (
+        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      ) : (
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+            <input type="radio" name="source" checked={source === 'all'} onChange={() => setSource('all')} />
+            All customers
+          </label>
 
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
-              <input type="radio" name="source" checked={source === 'segment'} onChange={() => setSource('segment')} disabled={segments.length === 0} />
-              A saved segment {segments.length === 0 && <span className="text-xs text-gray-400">(none yet)</span>}
-            </label>
-            {source === 'segment' && (
-              <select className="input ml-6 w-[calc(100%-1.5rem)]" value={segmentId} onChange={(e) => setSegmentId(e.target.value)}>
-                <option value="">Select a segment…</option>
-                {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            )}
+          <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+            <input type="radio" name="source" checked={source === 'segment'} onChange={() => setSource('segment')} disabled={segments.length === 0} />
+            A saved segment {segments.length === 0 && <span className="text-xs text-gray-400">(none yet)</span>}
+          </label>
+          {source === 'segment' && (
+            <select className="input ml-6 w-[calc(100%-1.5rem)]" value={segmentId} onChange={(e) => setSegmentId(e.target.value)}>
+              <option value="">Select a segment…</option>
+              {segments.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          )}
 
-            <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
-              <input type="radio" name="source" checked={source === 'rfm'} onChange={() => setSource('rfm')} />
-              An RFM segment
-            </label>
-            {source === 'rfm' && (
-              <select className="input ml-6 w-[calc(100%-1.5rem)]" value={rfmLabel} onChange={(e) => setRfmLabel(e.target.value)}>
-                <option value="">Select a segment…</option>
-                {rfmSummary.map((s) => <option key={s.label} value={s.label}>{s.label} ({s.count})</option>)}
-              </select>
-            )}
-          </div>
-        )}
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleConfirm} disabled={loading || confirmDisabled} className="btn-primary">Add Recipients</button>
+          <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+            <input type="radio" name="source" checked={source === 'rfm'} onChange={() => setSource('rfm')} />
+            An RFM segment
+          </label>
+          {source === 'rfm' && (
+            <select className="input ml-6 w-[calc(100%-1.5rem)]" value={rfmLabel} onChange={(e) => setRfmLabel(e.target.value)}>
+              <option value="">Select a segment…</option>
+              {rfmSummary.map((s) => <option key={s.label} value={s.label}>{s.label} ({s.count})</option>)}
+            </select>
+          )}
         </div>
+      )}
+      <div className="mt-6 flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleConfirm} disabled={loading || confirmDisabled} className="btn-primary">Add Recipients</button>
       </div>
-    </div>
+    </Modal>
   );
 }

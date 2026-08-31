@@ -1,8 +1,13 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { toast } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
+import Modal from '../components/ui/Modal';
+import usePolling from '../hooks/usePolling';
 import {
-  Bike, Plus, Package, CheckCircle2, Truck, Wallet, X, Loader2, Sparkles, KeyRound, Copy, Check,
+  Bike, Plus, Package, CheckCircle2, Truck, Wallet, Loader2, Sparkles, Copy, Check,
 } from 'lucide-react';
 
 export default function Riders() {
@@ -43,18 +48,15 @@ export default function Riders() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-    const interval = setInterval(load, 15000);
-    return () => clearInterval(interval);
-  }, [load]);
+  usePolling(load, 15000);
 
   async function handleAssign(orderId, riderId) {
     try {
       await api.assignRider(orderId, riderId || undefined);
+      toast.success('Rider assigned');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -80,18 +82,20 @@ export default function Riders() {
   async function handleDeliveryStatus(orderId, status) {
     try {
       await api.updateDeliveryStatus(orderId, status);
+      toast.success('Delivery status updated');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
   async function handleToggleRiderStatus(rider) {
     try {
       await api.updateRider(rider.id, { status: rider.status === 'active' ? 'inactive' : 'active' });
+      toast.success('Rider status updated');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -99,12 +103,13 @@ export default function Riders() {
     try {
       const res = await api.resetRiderPin(rider.id);
       setPinResult({ rider, pin: res.pin });
+      toast.success('New PIN generated');
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading riders...</div>;
+  if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-40" /><div className="grid gap-6 lg:grid-cols-2"><Skeleton.Card /><Skeleton.Card /></div></div>;
 
   return (
     <div>
@@ -123,7 +128,7 @@ export default function Riders() {
         <div className="card">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Bike className="h-4 w-4" /> Roster</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {riders.length === 0 && <p className="text-sm text-gray-400">No riders yet</p>}
+            {riders.length === 0 && <EmptyState icon={Bike} title="No riders yet" description="Add your first rider to start managing deliveries." action={canManage ? { label: 'Add Rider', onClick: () => setShowNewRider(true) } : undefined} />}
             {riders.map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-3">
                 <div>
@@ -156,7 +161,7 @@ export default function Riders() {
         <div className="card">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Package className="h-4 w-4" /> Unassigned Deliveries</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {unassigned.length === 0 && <p className="text-sm text-gray-400">No unassigned deliveries</p>}
+            {unassigned.length === 0 && <EmptyState icon={Package} title="All caught up" description="No unassigned deliveries right now." />}
             {unassigned.map((o) => (
               <div key={o.id} className="rounded-lg border border-gray-100 p-3">
                 <div className="mb-2 flex items-center justify-between">
@@ -208,7 +213,7 @@ export default function Riders() {
         <div className="card">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Truck className="h-4 w-4" /> Active Deliveries</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {active.length === 0 && <p className="text-sm text-gray-400">No deliveries in progress</p>}
+            {active.length === 0 && <EmptyState icon={Truck} title="No active deliveries" description="Deliveries in progress will show here." />}
             {active.map((a) => (
               <div key={a.id} className="rounded-lg border border-gray-100 p-3">
                 <div className="mb-1 flex items-center justify-between">
@@ -233,7 +238,7 @@ export default function Riders() {
         <div className="card">
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Wallet className="h-4 w-4" /> Reconciliation History</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
-            {reconciliations.length === 0 && <p className="text-sm text-gray-400">No reconciliations yet</p>}
+            {reconciliations.length === 0 && <EmptyState icon={Wallet} title="No reconciliations yet" description="Cash reconciliations will appear here." />}
             {reconciliations.map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-3 text-sm">
                 <div>
@@ -286,23 +291,17 @@ function NewRiderModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Add Rider</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="space-y-3">
-          <input className="input" placeholder="Rider name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className="input" placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
-        </div>
-        <p className="mt-2 text-xs text-gray-400">A login PIN is generated automatically — you'll see it once after saving, to share with the rider.</p>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <button onClick={handleCreate} disabled={saving || !name || !phone} className="btn-primary mt-4 w-full justify-center">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add Rider'}
-        </button>
+    <Modal open={true} onClose={onClose} title="Add Rider">
+      <div className="space-y-3">
+        <input className="input" placeholder="Rider name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input className="input" placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </div>
-    </div>
+      <p className="mt-2 text-xs text-gray-400">A login PIN is generated automatically — you'll see it once after saving, to share with the rider.</p>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <button onClick={handleCreate} disabled={saving || !name || !phone} className="btn-primary mt-4 w-full justify-center">
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add Rider'}
+      </button>
+    </Modal>
   );
 }
 
@@ -317,25 +316,19 @@ function PinResultModal({ rider, pin, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-lg font-semibold"><KeyRound className="h-5 w-5 text-brand-600" /> {rider.name}'s PIN</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-        <p className="mb-3 text-sm text-gray-500">
-          Share this PIN with {rider.name} directly (in person or by phone) — it won't be shown again. They log in at{' '}
-          <span className="font-medium text-gray-700">/rider/login</span> with their phone number and this PIN.
-        </p>
-        <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-          <span className="text-2xl font-bold tracking-widest text-gray-900">{pin}</span>
-          <button onClick={handleCopy} className="btn-secondary text-xs">
-            {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
-          </button>
-        </div>
-        <button onClick={onClose} className="btn-primary mt-4 w-full justify-center">Done</button>
+    <Modal open={true} onClose={onClose} title={`${rider.name}'s PIN`} size="md">
+      <p className="mb-3 text-sm text-gray-500">
+        Share this PIN with {rider.name} directly (in person or by phone) — it won't be shown again. They log in at{' '}
+        <span className="font-medium text-gray-700">/rider/login</span> with their phone number and this PIN.
+      </p>
+      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+        <span className="text-2xl font-bold tracking-widest text-gray-900">{pin}</span>
+        <button onClick={handleCopy} className="btn-secondary text-xs">
+          {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
+        </button>
       </div>
-    </div>
+      <button onClick={onClose} className="btn-primary mt-4 w-full justify-center">Done</button>
+    </Modal>
   );
 }
 
@@ -361,40 +354,33 @@ function ReconcileModal({ rider, onClose, onDone }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Reconcile — {rider.name}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-
-        {!result ? (
-          <>
-            <div className="mb-3 grid grid-cols-2 gap-2">
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">From</label>
-                <input type="date" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">To</label>
-                <input type="date" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
-              </div>
+    <Modal open={true} onClose={onClose} title={`Reconcile — ${rider.name}`}>
+      {!result ? (
+        <>
+          <div className="mb-3 grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">From</label>
+              <input type="date" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
-            {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-            <button onClick={handleReconcile} disabled={saving} className="btn-primary w-full justify-center">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Run Reconciliation'}
-            </button>
-          </>
-        ) : (
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Deliveries reconciled</span><span>{result.assignments_reconciled}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Expected</span><span>Rs. {Number(result.reconciliation.total_expected).toLocaleString()}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">Collected</span><span>Rs. {Number(result.reconciliation.total_collected).toLocaleString()}</span></div>
-            <div className="flex justify-between font-semibold"><span>Variance</span><span>Rs. {Number(result.reconciliation.variance).toLocaleString()}</span></div>
-            <button onClick={onDone} className="btn-primary mt-4 w-full justify-center">Done</button>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">To</label>
+              <input type="date" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </div>
           </div>
-        )}
-      </div>
-    </div>
+          {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
+          <button onClick={handleReconcile} disabled={saving} className="btn-primary w-full justify-center">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Run Reconciliation'}
+          </button>
+        </>
+      ) : (
+        <div className="space-y-2 text-sm">
+          <div className="flex justify-between"><span className="text-gray-500">Deliveries reconciled</span><span>{result.assignments_reconciled}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Expected</span><span>Rs. {Number(result.reconciliation.total_expected).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Collected</span><span>Rs. {Number(result.reconciliation.total_collected).toLocaleString()}</span></div>
+          <div className="flex justify-between font-semibold"><span>Variance</span><span>Rs. {Number(result.reconciliation.variance).toLocaleString()}</span></div>
+          <button onClick={onDone} className="btn-primary mt-4 w-full justify-center">Done</button>
+        </div>
+      )}
+    </Modal>
   );
 }

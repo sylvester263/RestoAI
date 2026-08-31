@@ -54,10 +54,19 @@ export async function setRecipe(tenantId, menuItemId, ingredients) {
  * order items. Returns a Map of ingredient_id -> { before, after (row),
  * name, unit, threshold } so the caller can run auto-86 checks and
  * low-stock alerts against just the ingredients actually touched.
+ *
+ * Row-locked (SELECT ... FOR UPDATE) so two concurrent orders on the same
+ * low-stock ingredient can't both read the same level before either writes
+ * — same race class already fixed for loyalty/coupon redemption. Ingredient
+ * rows are locked in sorted-id order (not the order items happen to appear
+ * in the cart) so two orders needing the same ingredients never deadlock by
+ * acquiring locks in opposite orders. If depleting would take an ingredient
+ * below zero, the order is rejected here — createOrder's transaction rolls
+ * back cleanly (order/order_items/customer-totals never partially commit),
+ * so rejecting outright is safer than silently clamping to zero.
  */
 export async function depleteIngredientsForOrder(client, orderItems) {
-  const touched = new Map();
-
+  const required = new Map(); // ingredient_id -> total amount needed across all items
   for (const item of orderItems) {
     if (!item.menu_item_id) continue;
     const recipeRes = await client.query(
@@ -66,19 +75,35 @@ export async function depleteIngredientsForOrder(client, orderItems) {
     );
     for (const r of recipeRes.rows) {
       const amount = parseFloat(r.quantity_required) * item.quantity;
-      const existing = touched.get(r.ingredient_id);
-      const before = existing ? existing.before : (
-        await client.query('SELECT current_stock FROM ingredients WHERE id = $1', [r.ingredient_id])
-      ).rows[0]?.current_stock;
-      if (before === undefined) continue; // ingredient row missing/deleted — nothing to deplete
-
-      const updated = await client.query(
-        `UPDATE ingredients SET current_stock = current_stock - $1 WHERE id = $2
-         RETURNING id, tenant_id, name, unit, current_stock, low_stock_threshold`,
-        [amount, r.ingredient_id],
-      );
-      touched.set(r.ingredient_id, { before: parseFloat(before), ...updated.rows[0] });
+      required.set(r.ingredient_id, (required.get(r.ingredient_id) || 0) + amount);
     }
+  }
+
+  const touched = new Map();
+  for (const ingredientId of [...required.keys()].sort()) {
+    const lockedRes = await client.query(
+      'SELECT id, tenant_id, name, unit, current_stock, low_stock_threshold FROM ingredients WHERE id = $1 FOR UPDATE',
+      [ingredientId],
+    );
+    const row = lockedRes.rows[0];
+    if (!row) continue; // ingredient row missing/deleted — nothing to deplete
+
+    const before = parseFloat(row.current_stock);
+    const amount = required.get(ingredientId);
+    const after = before - amount;
+    if (after < 0) {
+      const err = new Error(`Insufficient stock for ${row.name} — only ${before}${row.unit} available, ${amount}${row.unit} required`);
+      err.status = 400;
+      err.expose = true;
+      throw err;
+    }
+
+    const updated = await client.query(
+      `UPDATE ingredients SET current_stock = $2 WHERE id = $1
+       RETURNING id, tenant_id, name, unit, current_stock, low_stock_threshold`,
+      [ingredientId, after],
+    );
+    touched.set(ingredientId, { before, ...updated.rows[0] });
   }
   return touched;
 }

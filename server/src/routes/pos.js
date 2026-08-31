@@ -15,6 +15,7 @@ import {
   getTaxConfig, upsertTaxConfig, computeSettlement,
   findOpenShift, buildZReport, buildReceiptData,
 } from '../services/pos-billing.js';
+import { emit } from '../services/event-bus.js';
 
 const router = Router();
 router.use(authenticate);
@@ -211,6 +212,10 @@ router.post('/tabs/:id/items', async (req, res, next) => {
     });
 
     res.status(201).json({ order });
+
+    // Real-time: kitchen display should show this new round immediately
+    emit(`kitchen:${tab.tenant_id}`, 'order:new', { orderId: order.id, tabId: tab.id });
+    emit(`pos:${tab.branch_id}`, 'tab:updated', { tabId: tab.id });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
@@ -518,6 +523,10 @@ router.post('/tabs/:id/settle', async (req, res, next) => {
     });
 
     res.json(result);
+
+    // Real-time: notify POS and kitchen that this tab is settled
+    emit(`pos:${result.tab.branch_id}`, 'tab:settled', { tabId: req.params.id });
+    emit(`kitchen:${req.user.tenant_id}`, 'order:settled', { tabId: req.params.id });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });

@@ -1,7 +1,6 @@
 /**
- * Public landing-site resolution — path-based (yourapp.com/site/:subdomain)
- * rather than wildcard-subdomain DNS, per the hackathon-timeline scoping
- * decision (custom domains are stored but not yet verifiable/servable).
+ * Public landing-site resolution — supports both path-based subdomain lookup
+ * (yourapp.com/site/:subdomain) and verified custom domain lookup.
  * Never leaks unpublished content — a draft or unknown subdomain both 404.
  */
 import { Router } from 'express';
@@ -9,15 +8,19 @@ import { query } from '../db/pool.js';
 
 const router = Router();
 
-router.get('/:subdomain', async (req, res, next) => {
+router.get('/:identifier', async (req, res, next) => {
   try {
+    const value = req.params.identifier.toLowerCase();
+
+    // Try subdomain first, then verified custom domain
     const pageRes = await query(
       `SELECT lp.*, t.name as tenant_name, t.slug as tenant_slug, t.phone as tenant_phone,
               t.address as tenant_address, t.currency as tenant_currency, t.id as tenant_id
        FROM landing_pages lp
        JOIN tenants t ON lp.tenant_id = t.id
-       WHERE lp.subdomain = $1 AND lp.published = true`,
-      [req.params.subdomain.toLowerCase()],
+       WHERE lp.published = true
+         AND (lp.subdomain = $1 OR (lp.custom_domain = $1 AND lp.custom_domain_verified = true))`,
+      [value],
     );
     const page = pageRes.rows[0];
     if (!page) {

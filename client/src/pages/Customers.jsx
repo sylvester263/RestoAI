@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api';
+import { toast } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import {
   Search, Tag, X, Plus, Star, Wallet, ShoppingBag, Users, Loader2,
 } from 'lucide-react';
@@ -61,8 +64,8 @@ function CustomerList() {
           <input className="input pl-9" placeholder="Search by name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="max-h-[36rem] space-y-2 overflow-y-auto">
-          {loading && <p className="text-sm text-gray-400">Loading...</p>}
           {!loading && customers.length === 0 && <p className="text-sm text-gray-400">No customers found</p>}
+          {loading && <Skeleton.List rows={4} />}
           {customers.map((c) => (
             <button
               key={c.id}
@@ -113,7 +116,7 @@ function CustomerProfile({ id, onTagsChanged }) {
       load();
       onTagsChanged();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -123,7 +126,7 @@ function CustomerProfile({ id, onTagsChanged }) {
       load();
       onTagsChanged();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -331,46 +334,34 @@ function NewSegmentModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">New Segment</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="space-y-3">
-          <input className="input" placeholder="Segment name" value={name} onChange={(e) => setName(e.target.value)} />
-          <input type="number" className="input" placeholder="Min orders (optional)" value={minOrders} onChange={(e) => setMinOrders(e.target.value)} />
-          <input type="number" className="input" placeholder="Min total spend (optional)" value={minSpend} onChange={(e) => setMinSpend(e.target.value)} />
-          <input type="number" className="input" placeholder="Ordered within last N days (optional)" value={recencyDays} onChange={(e) => setRecencyDays(e.target.value)} />
-          <input className="input" placeholder="Tags, comma-separated (optional)" value={tags} onChange={(e) => setTags(e.target.value)} />
-        </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <button onClick={handleCreate} disabled={saving || !name} className="btn-primary mt-4 w-full justify-center">
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Segment'}
-        </button>
+    <Modal open={true} onClose={onClose} title="New Segment">
+      <div className="space-y-3">
+        <input className="input" placeholder="Segment name" value={name} onChange={(e) => setName(e.target.value)} />
+        <input type="number" className="input" placeholder="Min orders (optional)" value={minOrders} onChange={(e) => setMinOrders(e.target.value)} />
+        <input type="number" className="input" placeholder="Min total spend (optional)" value={minSpend} onChange={(e) => setMinSpend(e.target.value)} />
+        <input type="number" className="input" placeholder="Ordered within last N days (optional)" value={recencyDays} onChange={(e) => setRecencyDays(e.target.value)} />
+        <input className="input" placeholder="Tags, comma-separated (optional)" value={tags} onChange={(e) => setTags(e.target.value)} />
       </div>
-    </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <button onClick={handleCreate} disabled={saving || !name} className="btn-primary mt-4 w-full justify-center">
+        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Create Segment'}
+      </button>
+    </Modal>
   );
 }
 
 function PreviewModal({ data, onClose }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="max-h-[80vh] w-96 overflow-y-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{data.segment.name}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-        <p className="mb-3 text-sm text-gray-500">{data.count} matching customer{data.count !== 1 ? 's' : ''}</p>
-        <div className="space-y-2">
-          {data.customers.map((c) => (
-            <div key={c.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-2 text-sm">
-              <span>{c.name || c.phone}</span>
-              <span className="text-gray-400">{c.order_count} orders</span>
-            </div>
-          ))}
-        </div>
+    <Modal open={true} onClose={onClose} title={data.segment.name}>
+      <p className="mb-3 text-sm text-gray-500">{data.count} matching customer{data.count !== 1 ? 's' : ''}</p>
+      <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+        {data.customers.map((c) => (
+          <div key={c.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-2 text-sm">
+            <span>{c.name || c.phone}</span>
+            <span className="text-gray-400">{c.order_count} orders</span>
+          </div>
+        ))}
       </div>
-    </div>
+    </Modal>
   );
 }

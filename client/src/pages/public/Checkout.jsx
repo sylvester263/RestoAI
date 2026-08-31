@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getCart, clearCart, getIdentity, setIdentity } from '../../lib/publicOrderStore';
+import { toast } from '../../components/ui/toast';
 import { ArrowLeft, Gift, Tag, X } from 'lucide-react';
 
 export default function Checkout() {
@@ -105,7 +106,7 @@ export default function Checkout() {
         setCoupon(null);
         setCouponError(err.message);
       } else {
-        alert(err.message);
+        toast.error(err.message);
       }
     } finally {
       setSubmitting(false);

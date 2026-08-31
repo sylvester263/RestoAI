@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { Skeleton } from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
 import {
   TrendingUp, ShoppingBag, Users, DollarSign,
   ArrowUpRight, Package, Star, AlertTriangle, Building2, ChevronLeft,
@@ -16,8 +18,16 @@ export default function Dashboard() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="flex items-center justify-center py-20">Loading dashboard...</div>;
-  if (!data) return <div className="text-center py-20 text-gray-500">Failed to load dashboard</div>;
+  if (loading) return (
+    <div className="space-y-6">
+      <Skeleton className="h-8 w-40" />
+      <Skeleton.KpiRow count={5} />
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <Skeleton.Card /><Skeleton.Card /><Skeleton.Card /><Skeleton.Card />
+      </div>
+    </div>
+  );
+  if (!data) return <EmptyState icon={AlertTriangle} title="Failed to load dashboard" description="Check your connection and try again." action={{ label: 'Retry', onClick: () => window.location.reload() }} />;
 
   const statusColors = {
     new: 'bg-blue-100 text-blue-700',

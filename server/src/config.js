@@ -8,6 +8,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: resolve(__dirname, '../../.env') });
 
 const DEV_JWT_SECRET = 'dev-secret-change-me';
+const DEV_CRON_SECRET = 'dev-cron-secret-change-me';
 const nodeEnv = process.env.NODE_ENV || 'development';
 
 if (nodeEnv === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === DEV_JWT_SECRET)) {
@@ -15,6 +16,13 @@ if (nodeEnv === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECR
 }
 if (!process.env.JWT_SECRET) {
   console.warn('[config] WARNING: JWT_SECRET is not set — using an insecure default. Set JWT_SECRET in .env.');
+}
+
+if (nodeEnv === 'production' && (!process.env.CRON_SECRET || process.env.CRON_SECRET === DEV_CRON_SECRET)) {
+  throw new Error('CRON_SECRET must be set to a strong, non-default value when NODE_ENV=production');
+}
+if (!process.env.CRON_SECRET) {
+  console.warn('[config] WARNING: CRON_SECRET is not set — using an insecure default. Set CRON_SECRET in .env.');
 }
 
 const config = {
@@ -68,7 +76,7 @@ const config = {
   },
   // Shared secret for scheduler-triggered endpoints (/api/agents/*/run) —
   // these aren't user-authenticated, so a header secret stands in for a JWT.
-  cronSecret: process.env.CRON_SECRET || 'dev-cron-secret-change-me',
+  cronSecret: process.env.CRON_SECRET || DEV_CRON_SECRET,
 };
 
 export default config;

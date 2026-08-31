@@ -9,6 +9,7 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { authenticate, authorize } from '../middleware/auth.js';
 import { requireCronSecret } from '../middleware/cron-auth.js';
 import { query } from '../db/pool.js';
@@ -23,6 +24,13 @@ import { createDraftPurchaseOrder } from '../services/purchase-orders.js';
 import { runMenuInsightScan } from '../services/menu-insight-agent.js';
 
 const router = Router();
+
+// Every /run endpoint is meant to be triggered by a scheduler roughly
+// daily/weekly per agent (per their own specs), not by normal traffic — this
+// closes the "a guessed or leaked CRON_SECRET means unlimited triggering of
+// real side effects" gap as defense in depth alongside requireCronSecret,
+// not a replacement for it.
+const agentRunLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10 });
 
 function requireOwner(req, res, next) {
   if (req.user.role !== 'owner') {
@@ -109,8 +117,8 @@ async function runDailyBriefing(req, res, next) {
 }
 // GET: Vercel Cron invokes scheduled paths with GET + Authorization: Bearer.
 // POST: manual/demo trigger with an X-Cron-Secret header (see impl-14 spec).
-router.get('/daily-briefing/run', requireCronSecret, runDailyBriefing);
-router.post('/daily-briefing/run', requireCronSecret, runDailyBriefing);
+router.get('/daily-briefing/run', agentRunLimiter, requireCronSecret, runDailyBriefing);
+router.post('/daily-briefing/run', agentRunLimiter, requireCronSecret, runDailyBriefing);
 
 // ═══ impl-15 — Win-Back ═══
 
@@ -140,8 +148,8 @@ async function runWinback(req, res, next) {
     next(err);
   }
 }
-router.get('/winback/run', requireCronSecret, runWinback);
-router.post('/winback/run', requireCronSecret, runWinback);
+router.get('/winback/run', agentRunLimiter, requireCronSecret, runWinback);
+router.post('/winback/run', agentRunLimiter, requireCronSecret, runWinback);
 
 router.get('/winback/preview', authenticate, authorize('reports.view'), async (req, res, next) => {
   try {
@@ -213,8 +221,8 @@ async function runReconciliationScan(req, res, next) {
     next(err);
   }
 }
-router.get('/reconciliation/run', requireCronSecret, runReconciliationScan);
-router.post('/reconciliation/run', requireCronSecret, runReconciliationScan);
+router.get('/reconciliation/run', agentRunLimiter, requireCronSecret, runReconciliationScan);
+router.post('/reconciliation/run', agentRunLimiter, requireCronSecret, runReconciliationScan);
 
 router.get('/reconciliation/flags', authenticate, authorize('reports.view'), async (req, res, next) => {
   try {
@@ -274,8 +282,8 @@ async function runAbuseDetection(req, res, next) {
     next(err);
   }
 }
-router.get('/abuse-detection/run', requireCronSecret, runAbuseDetection);
-router.post('/abuse-detection/run', requireCronSecret, runAbuseDetection);
+router.get('/abuse-detection/run', agentRunLimiter, requireCronSecret, runAbuseDetection);
+router.post('/abuse-detection/run', agentRunLimiter, requireCronSecret, runAbuseDetection);
 
 router.get('/abuse-detection/flags', authenticate, authorize('reports.view'), async (req, res, next) => {
   try {
@@ -333,8 +341,8 @@ async function runReplenishment(req, res, next) {
     next(err);
   }
 }
-router.get('/replenishment/run', requireCronSecret, runReplenishment);
-router.post('/replenishment/run', requireCronSecret, runReplenishment);
+router.get('/replenishment/run', agentRunLimiter, requireCronSecret, runReplenishment);
+router.post('/replenishment/run', agentRunLimiter, requireCronSecret, runReplenishment);
 
 router.get('/replenishment/suggestions', authenticate, authorize('inventory.manage'), async (req, res, next) => {
   try {
@@ -426,8 +434,8 @@ async function runMenuInsights(req, res, next) {
     next(err);
   }
 }
-router.get('/menu-insights/run', requireCronSecret, runMenuInsights);
-router.post('/menu-insights/run', requireCronSecret, runMenuInsights);
+router.get('/menu-insights/run', agentRunLimiter, requireCronSecret, runMenuInsights);
+router.post('/menu-insights/run', agentRunLimiter, requireCronSecret, runMenuInsights);
 
 router.get('/menu-insights', authenticate, authorize('reports.view'), async (req, res, next) => {
   try {

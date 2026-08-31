@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { TEMPLATES, TEMPLATE_CONFIGS } from './public/landing/templates';
 import { Hero, About, MenuHighlights, Gallery, Testimonials, HoursLocation, Contact } from './public/landing/Sections';
-import { Check, X, Plus, Trash2, ExternalLink, Loader2 } from 'lucide-react';
+import { Check, X, Plus, Trash2, ExternalLink, Loader2, Globe, RefreshCw } from 'lucide-react';
 
 const SECTION_COMPONENTS = { hero: Hero, about: About, menu: MenuHighlights, gallery: Gallery, testimonials: Testimonials, hours: HoursLocation, contact: Contact };
 
@@ -28,6 +28,12 @@ export default function LandingPageEditor() {
   const [published, setPublished] = useState(false);
   const [menuItems, setMenuItems] = useState([]);
   const [error, setError] = useState('');
+  const [customDomain, setCustomDomain] = useState('');
+  const [customDomainVerified, setCustomDomainVerified] = useState(false);
+  const [dnsInstructions, setDnsInstructions] = useState(null);
+  const [domainInput, setDomainInput] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [submittingDomain, setSubmittingDomain] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getLandingPage(), api.getMenu()])
@@ -38,6 +44,13 @@ export default function LandingPageEditor() {
         setContent({ ...EMPTY_CONTENT, ...page.content });
         setAccentColor(page.theme?.accent_color || '#16a34a');
         setPublished(!!page.published);
+        setCustomDomain(page.custom_domain || '');
+        setCustomDomainVerified(!!page.custom_domain_verified);
+        setDnsInstructions(page.theme?._verification ? {
+          type: 'TXT',
+          host: `_restoai-verify.${page.custom_domain}`,
+          value: `restoai-verify=${page.theme._verification.token}`,
+        } : null);
         setMenuItems(menuRes.items.slice(0, 6));
       })
       .catch((err) => setError(err.message))
@@ -193,8 +206,83 @@ export default function LandingPageEditor() {
                 {subdomainStatus.available ? 'Available' : subdomainStatus.message}
               </p>
             )}
-            <div className="mt-4 rounded-lg border border-dashed border-gray-200 p-3 text-xs text-gray-400">
-              Custom domain (e.g. www.yourrestaurant.com) — coming soon.
+            {/* Custom domain */}
+            <div className="mt-4 border-t border-gray-100 pt-4">
+              <p className="mb-2 text-xs font-medium text-gray-600">Custom domain</p>
+              {customDomain && (
+                <div className="mb-3 flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-gray-400" />
+                  <span className="text-sm text-gray-700">{customDomain}</span>
+                  {customDomainVerified ? (
+                    <span className="flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700">
+                      <Check className="h-3 w-3" /> Verified
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-yellow-50 px-2 py-0.5 text-xs font-medium text-yellow-700">Pending</span>
+                  )}
+                </div>
+              )}
+              {customDomain && !customDomainVerified && dnsInstructions && (
+                <div className="mb-3 rounded-lg bg-gray-50 p-3 text-xs">
+                  <p className="mb-2 font-medium text-gray-700">Add this DNS record to verify:</p>
+                  <div className="space-y-1 font-mono text-gray-600">
+                    <p><span className="font-semibold">Type:</span> {dnsInstructions.type}</p>
+                    <p><span className="font-semibold">Host:</span> {dnsInstructions.host}</p>
+                    <p><span className="font-semibold">Value:</span> {dnsInstructions.value}</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      setVerifying(true);
+                      try {
+                        const res = await api.verifyCustomDomain();
+                        setCustomDomainVerified(res.verified);
+                        if (!res.verified) setError('DNS record not found yet. It can take a few minutes to propagate.');
+                      } catch (err) {
+                        setError(err.message);
+                      } finally {
+                        setVerifying(false);
+                      }
+                    }}
+                    disabled={verifying}
+                    className="mt-2 flex items-center gap-1 text-xs font-medium text-brand-600 hover:text-brand-700"
+                  >
+                    <RefreshCw className={`h-3 w-3 ${verifying ? 'animate-spin' : ''}`} />
+                    {verifying ? 'Checking...' : 'Check DNS'}
+                  </button>
+                </div>
+              )}
+              {!customDomain && (
+                <div className="flex items-center gap-2">
+                  <input
+                    className="input flex-1 text-xs"
+                    placeholder="www.yourrestaurant.com"
+                    value={domainInput}
+                    onChange={(e) => setDomainInput(e.target.value)}
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!domainInput) return;
+                      setSubmittingDomain(true);
+                      setError('');
+                      try {
+                        const res = await api.submitCustomDomain(domainInput);
+                        setCustomDomain(res.custom_domain);
+                        setCustomDomainVerified(res.verified);
+                        setDnsInstructions(res.dns_instructions);
+                        setDomainInput('');
+                      } catch (err) {
+                        setError(err.message);
+                      } finally {
+                        setSubmittingDomain(false);
+                      }
+                    }}
+                    disabled={submittingDomain}
+                    className="btn-secondary text-xs"
+                  >
+                    {submittingDomain ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Add'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

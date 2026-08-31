@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { toast } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
 import { ChevronLeft, ChevronRight, Users } from 'lucide-react';
 
 // Karachi calendar date, not the browser's UTC/local date — the restaurant
@@ -54,7 +56,7 @@ export default function Reservations() {
       await api.updateReservationStatus(id, status);
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -79,7 +81,7 @@ export default function Reservations() {
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20">Loading reservations...</div>
+        <Skeleton.Table rows={5} cols={5} />
       ) : (
         <div className="card overflow-hidden p-0">
           <table className="w-full text-left text-sm">

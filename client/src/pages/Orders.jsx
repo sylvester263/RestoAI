@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
-import { Search, Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Skeleton } from '../components/ui/Skeleton';
+import EmptyState from '../components/ui/EmptyState';
+import { Search, Filter, ChevronDown, ChevronUp, ShoppingBag } from 'lucide-react';
 
 const STATUS_COLORS = {
   new: 'bg-blue-100 text-blue-700',
@@ -43,11 +45,18 @@ export default function Orders() {
 
   useEffect(() => { loadOrders(); }, [statusFilter]);
 
-  async function advanceStatus(order) {
+  function advanceStatus(order) {
     const next = NEXT_STATUS[order.status];
     if (!next) return;
-    await api.updateOrderStatus(order.id, next);
+    const snapshot = [...orders];
+
+    // Optimistic: update UI instantly
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
+
+    // Reconcile in background — roll back on failure
+    api.updateOrderStatus(order.id, next).catch(() => {
+      setOrders(snapshot);
+    });
   }
 
   const filtered = orders.filter((o) =>
@@ -87,7 +96,7 @@ export default function Orders() {
 
       {/* Order list */}
       {loading ? (
-        <div className="flex items-center justify-center py-20">Loading orders...</div>
+        <Skeleton.List rows={6} />
       ) : (
         <div className="space-y-3">
           {filtered.map((order) => (
@@ -153,7 +162,13 @@ export default function Orders() {
               )}
             </div>
           ))}
-          {filtered.length === 0 && <div className="py-12 text-center text-sm text-gray-400">No orders found</div>}
+          {filtered.length === 0 && (
+            <EmptyState
+              icon={ShoppingBag}
+              title={search || statusFilter ? 'No matching orders' : 'No orders yet'}
+              description={search || statusFilter ? 'Try adjusting your search or filter.' : 'Orders from all channels will appear here.'}
+            />
+          )}
         </div>
       )}
     </div>

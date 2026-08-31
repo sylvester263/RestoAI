@@ -1,6 +1,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
+import { toast, confirmAction } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import {
   Package, AlertTriangle, Plus, Edit2, Trash2, X, Truck, ClipboardList, Sparkles, CheckCircle2,
 } from 'lucide-react';
@@ -52,21 +55,24 @@ export default function Inventory() {
   useEffect(() => { load(); }, [load]);
 
   async function handleDeleteIngredient(id) {
-    if (!confirm('Delete this ingredient?')) return;
+    const ok = await confirmAction('Delete this ingredient?', 'This cannot be undone.');
+    if (!ok) return;
     try {
       await api.deleteIngredient(id);
+      toast.success('Ingredient deleted');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
   async function handleApproveSuggestion(suggestion) {
     try {
       await api.approveReplenishmentSuggestion(suggestion.id);
+      toast.success('Replenishment approved — draft PO created');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -74,23 +80,25 @@ export default function Inventory() {
     try {
       await api.dismissReplenishmentSuggestion(id);
       setSuggestions((prev) => prev.filter((s) => s.id !== id));
+      toast.success('Suggestion dismissed');
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
   async function handleReceivePo(id) {
     try {
       await api.receivePurchaseOrder(id);
+      toast.success('Purchase order received');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
   const lowStockCount = ingredients.filter((i) => Number(i.current_stock) <= Number(i.low_stock_threshold)).length;
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading inventory...</div>;
+  if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-32" /><Skeleton.Table rows={6} cols={6} /></div>;
 
   return (
     <div>
@@ -397,58 +405,52 @@ function IngredientFormModal({ ingredient, suppliers, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{ingredient ? 'Edit Ingredient' : 'New Ingredient'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+    <Modal open={true} onClose={onClose} title={ingredient ? 'Edit Ingredient' : 'New Ingredient'}>
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
+          <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Chicken (whole)" />
         </div>
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
-            <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Chicken (whole)" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Unit</label>
-              <select className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-                <option value="kg">kg</option>
-                <option value="litre">litre</option>
-                <option value="piece">piece</option>
-                <option value="pack">pack</option>
-                <option value="dozen">dozen</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Current Stock</label>
-              <input type="number" className="input" min="0" step="0.1" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: Number(e.target.value) })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Low Stock Threshold</label>
-              <input type="number" className="input" min="0" step="0.1" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Cost/Unit (PKR)</label>
-              <input type="number" className="input" min="0" step="0.01" value={form.cost_per_unit} onChange={(e) => setForm({ ...form, cost_per_unit: Number(e.target.value) })} />
-            </div>
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Preferred Supplier</label>
-            <select className="input" value={form.preferred_supplier_id} onChange={(e) => setForm({ ...form, preferred_supplier_id: e.target.value })}>
-              <option value="">None</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <label className="mb-1 block text-xs font-medium text-gray-600">Unit</label>
+            <select className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
+              <option value="kg">kg</option>
+              <option value="litre">litre</option>
+              <option value="piece">piece</option>
+              <option value="pack">pack</option>
+              <option value="dozen">dozen</option>
             </select>
           </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Current Stock</label>
+            <input type="number" className="input" min="0" step="0.1" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: Number(e.target.value) })} />
+          </div>
         </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleSave} disabled={saving || !form.name} className="btn-primary">{ingredient ? 'Save changes' : 'Add ingredient'}</button>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Low Stock Threshold</label>
+            <input type="number" className="input" min="0" step="0.1" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: Number(e.target.value) })} />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Cost/Unit (PKR)</label>
+            <input type="number" className="input" min="0" step="0.01" value={form.cost_per_unit} onChange={(e) => setForm({ ...form, cost_per_unit: Number(e.target.value) })} />
+          </div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Preferred Supplier</label>
+          <select className="input" value={form.preferred_supplier_id} onChange={(e) => setForm({ ...form, preferred_supplier_id: e.target.value })}>
+            <option value="">None</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
       </div>
-    </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-6 flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleSave} disabled={saving || !form.name} className="btn-primary">{ingredient ? 'Save changes' : 'Add ingredient'}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -478,33 +480,27 @@ function SupplierFormModal({ supplier, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">{supplier ? 'Edit Supplier' : 'New Supplier'}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+    <Modal open={true} onClose={onClose} title={supplier ? 'Edit Supplier' : 'New Supplier'}>
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
+          <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
-            <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Phone</label>
-            <input className="input" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
-            <input className="input" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} />
-          </div>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Phone</label>
+          <input className="input" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} />
         </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleSave} disabled={saving || !form.name} className="btn-primary">{supplier ? 'Save changes' : 'Add supplier'}</button>
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
+          <input className="input" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} />
         </div>
       </div>
-    </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-6 flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleSave} disabled={saving || !form.name} className="btn-primary">{supplier ? 'Save changes' : 'Add supplier'}</button>
+      </div>
+    </Modal>
   );
 }
 
@@ -548,44 +544,38 @@ function PurchaseOrderFormModal({ suppliers, ingredients, onClose, onCreated }) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-[32rem] rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">New Purchase Order</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+    <Modal open={true} onClose={onClose} title="New Purchase Order" size="lg">
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Supplier</label>
+          <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+            <option value="">Select a supplier...</option>
+            {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
         </div>
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Supplier</label>
-            <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-              <option value="">Select a supplier...</option>
-              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="space-y-2">
-            <label className="block text-xs font-medium text-gray-600">Line Items</label>
-            {lines.map((line, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <select className="input flex-1 text-sm" value={line.ingredient_id} onChange={(e) => updateLine(i, 'ingredient_id', e.target.value)}>
-                  <option value="">Ingredient...</option>
-                  {ingredients.map((ing) => <option key={ing.id} value={ing.id}>{ing.name}</option>)}
-                </select>
-                <input type="number" className="input w-24 text-sm" placeholder="Qty" min="0" step="0.1" value={line.quantity} onChange={(e) => updateLine(i, 'quantity', e.target.value)} />
-                <input type="number" className="input w-28 text-sm" placeholder="Unit cost" min="0" step="0.01" value={line.unit_cost} onChange={(e) => updateLine(i, 'unit_cost', e.target.value)} />
-                {lines.length > 1 && (
-                  <button onClick={() => removeLine(i)} className="text-gray-400 hover:text-red-500"><X className="h-4 w-4" /></button>
-                )}
-              </div>
-            ))}
-            <button onClick={addLine} className="text-xs font-medium text-brand-600 hover:underline">+ Add line</button>
-          </div>
-        </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleCreate} disabled={saving} className="btn-primary">Create Draft PO</button>
+        <div className="space-y-2">
+          <label className="block text-xs font-medium text-gray-600">Line Items</label>
+          {lines.map((line, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <select className="input flex-1 text-sm" value={line.ingredient_id} onChange={(e) => updateLine(i, 'ingredient_id', e.target.value)}>
+                <option value="">Ingredient...</option>
+                {ingredients.map((ing) => <option key={ing.id} value={ing.id}>{ing.name}</option>)}
+              </select>
+              <input type="number" className="input w-24 text-sm" placeholder="Qty" min="0" step="0.1" value={line.quantity} onChange={(e) => updateLine(i, 'quantity', e.target.value)} />
+              <input type="number" className="input w-28 text-sm" placeholder="Unit cost" min="0" step="0.01" value={line.unit_cost} onChange={(e) => updateLine(i, 'unit_cost', e.target.value)} />
+              {lines.length > 1 && (
+                <button onClick={() => removeLine(i)} className="text-gray-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+              )}
+            </div>
+          ))}
+          <button onClick={addLine} className="text-xs font-medium text-brand-600 hover:underline">+ Add line</button>
         </div>
       </div>
-    </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-6 flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleCreate} disabled={saving} className="btn-primary">Create Draft PO</button>
+      </div>
+    </Modal>
   );
 }

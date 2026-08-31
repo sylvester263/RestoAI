@@ -12,11 +12,18 @@ const router = Router();
 // screen with no login. Token board exposes only order numbers + wait time.
 router.get('/:id/token-board', async (req, res, next) => {
   try {
+    const branchRes = await query('SELECT tenant_id FROM branches WHERE id = $1', [req.params.id]);
+    if (branchRes.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Branch not found' } });
+    }
+    const tenantId = branchRes.rows[0].tenant_id;
+
     const result = await query(
-      `SELECT order_number, created_at FROM orders
-       WHERE branch_id = $1 AND status = 'ready'
-       ORDER BY created_at`,
-      [req.params.id],
+      `SELECT o.order_number, o.created_at FROM orders o
+       JOIN branches b ON b.id = o.branch_id
+       WHERE o.branch_id = $1 AND b.tenant_id = $2 AND o.status = 'ready'
+       ORDER BY o.created_at`,
+      [req.params.id, tenantId],
     );
     res.json({
       tokens: result.rows.map((o) => ({

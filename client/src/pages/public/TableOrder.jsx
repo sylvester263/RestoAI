@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { tableApi } from '../../lib/api';
 import { getCart, addToCart, updateCartQuantity, clearCart } from '../../lib/publicOrderStore';
+import { toast } from '../../components/ui/toast';
 import { Plus, Minus, Receipt, Users } from 'lucide-react';
 
 export default function TableOrder() {
@@ -54,7 +55,7 @@ export default function TableOrder() {
       setConfirmation(true);
       setTimeout(() => setConfirmation(false), 3000);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setPlacing(false);
     }
@@ -66,7 +67,7 @@ export default function TableOrder() {
       const res = await tableApi.getBill(session.id);
       setBill(res);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
@@ -76,7 +77,7 @@ export default function TableOrder() {
       setSession(res.session);
       loadBill();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 

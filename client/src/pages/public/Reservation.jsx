@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
+import { toast } from '../../components/ui/toast';
 import { ArrowLeft, CalendarCheck } from 'lucide-react';
 
 export default function Reservation() {
@@ -32,7 +33,7 @@ export default function Reservation() {
       });
       setConfirmed(res.reservation);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setSubmitting(false);
     }

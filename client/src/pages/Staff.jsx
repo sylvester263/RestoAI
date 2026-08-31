@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import { UserPlus, Plus, X, Loader2, Copy, Check, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 const STATUS_STYLE = {
@@ -28,7 +30,7 @@ export default function Staff() {
 
   useEffect(load, []);
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading staff...</div>;
+  if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-24" /><Skeleton.Table rows={4} cols={5} /></div>;
 
   return (
     <div>
@@ -118,49 +120,42 @@ function InviteModal({ branches, onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Invite Staff</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-
-        {!inviteLink ? (
-          <>
-            <div className="space-y-3">
-              <input className="input" type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <input className="input" placeholder="Phone (optional — sends via WhatsApp)" value={phone} onChange={(e) => setPhone(e.target.value)} />
-              <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
-                <option value="staff">Staff</option>
-                <option value="manager">Manager</option>
+    <Modal open={true} onClose={onClose} title="Invite Staff">
+      {!inviteLink ? (
+        <>
+          <div className="space-y-3">
+            <input className="input" type="email" placeholder="Email address" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="input" placeholder="Phone (optional — sends via WhatsApp)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="staff">Staff</option>
+              <option value="manager">Manager</option>
+            </select>
+            {branches.length > 1 && (
+              <select className="input" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
+                <option value="">Any branch</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              {branches.length > 1 && (
-                <select className="input" value={branchId} onChange={(e) => setBranchId(e.target.value)}>
-                  <option value="">Any branch</option>
-                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              )}
-            </div>
-            {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-            <button onClick={handleCreate} disabled={saving || !email} className="btn-primary mt-4 w-full justify-center">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Invite'}
+            )}
+          </div>
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+          <button onClick={handleCreate} disabled={saving || !email} className="btn-primary mt-4 w-full justify-center">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send Invite'}
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="mb-3 text-sm text-gray-500">
+            Invite created. {phone ? 'A WhatsApp message was sent (or logged, in demo mode) — you can also' : 'Share'} this link with {email} directly:
+          </p>
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <span className="truncate text-xs text-gray-700">{inviteLink}</span>
+            <button onClick={handleCopy} className="btn-secondary shrink-0 text-xs">
+              {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
             </button>
-          </>
-        ) : (
-          <>
-            <p className="mb-3 text-sm text-gray-500">
-              Invite created. {phone ? 'A WhatsApp message was sent (or logged, in demo mode) — you can also' : 'Share'} this link with {email} directly:
-            </p>
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
-              <span className="truncate text-xs text-gray-700">{inviteLink}</span>
-              <button onClick={handleCopy} className="btn-secondary shrink-0 text-xs">
-                {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
-              </button>
-            </div>
-            <button onClick={onCreated} className="btn-primary mt-4 w-full justify-center">Done</button>
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+          <button onClick={onCreated} className="btn-primary mt-4 w-full justify-center">Done</button>
+        </>
+      )}
+    </Modal>
   );
 }

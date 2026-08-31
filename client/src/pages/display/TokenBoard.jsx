@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { displayApi } from '../../lib/api';
+import usePolling from '../../hooks/usePolling';
+import useEvents from '../../hooks/useEvents';
 import { CheckCircle2 } from 'lucide-react';
 
 export default function TokenBoard() {
@@ -8,21 +10,20 @@ export default function TokenBoard() {
   const [tokens, setTokens] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await displayApi.getTokenBoard(branchId);
-        setTokens(res.tokens);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    try {
+      const res = await displayApi.getTokenBoard(branchId);
+      setTokens(res.tokens);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-    load();
-    const interval = setInterval(load, 5000);
-    return () => clearInterval(interval);
   }, [branchId]);
+
+  usePolling(load, 3000, { enabled: !!branchId });
+  // SSE real-time push for token board updates
+  useEvents(`token-board:${branchId}`, load, 5000, { enabled: !!branchId });
 
   return (
     <div className="min-h-screen bg-gray-950 p-10 text-white">

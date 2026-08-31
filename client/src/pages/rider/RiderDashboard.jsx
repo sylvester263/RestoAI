@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { riderApi } from '../../lib/api';
+import { toast } from '../../components/ui/toast';
+import Modal from '../../components/ui/Modal';
+import { Skeleton } from '../../components/ui/Skeleton';
 import { Bike, LogOut, Package, CheckCircle2, Wallet, MapPin, Phone } from 'lucide-react';
 
 export default function RiderDashboard() {
@@ -11,6 +14,7 @@ export default function RiderDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState(null);
+  const [deliveryModal, setDeliveryModal] = useState(null); // { assignment, cashInput }
 
   const load = useCallback(async () => {
     try {
@@ -51,20 +55,23 @@ export default function RiderDashboard() {
       await riderApi.updateAssignmentStatus(orderId, 'picked_up');
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setBusyId(null);
     }
   }
 
-  async function handleDelivered(assignment) {
+  function handleDelivered(assignment) {
+    setDeliveryModal({ assignment, cashInput: String(assignment.total) });
+  }
+
+  async function confirmDelivery() {
+    const { assignment, cashInput } = deliveryModal;
     let cashCollected;
     if (assignment.payment_method === 'cash') {
-      const input = window.prompt(`Cash collected for order #${assignment.order_number}?`, assignment.total);
-      if (input === null) return;
-      cashCollected = parseFloat(input);
+      cashCollected = parseFloat(cashInput);
       if (Number.isNaN(cashCollected) || cashCollected < 0) {
-        alert('Enter a valid amount');
+        toast.error('Enter a valid amount');
         return;
       }
     }
@@ -72,14 +79,15 @@ export default function RiderDashboard() {
     try {
       await riderApi.updateAssignmentStatus(assignment.order_id, 'delivered', cashCollected);
       load();
+      setDeliveryModal(null);
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     } finally {
       setBusyId(null);
     }
   }
 
-  if (loading) return <div className="flex h-screen items-center justify-center text-gray-400">Loading...</div>;
+  if (loading) return <div className="space-y-4 p-4"><Skeleton className="h-8 w-40" /><Skeleton.Card /><Skeleton.Card /></div>;
 
   const active = assignments.filter((a) => !a.delivered_at);
   const completedToday = assignments.filter((a) => a.delivered_at);
@@ -168,6 +176,33 @@ export default function RiderDashboard() {
           </>
         )}
       </div>
+
+      {/* Delivery confirmation modal */}
+      <Modal
+        open={!!deliveryModal}
+        onClose={() => setDeliveryModal(null)}
+        title={deliveryModal?.assignment?.payment_method === 'cash' ? `Cash collected — Order #${deliveryModal?.assignment?.order_number}` : `Mark delivered — Order #${deliveryModal?.assignment?.order_number}`}
+        size="sm"
+        confirmLabel="Confirm Delivered"
+        onConfirm={confirmDelivery}
+      >
+        {deliveryModal?.assignment?.payment_method === 'cash' && (
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Cash collected (Rs.)</label>
+            <input
+              type="number"
+              min="0"
+              className="input"
+              value={deliveryModal.cashInput}
+              onChange={(e) => setDeliveryModal({ ...deliveryModal, cashInput: e.target.value })}
+              autoFocus
+            />
+          </div>
+        )}
+        {deliveryModal?.assignment?.payment_method !== 'cash' && (
+          <p className="text-sm text-gray-600">Confirm delivery of order #{deliveryModal?.assignment?.order_number}?</p>
+        )}
+      </Modal>
     </div>
   );
 }

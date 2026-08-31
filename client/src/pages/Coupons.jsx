@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api';
+import { toast } from '../components/ui/toast';
+import { Skeleton } from '../components/ui/Skeleton';
+import Modal from '../components/ui/Modal';
 import { Tag, Plus, X, ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
 
 export default function Coupons() {
@@ -25,11 +28,11 @@ export default function Coupons() {
       await api.setCouponActive(coupon.id, !coupon.active);
       load();
     } catch (err) {
-      alert(err.message);
+      toast.error(err.message);
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading coupons...</div>;
+  if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-32" /><Skeleton.Table rows={5} cols={6} /></div>;
 
   return (
     <div>
@@ -136,65 +139,59 @@ function CouponFormModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="w-96 rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold">New Coupon</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
+    <Modal open={true} onClose={onClose} title="New Coupon">
+      <div className="space-y-3">
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Code (optional — auto-generated if blank)</label>
+          <input className="input font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. WELCOME10" />
         </div>
-        <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Code (optional — auto-generated if blank)</label>
-            <input className="input font-mono" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. WELCOME10" />
+            <label className="mb-1 block text-xs font-medium text-gray-600">Type</label>
+            <select className="input" value={form.discount_type} onChange={(e) => setForm({ ...form, discount_type: e.target.value })}>
+              <option value="percent">Percent off</option>
+              <option value="fixed">Fixed amount (PKR)</option>
+              <option value="free_delivery">Free delivery</option>
+              <option value="bogo">Buy one get one</option>
+            </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          {needsValue && (
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Type</label>
-              <select className="input" value={form.discount_type} onChange={(e) => setForm({ ...form, discount_type: e.target.value })}>
-                <option value="percent">Percent off</option>
-                <option value="fixed">Fixed amount (PKR)</option>
-                <option value="free_delivery">Free delivery</option>
-                <option value="bogo">Buy one get one</option>
-              </select>
-            </div>
-            {needsValue && (
-              <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Value</label>
-                <input type="number" className="input" min="0" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} />
-              </div>
-            )}
-          </div>
-          {form.discount_type === 'percent' && (
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Max discount cap (optional)</label>
-              <input type="number" className="input" min="0" placeholder="Uncapped" value={form.max_discount_amount} onChange={(e) => setForm({ ...form, max_discount_amount: e.target.value })} />
+              <label className="mb-1 block text-xs font-medium text-gray-600">Value</label>
+              <input type="number" className="input" min="0" value={form.discount_value} onChange={(e) => setForm({ ...form, discount_value: e.target.value })} />
             </div>
           )}
+        </div>
+        {form.discount_type === 'percent' && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Minimum order amount (optional)</label>
-            <input type="number" className="input" min="0" placeholder="No minimum" value={form.min_order_amount} onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })} />
+            <label className="mb-1 block text-xs font-medium text-gray-600">Max discount cap (optional)</label>
+            <input type="number" className="input" min="0" placeholder="Uncapped" value={form.max_discount_amount} onChange={(e) => setForm({ ...form, max_discount_amount: e.target.value })} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Max total redemptions</label>
-              <input type="number" className="input" min="1" placeholder="Unlimited" value={form.max_redemptions} onChange={(e) => setForm({ ...form, max_redemptions: e.target.value })} />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">Expires</label>
-              <input type="date" className="input" value={form.expires_at} onChange={(e) => setForm({ ...form, expires_at: e.target.value })} />
-            </div>
+        )}
+        <div>
+          <label className="mb-1 block text-xs font-medium text-gray-600">Minimum order amount (optional)</label>
+          <input type="number" className="input" min="0" placeholder="No minimum" value={form.min_order_amount} onChange={(e) => setForm({ ...form, min_order_amount: e.target.value })} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Max total redemptions</label>
+            <input type="number" className="input" min="1" placeholder="Unlimited" value={form.max_redemptions} onChange={(e) => setForm({ ...form, max_redemptions: e.target.value })} />
           </div>
-          <label className="flex items-center gap-2 text-sm text-gray-700">
-            <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} />
-            First order only (new customers)
-          </label>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600">Expires</label>
+            <input type="date" className="input" value={form.expires_at} onChange={(e) => setForm({ ...form, expires_at: e.target.value })} />
+          </div>
         </div>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-        <div className="mt-6 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">Cancel</button>
-          <button onClick={handleCreate} disabled={saving || (needsValue && !form.discount_value)} className="btn-primary">Create Coupon</button>
-        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="h-4 w-4 rounded border-gray-300" checked={form.first_order_only} onChange={(e) => setForm({ ...form, first_order_only: e.target.checked })} />
+          First order only (new customers)
+        </label>
       </div>
-    </div>
+      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      <div className="mt-6 flex justify-end gap-2">
+        <button onClick={onClose} className="btn-secondary">Cancel</button>
+        <button onClick={handleCreate} disabled={saving || (needsValue && !form.discount_value)} className="btn-primary">Create Coupon</button>
+      </div>
+    </Modal>
   );
 }

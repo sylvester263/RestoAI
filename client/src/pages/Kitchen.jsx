@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useState, useCallback } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
+import { Skeleton } from '../components/ui/Skeleton';
+import usePolling from '../hooks/usePolling';
+import useEvents from '../hooks/useEvents';
 import { ChefHat, Clock, CheckCircle2, Flame, AlertCircle } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -11,10 +15,11 @@ const STATUS_CONFIG = {
 const NEXT_STATUS = { new: 'confirmed', confirmed: 'preparing', preparing: 'ready' };
 
 export default function Kitchen() {
+  const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  async function loadOrders() {
+  const loadOrders = useCallback(async () => {
     try {
       const res = await api.getKitchenOrders();
       setOrders(res.orders);
@@ -23,23 +28,28 @@ export default function Kitchen() {
     } finally {
       setLoading(false);
     }
-  }
-
-  useEffect(() => {
-    loadOrders();
-    const interval = setInterval(loadOrders, 10000); // Poll every 10s
-    return () => clearInterval(interval);
   }, []);
 
-  async function advanceStatus(order) {
+  usePolling(loadOrders, 3000);
+  // SSE real-time push (works when server is long-lived; polling fallback on serverless)
+  useEvents(`kitchen:${user?.tenant_id || ''}`, loadOrders, 10000, { enabled: !!user?.tenant_id });
+
+  function advanceStatus(order) {
     const next = NEXT_STATUS[order.status];
     if (!next) return;
-    await api.updateOrderStatus(order.id, next);
+    const prevOrders = [...orders];
+
+    // Optimistic: update UI instantly
     if (next === 'ready') {
       setOrders((prev) => prev.filter((o) => o.id !== order.id));
     } else {
       setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
     }
+
+    // Reconcile in background — roll back on failure
+    api.updateOrderStatus(order.id, next).catch(() => {
+      setOrders(prevOrders);
+    });
   }
 
   function getElapsedTime(createdAt) {
@@ -59,12 +69,12 @@ export default function Kitchen() {
         </div>
         <div className="flex items-center gap-2">
           <span className="flex h-3 w-3 animate-pulse rounded-full bg-green-400" />
-          <span className="text-sm text-gray-400">Auto-refreshing every 10s</span>
+          <span className="text-sm text-gray-400">Live</span>
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-20 text-gray-400">Loading kitchen orders...</div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3"><Skeleton.Card /><Skeleton.Card /><Skeleton.Card /></div>
       ) : orders.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-500">
           <CheckCircle2 className="mb-4 h-16 w-16 text-green-400" />
