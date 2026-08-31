@@ -1,45 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { marketingApi } from '../../lib/api';
 import {
-  ChefHat, MessageCircle, Camera, Globe, QrCode, CalendarCheck, Megaphone,
-  Star, MonitorPlay, ShieldCheck, Users, Bike, ArrowRight, CheckCircle2,
-  Loader2, Menu as MenuIcon, X, Receipt, UserCircle, Tag, Package,
+  ChefHat, ArrowRight, CheckCircle2, Loader2, Menu as MenuIcon, X, ChevronDown,
+  ShieldCheck, Users, Bike, TrendingDown, Scale, Flame,
 } from 'lucide-react';
-
-const FEATURES = [
-  { icon: MessageCircle, title: 'WhatsApp AI ordering', desc: 'A conversational AI agent takes real orders on WhatsApp — not a rigid menu-button bot.' },
-  { icon: Camera, title: 'AI menu digitization', desc: 'Photograph your paper menu and let AI turn it into structured, editable items in minutes.' },
-  { icon: Globe, title: 'Your own branded storefront', desc: 'A zero-commission ordering site customers reach directly — no aggregator in between.' },
-  { icon: QrCode, title: 'Dine-in QR ordering', desc: 'Guests scan, browse, and order straight from the table — no app to install.' },
-  { icon: CalendarCheck, title: 'Reservations & table booking', desc: 'Take bookings online without a phone tied up all evening.' },
-  { icon: Megaphone, title: 'WhatsApp broadcasts', desc: 'Reach your customer list directly for promotions — channel you own, not one you rent.' },
-  { icon: Star, title: 'Loyalty, reviews & push', desc: 'Points, reviews, and re-engagement — built to bring customers back without a commission cut.' },
-  { icon: MonitorPlay, title: 'Kitchen & display boards', desc: 'A live kitchen display and order-ready/menu boards for the counter or dining room.' },
-  { icon: Receipt, title: 'Multi-branch point of sale', desc: 'Ring up counter, dine-in, and phone orders across every branch from one till.' },
-  { icon: Bike, title: 'Rider dispatch & delivery tracking', desc: 'Assign riders in one tap and follow every delivery from kitchen to doorstep.' },
-  { icon: UserCircle, title: 'Customer profiles & segments', desc: "See every customer's order history and group them for the campaigns that actually land." },
-  { icon: Tag, title: 'Coupons & discounts', desc: 'Run a promo code or a one-off discount without touching a spreadsheet.' },
-  { icon: Package, title: 'Inventory & auto-reorder', desc: 'Track stock by ingredient, with recipes that deplete automatically and low-stock alerts before you run out.' },
-];
-
-const STATS = [
-  { value: '0%', label: 'commission on every order' },
-  { value: 'WhatsApp + web + dine-in', label: 'ordering channels, one system' },
-  { value: 'Always on', label: 'AI ordering agent, day or night' },
-  { value: 'Minutes', label: 'to set up your menu' },
-];
-
-const STEPS = [
-  { n: '1', title: 'Set up your branches & menu', desc: 'Add your branches and menu items — or snap a photo of your existing menu and let AI digitize it for you.' },
-  { n: '2', title: 'Orders land from every channel', desc: 'WhatsApp, your own storefront, dine-in QR codes, and walk-in POS all feed into one order queue.' },
-  { n: '3', title: 'Run the whole shift from there', desc: 'Kitchen display, rider dispatch, reservations, and same-day insights — one dashboard, every role.' },
-];
+import Hero3D from './Hero3D';
+import ScrollReveal from './ScrollReveal';
+import ScreenshotFrame from './ScreenshotFrame';
+import AITeamSection from './AITeamSection';
+import whatsappChat from '../../assets/marketing/whatsapp-chat.webp';
+import publicMenu from '../../assets/marketing/public-menu.webp';
+import checkout from '../../assets/marketing/checkout.webp';
+import tokenBoard from '../../assets/marketing/token-board.webp';
+import posTill from '../../assets/marketing/pos-till.webp';
+import kitchenDisplay from '../../assets/marketing/kitchen-display.webp';
+import inventory from '../../assets/marketing/inventory.webp';
+import branchAnalytics from '../../assets/marketing/branch-analytics.webp';
+import customerProfile from '../../assets/marketing/customer-profile.webp';
+import couponsList from '../../assets/marketing/coupons-list.webp';
+import campaign from '../../assets/marketing/campaign.webp';
+import tenantSite from '../../assets/marketing/tenant-site.webp';
 
 const ROLES = [
   { icon: ShieldCheck, title: 'Owners get full command', desc: 'Every branch, every number, every setting — menu, staff, pricing, and business insights in one place.' },
   { icon: Users, title: 'Staff get their branch', desc: 'Kitchen, orders, and inventory for their own shift — with permissions the owner controls, nothing more.' },
   { icon: Bike, title: 'Riders get their deliveries', desc: 'A simple phone + PIN login built for the road — no password to remember, no app to install.' },
+];
+
+const MARKET_FACTS = [
+  { icon: TrendingDown, stat: '25–35%', label: 'commission Foodpanda takes per order' },
+  { icon: Scale, stat: '2021', label: 'Competition Commission of Pakistan antitrust inquiry opened, still referenced by owners today' },
+  { icon: Flame, stat: '11.7%', label: 'YoY inflation (May 2026), with energy costs up ~30% annually on top' },
 ];
 
 function useMarketingSeo() {
@@ -79,10 +71,66 @@ export default function LandingPage() {
     <div className="min-h-screen bg-white text-gray-900">
       <Header menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       <Hero />
-      <StatsBar />
-      <HowItWorks />
-      <FeatureGrid />
+
+      <FeatureSection
+        n="01" id="ordering" title="Ordering" bg="bg-gray-50"
+        subtitle="WhatsApp, your own storefront, and dine-in — every order lands in the same queue, no aggregator in between."
+      >
+        <div className="grid gap-5 sm:grid-cols-3">
+          <ScreenshotFrame src={whatsappChat} alt="WhatsApp AI ordering conversation, confirmed order" />
+          <ScreenshotFrame src={publicMenu} alt="RestoAI branded public ordering storefront" />
+          <ScreenshotFrame src={checkout} alt="Checkout screen on the branded storefront" />
+        </div>
+        <p className="mt-4 text-center text-sm text-gray-500">
+          Plus in-store token &amp; menu boards for the counter — <ScreenshotLink src={tokenBoard} />
+        </p>
+      </FeatureSection>
+
+      <FeatureSection
+        n="02" id="ai-team" title="Your AI Team"
+        subtitle="Proactive automation running behind the scenes — you decide what it's allowed to do."
+      >
+        <AITeamSection />
+      </FeatureSection>
+
+      <FeatureSection
+        n="03" id="operations" title="Run Your Whole Operation" bg="bg-gray-50"
+        subtitle="Kitchen display, till, and stock — the tools your shift actually runs on, not a back-office afterthought."
+      >
+        <div className="grid gap-5 sm:grid-cols-3">
+          <ScreenshotFrame src={posTill} alt="Multi-branch point of sale, dine-in tab" />
+          <ScreenshotFrame src={kitchenDisplay} alt="Live kitchen display board" />
+          <ScreenshotFrame src={inventory} alt="Ingredient-level inventory tracking" />
+        </div>
+      </FeatureSection>
+
+      <FeatureSection
+        n="04" id="business" title="Know Your Business"
+        subtitle="Branch comparison, revenue trend, and top sellers — the same-day numbers owners actually check."
+      >
+        <ScreenshotFrame src={branchAnalytics} alt="Branch comparison and revenue dashboard" className="mx-auto max-w-3xl" />
+      </FeatureSection>
+
+      <FeatureSection
+        n="05" id="growth" title="Grow Your Customers" bg="bg-gray-50"
+        subtitle="Profiles, coupons, and campaigns — the tools that bring a customer back without a commission cut."
+      >
+        <div className="grid gap-5 sm:grid-cols-3">
+          <ScreenshotFrame src={customerProfile} alt="Customer profile with order history and tags" />
+          <ScreenshotFrame src={couponsList} alt="Coupons and discount codes list" />
+          <ScreenshotFrame src={campaign} alt="A sent WhatsApp broadcast campaign" />
+        </div>
+      </FeatureSection>
+
+      <FeatureSection
+        n="06" id="website" title="Your Own Website"
+        subtitle="A branded site your customers reach directly — built in the same dashboard, published in minutes."
+      >
+        <ScreenshotFrame src={tenantSite} alt="A published restaurant landing page built with RestoAI" className="mx-auto max-w-3xl" />
+      </FeatureSection>
+
       <RolesSection />
+      <WhyThisExists />
       <Pricing />
       <FinalCta />
       <Footer />
@@ -90,9 +138,61 @@ export default function LandingPage() {
   );
 }
 
+function ScreenshotLink({ src }) {
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="font-medium text-brand-600 underline hover:text-brand-700">
+      see a board
+    </a>
+  );
+}
+
+function FeatureSection({ n, id, title, subtitle, bg = '', children }) {
+  return (
+    <section id={id} className={bg}>
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+        <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
+          <span className="text-sm font-bold tracking-wide text-brand-600">{n}</span>
+          <h2 className="mt-2 text-2xl font-bold sm:text-3xl">{title}</h2>
+          <p className="mt-3 text-gray-600">{subtitle}</p>
+        </ScrollReveal>
+        <ScrollReveal as="div" className="mt-12" delay={0.1}>
+          {children}
+        </ScrollReveal>
+      </div>
+    </section>
+  );
+}
+
+function LoginDropdown() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function onClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((o) => !o)} className="btn-secondary text-sm">
+        Log in <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-2 w-40 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+          <Link to="/login" className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpen(false)}>Owner login</Link>
+          <Link to="/login" className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpen(false)}>Staff login</Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Header({ menuOpen, setMenuOpen }) {
   return (
-    <header className="border-b border-gray-200">
+    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
         <div className="flex items-center gap-2">
           <ChefHat className="h-6 w-6 text-brand-600" />
@@ -100,14 +200,12 @@ function Header({ menuOpen, setMenuOpen }) {
         </div>
 
         <nav className="hidden items-center gap-8 text-sm font-medium text-gray-600 md:flex">
-          <a href="#features" className="hover:text-gray-900">Features</a>
-          <a href="#how-it-works" className="hover:text-gray-900">How it works</a>
+          <a href="#ordering" className="hover:text-gray-900">Features</a>
           <a href="#pricing" className="hover:text-gray-900">Pricing</a>
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Link to="/login" className="btn-secondary text-sm">Owner login</Link>
-          <Link to="/login" className="btn-secondary text-sm">Staff login</Link>
+          <LoginDropdown />
           <Link to="/rider/login" className="btn-secondary text-sm">Rider login</Link>
           <Link to="/login?mode=register" className="btn-primary text-sm">Start free</Link>
         </div>
@@ -119,8 +217,7 @@ function Header({ menuOpen, setMenuOpen }) {
 
       {menuOpen && (
         <div className="space-y-3 border-t border-gray-200 px-4 py-4 md:hidden">
-          <a href="#features" className="block text-sm font-medium text-gray-600" onClick={() => setMenuOpen(false)}>Features</a>
-          <a href="#how-it-works" className="block text-sm font-medium text-gray-600" onClick={() => setMenuOpen(false)}>How it works</a>
+          <a href="#ordering" className="block text-sm font-medium text-gray-600" onClick={() => setMenuOpen(false)}>Features</a>
           <a href="#pricing" className="block text-sm font-medium text-gray-600" onClick={() => setMenuOpen(false)}>Pricing</a>
           <div className="flex flex-col gap-2 pt-2">
             <Link to="/login" className="btn-secondary justify-center text-sm">Owner login</Link>
@@ -136,80 +233,26 @@ function Header({ menuOpen, setMenuOpen }) {
 
 function Hero() {
   return (
-    <section className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 sm:py-24">
-      <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
-        Escape the 25-35% commission.<br className="hidden sm:block" /> Run your restaurant your way.
-      </h1>
-      <p className="mx-auto mt-5 max-w-2xl text-base text-gray-600 sm:text-lg">
-        RestoAI is an AI-native operations platform built for Pakistani restaurants — WhatsApp ordering,
-        your own branded storefront, dine-in QR, and a full back-of-house, all with zero commission on every order.
-      </p>
-      <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <Link to="/login?mode=register" className="btn-primary justify-center px-6 py-3 text-base">
-          Start free trial <ArrowRight className="h-4 w-4" />
-        </Link>
-        <a href="#how-it-works" className="btn-secondary justify-center px-6 py-3 text-base">
-          See how it works
-        </a>
-      </div>
-    </section>
-  );
-}
-
-function StatsBar() {
-  return (
-    <section className="border-y border-gray-200 bg-gray-50">
-      <div className="mx-auto grid max-w-6xl grid-cols-2 gap-6 px-4 py-10 sm:px-6 lg:grid-cols-4">
-        {STATS.map((s) => (
-          <div key={s.label} className="text-center">
-            <p className="text-xl font-bold text-brand-700 sm:text-2xl">{s.value}</p>
-            <p className="mt-1 text-xs text-gray-500 sm:text-sm">{s.label}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function HowItWorks() {
-  return (
-    <section id="how-it-works" className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-      <h2 className="text-center text-2xl font-bold sm:text-3xl">How it works</h2>
-      <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">Three steps from paper menu to a fully running digital operation.</p>
-      <div className="mt-12 grid gap-8 sm:grid-cols-3">
-        {STEPS.map((step) => (
-          <div key={step.n} className="text-center sm:text-left">
-            <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-full border border-brand-600 text-sm font-bold text-brand-700 sm:mx-0">
-              {step.n}
-            </div>
-            <h3 className="mt-4 text-base font-semibold">{step.title}</h3>
-            <p className="mt-2 text-sm text-gray-600">{step.desc}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function FeatureGrid() {
-  return (
-    <section id="features" className="border-t border-gray-200 bg-gray-50">
-      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-        <h2 className="text-center text-2xl font-bold sm:text-3xl">Everything your restaurant needs, built in</h2>
-        <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">No bolt-ons, no separate subscriptions — one platform.</p>
-        <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-xl border border-gray-200 bg-white p-5">
-              <f.icon className="h-6 w-6 text-brand-600" />
-              <h3 className="mt-3 text-sm font-semibold">{f.title}</h3>
-              <p className="mt-1 text-sm text-gray-500">{f.desc}</p>
-            </div>
-          ))}
+    <section className="mx-auto grid max-w-6xl gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-2 lg:items-center lg:gap-6">
+      <div className="text-center lg:text-left">
+        <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
+          Escape the 25-35% commission.<br className="hidden lg:block" /> Run your restaurant your way.
+        </h1>
+        <p className="mx-auto mt-5 max-w-2xl text-base text-gray-600 sm:text-lg lg:mx-0">
+          RestoAI is an AI-native operations platform built for Pakistani restaurants — WhatsApp ordering,
+          your own branded storefront, dine-in QR, and a full back-of-house, all with zero commission on every order.
+        </p>
+        <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row lg:justify-start">
+          <Link to="/login?mode=register" className="btn-primary justify-center px-6 py-3 text-base">
+            Start free trial <ArrowRight className="h-4 w-4" />
+          </Link>
+          <a href="#ordering" className="btn-secondary justify-center px-6 py-3 text-base">
+            See how it works
+          </a>
         </div>
-        <div className="mt-6 rounded-xl border border-dashed border-gray-300 bg-white p-5 text-center">
-          <p className="text-sm font-medium text-gray-700">Coming soon</p>
-          <p className="mt-1 text-sm text-gray-500">Online payment gateway (JazzCash, EasyPaisa, card), and wallet / store credit.</p>
-        </div>
+      </div>
+      <div className="h-80 sm:h-96 lg:h-[30rem]">
+        <Hero3D />
       </div>
     </section>
   );
@@ -217,22 +260,53 @@ function FeatureGrid() {
 
 function RolesSection() {
   return (
-    <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-      <h2 className="text-center text-2xl font-bold sm:text-3xl">One system, every role</h2>
-      <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">
-        Owners, staff, and riders each get a login built for how they actually work — all on one platform.
-      </p>
-      <div className="mt-12 grid gap-8 sm:grid-cols-3">
-        {ROLES.map((r) => (
-          <div key={r.title} className="text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-50">
-              <r.icon className="h-6 w-6 text-brand-600" />
-            </div>
-            <h3 className="mt-4 text-base font-semibold">{r.title}</h3>
-            <p className="mt-2 text-sm text-gray-600">{r.desc}</p>
-          </div>
+    <section className="border-t border-gray-200 bg-gray-50">
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+        <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
+          <h2 className="text-2xl font-bold sm:text-3xl">One system, every role</h2>
+          <p className="mt-3 text-gray-600">
+            Owners, staff, and riders each get a login built for how they actually work — all on one platform.
+          </p>
+        </ScrollReveal>
+        <div className="mt-12 grid gap-8 sm:grid-cols-3">
+          {ROLES.map((r, i) => (
+            <ScrollReveal key={r.title} as="div" className="text-center" delay={i * 0.08}>
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+                <r.icon className="h-6 w-6 text-brand-600" />
+              </div>
+              <h3 className="mt-4 text-base font-semibold">{r.title}</h3>
+              <p className="mt-2 text-sm text-gray-600">{r.desc}</p>
+            </ScrollReveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function WhyThisExists() {
+  return (
+    <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
+      <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
+        <h2 className="text-2xl font-bold sm:text-3xl">Why this exists</h2>
+        <p className="mt-3 text-gray-600">
+          Pakistani restaurants have absorbed aggregator commissions and platform-side failures for years —
+          this isn't a hypothetical pain point.
+        </p>
+      </ScrollReveal>
+      <div className="mt-12 grid gap-6 sm:grid-cols-3">
+        {MARKET_FACTS.map((f, i) => (
+          <ScrollReveal key={f.label} as="div" className="rounded-xl border border-gray-200 p-6 text-center" delay={i * 0.08}>
+            <f.icon className="mx-auto h-6 w-6 text-brand-600" />
+            <p className="mt-3 text-2xl font-bold text-gray-900">{f.stat}</p>
+            <p className="mt-2 text-sm text-gray-600">{f.label}</p>
+          </ScrollReveal>
         ))}
       </div>
+      <ScrollReveal as="div" delay={0.2} className="mt-6 rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+        A 2020 Karachi restaurant boycott followed a commission jump from 18% to 35% — a documented, litigated
+        pain point owners still reference today, not a marketing talking point.
+      </ScrollReveal>
     </section>
   );
 }
@@ -241,21 +315,23 @@ function Pricing() {
   return (
     <section id="pricing" className="border-t border-gray-200 bg-gray-50">
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6 sm:py-24">
-        <h2 className="text-2xl font-bold sm:text-3xl">Flat pricing, tailored to your restaurant. Never a commission.</h2>
-        <p className="mx-auto mt-3 max-w-xl text-gray-600">
-          Your plan depends on your restaurant's size and branches, so we quote it directly — one thing never changes: 0% commission, on every order, always.
-        </p>
-        <div className="mx-auto mt-10 max-w-sm rounded-2xl border border-gray-200 bg-white p-8">
+        <ScrollReveal as="div">
+          <h2 className="text-2xl font-bold sm:text-3xl">Flat pricing, tailored to your restaurant. Never a commission.</h2>
+          <p className="mx-auto mt-3 max-w-xl text-gray-600">
+            Your plan depends on your restaurant's size and branches, so we quote it directly — one thing never changes: 0% commission, on every order, always.
+          </p>
+        </ScrollReveal>
+        <ScrollReveal as="div" delay={0.1} className="mx-auto mt-10 max-w-sm rounded-2xl border border-gray-200 bg-white p-8">
           <p className="text-sm font-medium uppercase tracking-wide text-brand-700">Flat monthly plan</p>
           <p className="mt-2 text-4xl font-bold">Contact for pricing</p>
-          <p className="mt-1 text-sm text-gray-500">A plan sized to your restaurant, quoted directly</p>
+          <p className="mt-1 text-sm text-gray-500">Final numbers not yet set — a plan sized to your restaurant, quoted directly</p>
           <ul className="mt-6 space-y-2 text-left text-sm text-gray-600">
             {['0% commission on every order, always', 'Every feature above included', 'Cancel anytime'].map((li) => (
               <li key={li} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" /> {li}</li>
             ))}
           </ul>
           <a href="#contact" className="btn-primary mt-6 w-full justify-center">Get in touch</a>
-        </div>
+        </ScrollReveal>
       </div>
     </section>
   );
@@ -264,18 +340,20 @@ function Pricing() {
 function FinalCta() {
   return (
     <section id="contact" className="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
-      <h2 className="text-center text-2xl font-bold sm:text-3xl">Ready to keep more of every order?</h2>
-      <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">
-        Start free, or leave your details and we'll reach out.
-      </p>
-      <div className="mt-8 flex justify-center">
-        <Link to="/login?mode=register" className="btn-primary justify-center px-6 py-3 text-base">
-          Start free trial <ArrowRight className="h-4 w-4" />
-        </Link>
-      </div>
-      <div className="mx-auto mt-12 max-w-md">
+      <ScrollReveal as="div">
+        <h2 className="text-center text-2xl font-bold sm:text-3xl">Ready to keep more of every order?</h2>
+        <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">
+          Start free, or leave your details and we'll reach out.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <Link to="/login?mode=register" className="btn-primary justify-center px-6 py-3 text-base">
+            Start free trial <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </ScrollReveal>
+      <ScrollReveal as="div" delay={0.1} className="mx-auto mt-12 max-w-md">
         <ContactForm />
-      </div>
+      </ScrollReveal>
     </section>
   );
 }

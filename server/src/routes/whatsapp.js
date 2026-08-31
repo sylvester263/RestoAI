@@ -121,8 +121,8 @@ router.post('/simulate', authenticate, (req, res, next) => {
       timestamp: Math.floor(Date.now() / 1000).toString(),
     };
 
-    const reply = await processWhatsAppMessage(tenantId, simulatedMsg);
-    res.json({ reply });
+    const result = await processWhatsAppMessage(tenantId, simulatedMsg);
+    res.json(result);
   } catch (err) {
     next(err);
   }
