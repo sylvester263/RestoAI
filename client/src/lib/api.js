@@ -184,8 +184,8 @@ export const api = {
   getBranchAnalytics: (id, period) => request(`/analytics/branches/${id}?period=${period}`),
   getBranchBenchmark: (id, period) => request(`/analytics/branches/${id}/benchmark?period=${period}`),
   getBranchStaffPerformance: (id, period) => request(`/analytics/branches/${id}/staff-performance?period=${period}`),
-  queryInsights: (question) =>
-    request('/insights/query', { method: 'POST', body: JSON.stringify({ question }) }),
+  queryInsights: (question, history) =>
+    request('/insights/query', { method: 'POST', body: JSON.stringify({ question, history }) }),
 
   // WhatsApp simulation
   simulateWhatsApp: (phone, message) =>
@@ -286,6 +286,15 @@ export const api = {
   getAbuseFlags: (status = 'open') => request(`/agents/abuse-detection/flags?status=${status}`),
   updateAbuseFlagStatus: (id, status) =>
     request(`/agents/abuse-detection/flags/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+
+  // Customer support (impl-27)
+  getSupportTickets: (status) => request(`/support/tickets${status ? `?status=${status}` : ''}`),
+  getSupportTicket: (id) => request(`/support/tickets/${id}`),
+  replyToSupportTicket: (id, content) =>
+    request(`/support/tickets/${id}/reply`, { method: 'POST', body: JSON.stringify({ content }) }),
+  updateSupportTicketStatus: (id, status) =>
+    request(`/support/tickets/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  getSupportStats: () => request('/support/stats'),
 };
 
 // RestoAI's own marketing site — unauthenticated, no tenant JWT (this is a

@@ -5,11 +5,12 @@ import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
 import CommandPalette from './CommandPalette';
 import InstallBanner from './InstallBanner';
 import DarkModeToggle from './DarkModeToggle';
+import OwnerChat from './OwnerChat';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
   Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck,
-  Sparkles, Tag, UserPlus, Menu, X, ChevronDown, Search,
+  Sparkles, Tag, UserPlus, Menu, X, ChevronDown, Search, Headphones,
 } from 'lucide-react';
 
 // ── Grouped navigation ──────────────────────────────────────────────
@@ -33,6 +34,7 @@ const navGroups = [
     label: 'Customers',
     items: [
       { to: '/customers', icon: Users, label: 'Customers' },
+      { to: '/support', icon: Headphones, label: 'Support' },
       { to: '/tables', icon: QrCode, label: 'Tables' },
       { to: '/reservations', icon: CalendarCheck, label: 'Reservations' },
       { to: '/campaigns', icon: Megaphone, label: 'Campaigns' },
@@ -262,6 +264,7 @@ export default function Layout({ children }) {
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       <InstallBanner />
+      <OwnerChat />
     </div>
   );
 }

@@ -198,10 +198,10 @@ export default function POS() {
       {/* ── Floor view ── */}
       <div className="flex w-80 shrink-0 flex-col">
         <div className="mb-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-gray-900">POS</h1>
+          <h1 className="text-xl font-bold text-[var(--text-primary)]">POS</h1>
           <div className="flex items-center gap-1">
             {canDiscount && branchId && (
-              <button onClick={() => setShowTaxSettings(true)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100" title="Tax settings">
+              <button onClick={() => setShowTaxSettings(true)} className="rounded-lg p-2 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)]" title="Tax settings">
                 <Settings className="h-4 w-4" />
               </button>
             )}
@@ -219,7 +219,7 @@ export default function POS() {
 
         <div className="flex-1 space-y-5 overflow-y-auto">
           <div>
-            {activeTabs.length === 0 && <p className="mt-4 text-center text-sm text-gray-400">No open tabs</p>}
+            {activeTabs.length === 0 && <p className="mt-4 text-center text-sm text-[var(--text-tertiary)]">No open tabs</p>}
             <div className="space-y-2">
               {activeTabs.map((tab) => (
                 <TabCard key={tab.id} tab={tab} selected={selectedId === tab.id} onClick={() => selectTab(tab.id)} />
@@ -229,15 +229,15 @@ export default function POS() {
 
           {parkedTabs.length > 0 && (
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Parked</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Parked</p>
               <div className="space-y-2">
                 {parkedTabs.map((tab) => (
-                  <div key={tab.id} className="flex items-center justify-between rounded-xl border border-dashed border-gray-300 bg-gray-50 p-3">
+                  <div key={tab.id} className="flex items-center justify-between rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface-3)] p-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-700">
+                      <p className="text-sm font-semibold text-[var(--text-secondary)]">
                         {TYPE_LABEL[tab.order_type]}{tab.table_number ? ` · Table ${tab.table_number}` : ''}
                       </p>
-                      <p className="text-xs text-gray-400">{tab.round_count} round{tab.round_count !== '1' ? 's' : ''} · Rs. {Number(tab.running_total).toLocaleString()}</p>
+                      <p className="text-xs text-[var(--text-tertiary)]">{tab.round_count} round{tab.round_count !== '1' ? 's' : ''} · Rs. {Number(tab.running_total).toLocaleString()}</p>
                     </div>
                     <button onClick={() => handleResume(tab.id)} className="btn-secondary text-xs"><Play className="h-3 w-3" /> Resume</button>
                   </div>
@@ -251,7 +251,7 @@ export default function POS() {
       {/* ── Tab detail ── */}
       <div className="flex-1 overflow-y-auto">
         {!detail ? (
-          <div className="flex h-full items-center justify-center text-gray-400">Select or open a tab</div>
+          <div className="flex h-full items-center justify-center text-[var(--text-tertiary)]">Select or open a tab</div>
         ) : (
           <TabDetail
             detail={detail}
@@ -288,7 +288,7 @@ export default function POS() {
 
       {/* Void item reason modal */}
       <Modal open={!!voidItemTarget} onClose={() => setVoidItemTarget(null)} title="Void Item" size="sm" confirmLabel="Void Item" onConfirm={confirmVoidItem} variant="danger">
-        <p className="mb-2 text-sm text-gray-600">Enter the reason for voiding this item:</p>
+        <p className="mb-2 text-sm text-[var(--text-secondary)]">Enter the reason for voiding this item:</p>
         <textarea
           className="input min-h-[80px]"
           placeholder="Reason for voiding…"
@@ -306,18 +306,18 @@ function TabCard({ tab, selected, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full rounded-xl border p-3 text-left transition-colors ${selected ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+      className={`w-full rounded-xl border p-3 text-left transition-colors ${selected ? 'border-brand-500 bg-brand-50' : 'border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--border)]'}`}
     >
       <div className="flex items-center justify-between">
-        <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+        <span className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
           <Icon className="h-4 w-4" />
           {TYPE_LABEL[tab.order_type]}{tab.table_number ? ` · Table ${tab.table_number}` : ''}
         </span>
-        <span className="flex items-center gap-1 text-xs text-gray-400"><Clock className="h-3 w-3" /> {elapsed(tab.created_at)}</span>
+        <span className="flex items-center gap-1 text-xs text-[var(--text-tertiary)]"><Clock className="h-3 w-3" /> {elapsed(tab.created_at)}</span>
       </div>
       <div className="mt-1 flex items-center justify-between text-sm">
-        <span className="text-gray-500">{tab.round_count} round{tab.round_count !== '1' ? 's' : ''}</span>
-        <span className="font-semibold text-gray-900">Rs. {Number(tab.running_total).toLocaleString()}</span>
+        <span className="text-[var(--text-secondary)]">{tab.round_count} round{tab.round_count !== '1' ? 's' : ''}</span>
+        <span className="font-semibold text-[var(--text-primary)]">Rs. {Number(tab.running_total).toLocaleString()}</span>
       </div>
     </button>
   );
@@ -332,7 +332,7 @@ function ShiftBar({ branchId, shift, onChange }) {
       <>
         <button
           onClick={() => setShowOpen(true)}
-          className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 py-2 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"
+          className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--border)] py-2 text-sm text-[var(--text-secondary)] hover:border-brand-400 hover:text-brand-600"
         >
           <Wallet className="h-4 w-4" /> Open shift
         </button>
@@ -374,7 +374,7 @@ function OpenShiftModal({ branchId, onClose, onOpened }) {
 
   return (
     <Modal open={true} onClose={onClose} title="Open Shift" size="sm">
-      <label className="mb-1 block text-xs font-medium text-gray-600">Opening cash float (Rs.)</label>
+      <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Opening cash float (Rs.)</label>
       <input type="number" min="0" className="input mb-4" value={floatAmount} onChange={(e) => setFloatAmount(e.target.value)} autoFocus />
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">
@@ -412,20 +412,20 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
     const variance = Number(closed.variance);
     return (
       <Modal open={true} onClose={onClosed} title="Z-Report" size="md">
-        <p className="mb-4 text-xs text-gray-500">Shift closed {new Date(closed.closed_at).toLocaleString()}</p>
+        <p className="mb-4 text-xs text-[var(--text-secondary)]">Shift closed {new Date(closed.closed_at).toLocaleString()}</p>
 
-        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400">By payment method</p>
+        <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">By payment method</p>
         <div className="mb-4 space-y-1 text-sm">
-          {report.sales_by_method.length === 0 && <p className="text-gray-400">No sales this shift</p>}
+          {report.sales_by_method.length === 0 && <p className="text-[var(--text-tertiary)]">No sales this shift</p>}
           {report.sales_by_method.map((m) => (
-            <div key={m.method} className="flex justify-between"><span className="text-gray-500">{METHOD_LABEL[m.method] || m.method}</span><span>Rs. {m.total.toLocaleString()}</span></div>
+            <div key={m.method} className="flex justify-between"><span className="text-[var(--text-secondary)]">{METHOD_LABEL[m.method] || m.method}</span><span>Rs. {m.total.toLocaleString()}</span></div>
           ))}
         </div>
 
         {report.sales_by_category.length > 0 && (
           <>
-            <p className="mb-1 border-t border-gray-100 pt-3 text-xs font-semibold uppercase tracking-wide text-gray-400">By category</p>
-            <div className="mb-4 space-y-1 text-sm text-gray-600">
+            <p className="mb-1 border-t border-[var(--border-light)] pt-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">By category</p>
+            <div className="mb-4 space-y-1 text-sm text-[var(--text-secondary)]">
               {report.sales_by_category.map((c) => (
                 <div key={c.category} className="flex justify-between"><span>{c.category}</span><span>Rs. {c.total.toLocaleString()}</span></div>
               ))}
@@ -433,17 +433,17 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
           </>
         )}
 
-        <div className="mb-4 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-600">
+        <div className="mb-4 space-y-1 border-t border-[var(--border-light)] pt-3 text-sm text-[var(--text-secondary)]">
           <div className="flex justify-between"><span>Discounts given</span><span>-Rs. {report.discount_total.toLocaleString()}</span></div>
           <div className="flex justify-between"><span>Voids ({report.voids.count})</span><span>Rs. {report.voids.total.toLocaleString()}</span></div>
           <div className="flex justify-between"><span>Refunds ({report.refunds.count})</span><span>Rs. {report.refunds.total.toLocaleString()}</span></div>
         </div>
 
-        <div className="space-y-1 border-t border-gray-100 pt-3 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Opening float</span><span>Rs. {Number(closed.opening_cash_float).toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Expected cash</span><span>Rs. {Number(closed.closing_cash_expected).toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Counted cash</span><span>Rs. {Number(closed.closing_cash_counted).toLocaleString()}</span></div>
-          <div className={`flex justify-between font-bold ${variance === 0 ? 'text-gray-900' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>
+        <div className="space-y-1 border-t border-[var(--border-light)] pt-3 text-sm">
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Opening float</span><span>Rs. {Number(closed.opening_cash_float).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Expected cash</span><span>Rs. {Number(closed.closing_cash_expected).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Counted cash</span><span>Rs. {Number(closed.closing_cash_counted).toLocaleString()}</span></div>
+          <div className={`flex justify-between font-bold ${variance === 0 ? 'text-[var(--text-primary)]' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>
             <span>Variance</span><span>{variance > 0 ? '+' : ''}Rs. {variance.toLocaleString()}</span>
           </div>
         </div>
@@ -455,7 +455,7 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
 
   return (
     <Modal open={true} onClose={onClose} title="Close Shift" size="sm">
-      <label className="mb-1 block text-xs font-medium text-gray-600">Counted cash in drawer (Rs.)</label>
+      <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Counted cash in drawer (Rs.)</label>
       <input type="number" min="0" className="input mb-4" value={counted} onChange={(e) => setCounted(e.target.value)} autoFocus />
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">
@@ -500,9 +500,9 @@ function TaxSettingsModal({ branchId, onClose }) {
 
   return (
     <Modal open={true} onClose={onClose} title="Tax Settings">
-      {!config ? <Loader2 className="h-5 w-5 animate-spin text-gray-400" /> : (
+      {!config ? <Loader2 className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" /> : (
         <>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Tax authority</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Tax authority</label>
           <select className="input mb-3" value={authority} onChange={(e) => setAuthority(e.target.value)}>
             <option value="NONE">Not registered / no tax</option>
             <option value="PRA">PRA — Punjab</option>
@@ -510,9 +510,9 @@ function TaxSettingsModal({ branchId, onClose }) {
             <option value="KPRA">KPRA — Khyber Pakhtunkhwa</option>
             <option value="BRA">BRA — Balochistan</option>
           </select>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Tax rate (%)</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Tax rate (%)</label>
           <input type="number" min="0" max="100" step="0.01" className="input mb-3" value={rate} onChange={(e) => setRate(e.target.value)} />
-          <label className="mb-1 block text-xs font-medium text-gray-600">Registration number (NTN/STRN, optional)</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Registration number (NTN/STRN, optional)</label>
           <input className="input mb-4" value={regNumber} onChange={(e) => setRegNumber(e.target.value)} placeholder="e.g. 1234567-8" />
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2">
@@ -553,20 +553,20 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
     <div className="space-y-4">
       <div className="card flex items-center justify-between">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--text-primary)]">
             {tab.order_type === 'dine_in' ? `Table ${tab.table_number}` : tab.order_type === 'phone' ? 'Phone Order' : 'Counter Order'}
             {tab.status === 'held' && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Parked</span>}
           </h2>
-          {tab.customer_name && <p className="text-sm text-gray-500">{tab.customer_name} {tab.customer_phone && `· ${tab.customer_phone}`}</p>}
+          {tab.customer_name && <p className="text-sm text-[var(--text-secondary)]">{tab.customer_name} {tab.customer_phone && `· ${tab.customer_phone}`}</p>}
         </div>
         <div className="flex items-center gap-1">
           {tab.order_type === 'dine_in' && (
-            <button onClick={() => setShowTransfer(true)} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100" title="Transfer table">
+            <button onClick={() => setShowTransfer(true)} className="rounded-lg p-2 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)]" title="Transfer table">
               <ArrowRightLeft className="h-4 w-4" />
             </button>
           )}
           {tab.status === 'open' && (
-            <button onClick={onHold} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100" title="Park this tab">
+            <button onClick={onHold} className="rounded-lg p-2 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)]" title="Park this tab">
               <Pause className="h-4 w-4" />
             </button>
           )}
@@ -577,18 +577,18 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
       {/* Rounds already sent */}
       {orders.length > 0 && (
         <div className="card">
-          <h3 className="mb-3 text-sm font-semibold text-gray-700">Rounds</h3>
+          <h3 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Rounds</h3>
           <div className="space-y-3">
             {orders.map((o, i) => (
-              <div key={o.id} className="border-b border-gray-100 pb-3 last:border-0 last:pb-0">
-                <p className="mb-1 text-xs font-medium text-gray-400">Round {i + 1} · {new Date(o.created_at).toLocaleTimeString()}</p>
+              <div key={o.id} className="border-b border-[var(--border-light)] pb-3 last:border-0 last:pb-0">
+                <p className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">Round {i + 1} · {new Date(o.created_at).toLocaleTimeString()}</p>
                 {o.items.map((item) => (
-                  <div key={item.id} className="group flex items-center justify-between text-sm text-gray-700">
+                  <div key={item.id} className="group flex items-center justify-between text-sm text-[var(--text-secondary)]">
                     <span>{item.quantity}x {item.name}</span>
                     <span className="flex items-center gap-2">
                       Rs. {Number(item.total_price).toLocaleString()}
                       {tab.status !== 'settled' && tab.status !== 'voided' && (
-                        <button onClick={() => handleVoidItem(item.id)} className="text-gray-300 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100" title="Void this item">
+                        <button onClick={() => handleVoidItem(item.id)} className="text-[var(--text-tertiary)] opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100" title="Void this item">
                           <X className="h-3 w-3" />
                         </button>
                       )}
@@ -603,19 +603,19 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
 
       {/* Add items */}
       <div className="card">
-        <h3 className="mb-3 text-sm font-semibold text-gray-700">Add Items</h3>
+        <h3 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Add Items</h3>
         <div className="max-h-64 space-y-4 overflow-y-auto">
           {Object.entries(grouped).map(([cat, items]) => (
             <div key={cat}>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">{cat}</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">{cat}</p>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {items.map((item) => (
                   <button
                     key={item.id}
                     onClick={() => onAddToCart(item)}
-                    className="rounded-lg border border-gray-200 p-2 text-left text-xs hover:border-brand-400 hover:bg-brand-50"
+                    className="rounded-lg border border-[var(--border)] p-2 text-left text-xs hover:border-brand-400 hover:bg-brand-50"
                   >
-                    <p className="font-medium text-gray-900 line-clamp-1">{item.name}</p>
+                    <p className="font-medium text-[var(--text-primary)] line-clamp-1">{item.name}</p>
                     <p className="text-brand-600">Rs. {Number(item.price).toLocaleString()}</p>
                   </button>
                 ))}
@@ -625,14 +625,14 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
         </div>
 
         {cart.length > 0 && (
-          <div className="mt-4 space-y-2 border-t border-gray-100 pt-3">
+          <div className="mt-4 space-y-2 border-t border-[var(--border-light)] pt-3">
             {cart.map((i) => (
               <div key={i.menu_item_id} className="flex items-center justify-between text-sm">
                 <span>{i.name}</span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => onChangeQty(i.menu_item_id, -1)} className="rounded border border-gray-300 p-1"><Minus className="h-3 w-3" /></button>
+                  <button onClick={() => onChangeQty(i.menu_item_id, -1)} className="rounded border border-[var(--border)] p-1"><Minus className="h-3 w-3" /></button>
                   <span className="w-5 text-center">{i.quantity}</span>
-                  <button onClick={() => onChangeQty(i.menu_item_id, 1)} className="rounded border border-gray-300 p-1"><Plus className="h-3 w-3" /></button>
+                  <button onClick={() => onChangeQty(i.menu_item_id, 1)} className="rounded border border-[var(--border)] p-1"><Plus className="h-3 w-3" /></button>
                   <span className="w-16 text-right font-medium">Rs. {(i.price * i.quantity).toLocaleString()}</span>
                 </div>
               </div>
@@ -648,7 +648,7 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
       {/* Discount */}
       {canDiscount && orders.length > 0 && (
         <div className="card">
-          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700"><Percent className="h-4 w-4" /> Discount</h3>
+          <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Percent className="h-4 w-4" /> Discount</h3>
           <div className="flex gap-2">
             <input type="number" min="0" className="input" placeholder="Amount" value={discountAmount} onChange={(e) => setDiscountAmount(e.target.value)} />
             <input className="input" placeholder="Reason (optional)" value={discountReason} onChange={(e) => setDiscountReason(e.target.value)} />
@@ -661,11 +661,11 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
       {orders.length > 0 && (
         <div className="card">
           <div className="space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>Rs. {subtotal.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Subtotal</span><span>Rs. {subtotal.toLocaleString()}</span></div>
             {tab.discount_amount > 0 && (
               <div className="flex justify-between text-green-600"><span>Discount{tab.discount_reason ? ` (${tab.discount_reason})` : ''}</span><span>-Rs. {Number(tab.discount_amount).toLocaleString()}</span></div>
             )}
-            <div className="flex justify-between text-base font-bold text-gray-900"><span>Total</span><span>Rs. {netTotal.toLocaleString()}</span></div>
+            <div className="flex justify-between text-base font-bold text-[var(--text-primary)]"><span>Total</span><span>Rs. {netTotal.toLocaleString()}</span></div>
           </div>
           <button onClick={() => setShowSettle(true)} className="btn-primary mt-4 w-full justify-center">
             <CreditCard className="h-4 w-4" /> Settle Bill
@@ -719,7 +719,7 @@ function SettleModal({ tabId, estimatedTotal, onClose, onSettled }) {
 
   return (
     <Modal open={true} onClose={onClose} title="Settle Bill">
-      <p className="mb-4 text-2xl font-bold text-gray-900">Rs. {estimatedTotal.toLocaleString()}</p>
+      <p className="mb-4 text-2xl font-bold text-[var(--text-primary)]">Rs. {estimatedTotal.toLocaleString()}</p>
 
       <div className="mb-3 space-y-2">
         {lines.map((line, i) => (
@@ -732,7 +732,7 @@ function SettleModal({ tabId, estimatedTotal, onClose, onSettled }) {
             </select>
             <input type="number" min="0" className="input" placeholder="Amount" value={line.amount} onChange={(e) => updateLine(i, 'amount', e.target.value)} />
             {lines.length > 1 && (
-              <button onClick={() => removeLine(i)} className="shrink-0 text-gray-300 hover:text-red-500"><X className="h-4 w-4" /></button>
+              <button onClick={() => removeLine(i)} className="shrink-0 text-[var(--text-tertiary)] hover:text-red-500"><X className="h-4 w-4" /></button>
             )}
           </div>
         ))}
@@ -741,7 +741,7 @@ function SettleModal({ tabId, estimatedTotal, onClose, onSettled }) {
       <button onClick={addLine} className="mb-4 text-xs font-medium text-brand-600 hover:underline">+ Split across another method</button>
 
       {lines.length > 1 && (
-        <p className={`mb-3 text-sm ${Math.abs(remaining) < 1 ? 'text-green-600' : 'text-gray-500'}`}>
+        <p className={`mb-3 text-sm ${Math.abs(remaining) < 1 ? 'text-green-600' : 'text-[var(--text-secondary)]'}`}>
           {Math.abs(remaining) < 1 ? 'Fully covered' : remaining > 0 ? `Rs. ${remaining.toLocaleString()} remaining` : `Rs. ${Math.abs(remaining).toLocaleString()} over`}
         </p>
       )}
@@ -806,7 +806,7 @@ function ReceiptModal({ orderId, canRefund, onClose }) {
   }, [orderId]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:static print:bg-white print:p-0" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 print:static print:bg-[var(--surface-2)] print:p-0" onClick={onClose}>
       <style>{`
         @media print {
           body * { visibility: hidden; }
@@ -814,12 +814,12 @@ function ReceiptModal({ orderId, canRefund, onClose }) {
           .pos-receipt { position: absolute; top: 0; left: 0; width: 80mm; font-size: 11px; }
         }
       `}</style>
-      <div className="max-h-[90vh] w-80 overflow-y-auto rounded-xl bg-white p-6 shadow-xl print:h-auto print:max-h-none print:w-full print:rounded-none print:p-2 print:shadow-none" onClick={(e) => e.stopPropagation()}>
+      <div className="max-h-[90vh] w-80 overflow-y-auto rounded-xl bg-[var(--surface-2)] p-6 shadow-xl print:h-auto print:max-h-none print:w-full print:rounded-none print:p-2 print:shadow-none" onClick={(e) => e.stopPropagation()}>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {!receipt ? (
-          <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          <Loader2 className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" />
         ) : (
-          <div className="pos-receipt font-mono text-xs text-gray-800">
+          <div className="pos-receipt font-mono text-xs text-[var(--text-primary)]">
             <div className="mb-3 text-center">
               <p className="text-sm font-bold">{receipt.branch.name}</p>
               {receipt.branch.address && <p>{receipt.branch.address}</p>}
@@ -894,14 +894,14 @@ function RefundModal({ orderId, maxAmount, onClose, onRefunded }) {
     <Modal open={true} onClose={onClose} title={done ? 'Refund recorded' : 'Refund'} size="sm" hideCloseButton={done}>
       {done ? (
         <>
-          <p className="mb-4 text-sm text-gray-500">Rs. {(Number(amount) || 0).toLocaleString()} logged with an audit trail entry.</p>
+          <p className="mb-4 text-sm text-[var(--text-secondary)]">Rs. {(Number(amount) || 0).toLocaleString()} logged with an audit trail entry.</p>
           <button onClick={onRefunded} className="btn-primary w-full justify-center">Done</button>
         </>
       ) : (
         <>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Amount (Rs.)</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Amount (Rs.)</label>
           <input type="number" min="0" max={maxAmount} className="input mb-3" value={amount} onChange={(e) => setAmount(e.target.value)} />
-          <label className="mb-1 block text-xs font-medium text-gray-600">Reason</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Reason</label>
           <input className="input mb-4" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. customer complaint" />
           {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
           <div className="flex justify-end gap-2">
@@ -963,7 +963,7 @@ function NewTabModal({ branchId, onClose, onCreated }) {
             <button
               key={t}
               onClick={() => setOrderType(t)}
-              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-xs font-medium ${orderType === t ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-gray-200 text-gray-600'}`}
+              className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 text-xs font-medium ${orderType === t ? 'border-brand-500 bg-brand-50 text-brand-700' : 'border-[var(--border)] text-[var(--text-secondary)]'}`}
             >
               <Icon className="h-5 w-5" />
               {TYPE_LABEL[t]}
@@ -974,7 +974,7 @@ function NewTabModal({ branchId, onClose, onCreated }) {
 
       {orderType === 'dine_in' && (
         <div className="mb-3">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Table</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Table</label>
           <select className="input" value={tableId} onChange={(e) => setTableId(e.target.value)}>
             <option value="">Select a table…</option>
             {tables.map((t) => (
@@ -985,11 +985,11 @@ function NewTabModal({ branchId, onClose, onCreated }) {
       )}
 
       <div className="mb-3">
-        <label className="mb-1 block text-xs font-medium text-gray-600">Customer name (optional)</label>
+        <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Customer name (optional)</label>
         <input className="input" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
       </div>
       <div className="mb-4">
-        <label className="mb-1 block text-xs font-medium text-gray-600">Phone (optional)</label>
+        <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Phone (optional)</label>
         <input className="input" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
       </div>
 

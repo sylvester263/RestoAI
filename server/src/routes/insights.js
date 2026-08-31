@@ -17,13 +17,20 @@ const insightsLimiter = rateLimit({
 // Natural-language query over the restaurant's order data, powered by Qwen
 router.post('/query', authorize('reports.view'), insightsLimiter, async (req, res, next) => {
   try {
-    const { question } = req.body;
+    const { question, history } = req.body;
     if (!question || typeof question !== 'string') {
       return res.status(400).json({ error: { message: 'question is required' } });
     }
 
+    // Optional conversation history for multi-turn context — each entry is
+    // { role: 'user'|'assistant', content: string }. Validated lightly here;
+    // the AI service slices the last 6 turns for context window efficiency.
+    const validHistory = Array.isArray(history)
+      ? history.filter((h) => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string').slice(0, 10)
+      : [];
+
     const { generateInsights } = await import('../services/ai-agent.js');
-    const answer = await generateInsights(req.user.tenant_id, question);
+    const answer = await generateInsights(req.user.tenant_id, question, validHistory);
     res.json({ answer });
   } catch (err) {
     next(err);

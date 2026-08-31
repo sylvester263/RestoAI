@@ -6,7 +6,7 @@ import Modal from '../components/ui/Modal';
 import { Megaphone, Plus, Send, Users, CheckCircle2, XCircle, Clock, Eye, Loader2 } from 'lucide-react';
 
 const STATUS_COLORS = {
-  draft: 'bg-gray-100 text-gray-600',
+  draft: 'bg-[var(--surface-3)] text-gray-600',
   scheduled: 'bg-blue-100 text-blue-700',
   sending: 'bg-yellow-100 text-yellow-700',
   completed: 'bg-green-100 text-green-700',
@@ -111,8 +111,8 @@ export default function Campaigns() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Campaigns</h1>
-          <p className="text-sm text-gray-500">WhatsApp broadcast marketing</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Campaigns</h1>
+          <p className="text-sm text-[var(--text-secondary)]">WhatsApp broadcast marketing</p>
         </div>
         <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
           <Plus className="h-4 w-4" /> New Campaign
@@ -122,7 +122,7 @@ export default function Campaigns() {
       {loading ? (
         <Skeleton.List rows={4} />
       ) : campaigns.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+        <div className="flex flex-col items-center justify-center py-20 text-[var(--text-tertiary)]">
           <Megaphone className="mb-4 h-16 w-16" />
           <p className="text-lg font-medium">No campaigns yet</p>
           <p className="text-sm">Create your first broadcast to reach all customers.</p>
@@ -134,11 +134,11 @@ export default function Campaigns() {
               <div className="flex items-center justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
-                    <h3 className="font-semibold text-gray-900">{c.name}</h3>
+                    <h3 className="font-semibold text-[var(--text-primary)]">{c.name}</h3>
                     <span className={`badge ${STATUS_COLORS[c.status] || ''}`}>{c.status}</span>
                   </div>
-                  <p className="mt-1 text-sm text-gray-500 line-clamp-1">{c.message_template}</p>
-                  <div className="mt-2 flex items-center gap-4 text-xs text-gray-400">
+                  <p className="mt-1 text-sm text-[var(--text-secondary)] line-clamp-1">{c.message_template}</p>
+                  <div className="mt-2 flex items-center gap-4 text-xs text-[var(--text-tertiary)]">
                     <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {c.total_recipients || 0} recipients</span>
                     {c.sent_count > 0 && <span className="flex items-center gap-1 text-green-600"><CheckCircle2 className="h-3 w-3" /> {c.sent_count} sent</span>}
                     {c.failed_count > 0 && <span className="flex items-center gap-1 text-red-600"><XCircle className="h-3 w-3" /> {c.failed_count} failed</span>}
@@ -146,7 +146,7 @@ export default function Campaigns() {
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => handleViewStatus(c)} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100" title="View details">
+                  <button onClick={() => handleViewStatus(c)} className="rounded-lg p-2 text-[var(--text-secondary)] hover:bg-[var(--surface-3)]" title="View details">
                     <Eye className="h-4 w-4" />
                   </button>
                   {c.status === 'draft' && (
@@ -179,12 +179,12 @@ export default function Campaigns() {
       <Modal open={showForm} onClose={() => setShowForm(false)} title="New Broadcast Campaign" size="lg">
         <div className="space-y-4">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Campaign Name</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Campaign Name</label>
             <input className="input" placeholder="e.g. Weekend Special Offer" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Message Template</label>
-            <p className="mb-2 text-xs text-gray-400">Use <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">{'{{name}}'}</code> for customer's name</p>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Message Template</label>
+            <p className="mb-2 text-xs text-[var(--text-tertiary)]">Use <code className="rounded bg-[var(--surface-3)] px-1 py-0.5 text-xs">{'{{name}}'}</code> for customer's name</p>
             <textarea
               className="input min-h-[120px]"
               placeholder="Hi {{name}}! This weekend enjoy 20% off on all Karahi dishes. Order now!"
@@ -216,14 +216,14 @@ export default function Campaigns() {
       {/* Status detail modal */}
       <Modal open={!!(selected && stats)} onClose={() => { setSelected(null); setStats(null); }} title={selected?.name || ''}>
         <span className={`badge mb-4 inline-block ${STATUS_COLORS[selected?.status] || ''}`}>{selected?.status}</span>
-        <div className="mb-4 rounded-lg bg-gray-50 p-3">
-          <p className="text-sm whitespace-pre-wrap text-gray-700">{selected?.message_template}</p>
+        <div className="mb-4 rounded-lg bg-[var(--surface-3)] p-3">
+          <p className="text-sm whitespace-pre-wrap text-[var(--text-secondary)]">{selected?.message_template}</p>
         </div>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Total recipients</span><span className="font-semibold">{stats?.pending + stats?.sent + stats?.failed + stats?.skipped_no_window}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Total recipients</span><span className="font-semibold">{stats?.pending + stats?.sent + stats?.failed + stats?.skipped_no_window}</span></div>
           <div className="flex justify-between text-green-600"><span>Sent</span><span className="font-semibold">{stats?.sent}</span></div>
           <div className="flex justify-between text-red-600"><span>Failed</span><span className="font-semibold">{stats?.failed}</span></div>
-          <div className="flex justify-between text-gray-400"><span>Pending</span><span className="font-semibold">{stats?.pending}</span></div>
+          <div className="flex justify-between text-[var(--text-tertiary)]"><span>Pending</span><span className="font-semibold">{stats?.pending}</span></div>
           {stats?.skipped_no_window > 0 && (
             <div className="flex justify-between text-yellow-600"><span>Skipped (outside window)</span><span className="font-semibold">{stats.skipped_no_window}</span></div>
           )}
@@ -264,17 +264,17 @@ function RecipientPickerModal({ onClose, onPick }) {
   return (
     <Modal open={true} onClose={onClose} title="Choose recipients">
       {loading ? (
-        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+        <Loader2 className="h-5 w-5 animate-spin text-[var(--text-tertiary)]" />
       ) : (
         <div className="space-y-2">
-          <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
             <input type="radio" name="source" checked={source === 'all'} onChange={() => setSource('all')} />
             All customers
           </label>
 
-          <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
             <input type="radio" name="source" checked={source === 'segment'} onChange={() => setSource('segment')} disabled={segments.length === 0} />
-            A saved segment {segments.length === 0 && <span className="text-xs text-gray-400">(none yet)</span>}
+            A saved segment {segments.length === 0 && <span className="text-xs text-[var(--text-tertiary)]">(none yet)</span>}
           </label>
           {source === 'segment' && (
             <select className="input ml-6 w-[calc(100%-1.5rem)]" value={segmentId} onChange={(e) => setSegmentId(e.target.value)}>
@@ -283,7 +283,7 @@ function RecipientPickerModal({ onClose, onPick }) {
             </select>
           )}
 
-          <label className="flex items-center gap-2 rounded-lg border border-gray-200 p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
+          <label className="flex items-center gap-2 rounded-lg border border-[var(--border)] p-3 text-sm has-[:checked]:border-brand-500 has-[:checked]:bg-brand-50">
             <input type="radio" name="source" checked={source === 'rfm'} onChange={() => setSource('rfm')} />
             An RFM segment
           </label>

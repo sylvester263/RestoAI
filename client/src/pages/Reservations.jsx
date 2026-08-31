@@ -70,13 +70,13 @@ export default function Reservations() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Reservations</h1>
-          <p className="text-sm text-gray-500">{reservations.length} booking{reservations.length !== 1 ? 's' : ''} on this day</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Reservations</h1>
+          <p className="text-sm text-[var(--text-secondary)]">{reservations.length} booking{reservations.length !== 1 ? 's' : ''} on this day</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => shiftDate(-1)} className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"><ChevronLeft className="h-4 w-4" /></button>
+          <button onClick={() => shiftDate(-1)} className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--surface-3)]"><ChevronLeft className="h-4 w-4" /></button>
           <input type="date" className="input w-40" value={date} onChange={(e) => setDate(e.target.value)} />
-          <button onClick={() => shiftDate(1)} className="rounded-lg border border-gray-300 p-2 hover:bg-gray-50"><ChevronRight className="h-4 w-4" /></button>
+          <button onClick={() => shiftDate(1)} className="rounded-lg border border-[var(--border)] p-2 hover:bg-[var(--surface-3)]"><ChevronRight className="h-4 w-4" /></button>
         </div>
       </div>
 
@@ -85,26 +85,26 @@ export default function Reservations() {
       ) : (
         <div className="card overflow-hidden p-0">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-200 bg-gray-50">
+            <thead className="border-b border-[var(--border)] bg-[var(--surface-3)]">
               <tr>
-                <th className="px-4 py-3 font-medium text-gray-600">Time</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Guest</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Party</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-                <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+                <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Time</th>
+                <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Guest</th>
+                <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Party</th>
+                <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Status</th>
+                <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-[var(--border-light)]">
               {reservations.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">
+                <tr key={r.id} className="hover:bg-[var(--surface-3)]">
+                  <td className="px-4 py-3 font-medium text-[var(--text-primary)]">
                     {new Date(r.reserved_for).toLocaleTimeString('en-PK', { timeZone: 'Asia/Karachi', hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-gray-900">{r.customer_name}</p>
-                    <p className="text-xs text-gray-400">{r.customer_phone}</p>
+                    <p className="text-[var(--text-primary)]">{r.customer_name}</p>
+                    <p className="text-xs text-[var(--text-tertiary)]">{r.customer_phone}</p>
                   </td>
-                  <td className="px-4 py-3 text-gray-600"><Users className="mr-1 inline h-3 w-3" />{r.party_size}</td>
+                  <td className="px-4 py-3 text-[var(--text-secondary)]"><Users className="mr-1 inline h-3 w-3" />{r.party_size}</td>
                   <td className="px-4 py-3">
                     <span className={`badge ${STATUS_STYLE[r.status]}`}>{r.status.replace('_', ' ')}</span>
                   </td>
@@ -116,12 +116,12 @@ export default function Reservations() {
                         </button>
                       )}
                       {['confirmed', 'seated'].includes(r.status) && (
-                        <button onClick={() => updateStatus(r.id, 'cancelled')} className="text-xs text-gray-400 hover:text-red-600">
+                        <button onClick={() => updateStatus(r.id, 'cancelled')} className="text-xs text-[var(--text-tertiary)] hover:text-red-600">
                           Cancel
                         </button>
                       )}
                       {r.status === 'confirmed' && (
-                        <button onClick={() => updateStatus(r.id, 'no_show')} className="text-xs text-gray-400 hover:text-amber-600">
+                        <button onClick={() => updateStatus(r.id, 'no_show')} className="text-xs text-[var(--text-tertiary)] hover:text-amber-600">
                           No-show
                         </button>
                       )}
@@ -132,7 +132,7 @@ export default function Reservations() {
             </tbody>
           </table>
           {reservations.length === 0 && (
-            <div className="py-12 text-center text-sm text-gray-400">No reservations for this day</div>
+            <div className="py-12 text-center text-sm text-[var(--text-tertiary)]">No reservations for this day</div>
           )}
         </div>
       )}

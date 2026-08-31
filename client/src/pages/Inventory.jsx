@@ -104,15 +104,15 @@ export default function Inventory() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-sm text-gray-500">Ingredients, suppliers, and purchase orders.</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Inventory</h1>
+          <p className="text-sm text-[var(--text-secondary)]">Ingredients, suppliers, and purchase orders.</p>
         </div>
         {tab === 'ingredients' && (
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowLowOnly(!showLowOnly)}
               className={`flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                showLowOnly ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                showLowOnly ? 'bg-red-100 text-red-700' : 'bg-[var(--surface-3)] text-[var(--text-secondary)] hover:bg-[var(--border)]'
               }`}
             >
               <AlertTriangle className="h-4 w-4" />
@@ -136,13 +136,13 @@ export default function Inventory() {
       </div>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-1 border-b border-gray-200">
+      <div className="mb-6 flex gap-1 border-b border-[var(--border)]">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
             className={`flex items-center gap-2 border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
-              tab === key ? 'border-brand-600 text-brand-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+              tab === key ? 'border-brand-600 text-brand-600' : 'border-transparent text-[var(--text-secondary)] hover:text-[var(--text-secondary)]'
             }`}
           >
             <Icon className="h-4 w-4" /> {label}
@@ -159,11 +159,11 @@ export default function Inventory() {
           <div className="space-y-2">
             {suggestions.map((s) => (
               <div key={s.id} className="rounded-lg bg-white p-3 text-sm">
-                <p className="mb-2 text-gray-700">{s.reasoning}</p>
+                <p className="mb-2 text-[var(--text-secondary)]">{s.reasoning}</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-500">Suggested: {Number(s.suggested_quantity).toFixed(1)} {s.unit} of {s.ingredient_name}</span>
+                  <span className="text-xs text-[var(--text-secondary)]">Suggested: {Number(s.suggested_quantity).toFixed(1)} {s.unit} of {s.ingredient_name}</span>
                   <div className="flex gap-3 text-xs">
-                    <button onClick={() => handleDismissSuggestion(s.id)} className="font-medium text-gray-500 hover:underline">Dismiss</button>
+                    <button onClick={() => handleDismissSuggestion(s.id)} className="font-medium text-[var(--text-secondary)] hover:underline">Dismiss</button>
                     <button onClick={() => handleApproveSuggestion(s)} className="font-medium text-brand-700 hover:underline">Approve → Draft PO</button>
                   </div>
                 </div>
@@ -220,7 +220,7 @@ export default function Inventory() {
 function IngredientsTable({ ingredients, onEdit, onDelete }) {
   if (ingredients.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-20 text-[var(--text-tertiary)]">
         <Package className="mb-4 h-16 w-16" />
         <p className="text-lg font-medium">No ingredients tracked yet</p>
         <p className="text-sm">Add ingredients, then attach a recipe to a menu item.</p>
@@ -228,10 +228,10 @@ function IngredientsTable({ ingredients, onEdit, onDelete }) {
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200">
+    <div className="overflow-hidden rounded-xl border border-[var(--border)]">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50">
-          <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+        <thead className="bg-[var(--surface-3)]">
+          <tr className="text-left text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
             <th className="px-4 py-3">Ingredient</th>
             <th className="px-4 py-3 text-right">Current Stock</th>
             <th className="px-4 py-3 text-right">Threshold</th>
@@ -241,20 +241,20 @@ function IngredientsTable({ ingredients, onEdit, onDelete }) {
             <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-[var(--border-light)]">
           {ingredients.map((item) => {
             const qty = Number(item.current_stock);
             const min = Number(item.low_stock_threshold);
             const isLow = qty <= min;
             return (
               <tr key={item.id} className={isLow ? 'bg-red-50' : ''}>
-                <td className="px-4 py-3 font-medium text-gray-900">{item.name}</td>
+                <td className="px-4 py-3 font-medium text-[var(--text-primary)]">{item.name}</td>
                 <td className="px-4 py-3 text-right font-semibold">
-                  {qty} <span className="text-xs text-gray-400">{item.unit}</span>
+                  {qty} <span className="text-xs text-[var(--text-tertiary)]">{item.unit}</span>
                 </td>
-                <td className="px-4 py-3 text-right text-gray-500">{min} {item.unit}</td>
-                <td className="px-4 py-3 text-right text-gray-500">Rs. {Number(item.cost_per_unit).toLocaleString()}</td>
-                <td className="px-4 py-3 text-gray-500">{item.preferred_supplier_name || '—'}</td>
+                <td className="px-4 py-3 text-right text-[var(--text-secondary)]">{min} {item.unit}</td>
+                <td className="px-4 py-3 text-right text-[var(--text-secondary)]">Rs. {Number(item.cost_per_unit).toLocaleString()}</td>
+                <td className="px-4 py-3 text-[var(--text-secondary)]">{item.preferred_supplier_name || '—'}</td>
                 <td className="px-4 py-3">
                   {isLow ? (
                     <span className="badge bg-red-100 text-red-700"><AlertTriangle className="mr-1 h-3 w-3" /> Low</span>
@@ -264,7 +264,7 @@ function IngredientsTable({ ingredients, onEdit, onDelete }) {
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <button onClick={() => onEdit(item)} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title="Edit">
+                    <button onClick={() => onEdit(item)} className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--surface-3)]" title="Edit">
                       <Edit2 className="h-4 w-4" />
                     </button>
                     <button onClick={() => onDelete(item.id)} className="rounded p-1.5 text-red-500 hover:bg-red-50" title="Delete">
@@ -284,31 +284,31 @@ function IngredientsTable({ ingredients, onEdit, onDelete }) {
 function SuppliersTable({ suppliers, onEdit }) {
   if (suppliers.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-20 text-[var(--text-tertiary)]">
         <Truck className="mb-4 h-16 w-16" />
         <p className="text-lg font-medium">No suppliers yet</p>
       </div>
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200">
+    <div className="overflow-hidden rounded-xl border border-[var(--border)]">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50">
-          <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+        <thead className="bg-[var(--surface-3)]">
+          <tr className="text-left text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
             <th className="px-4 py-3">Name</th>
             <th className="px-4 py-3">Phone</th>
             <th className="px-4 py-3">Email</th>
             <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-[var(--border-light)]">
           {suppliers.map((s) => (
             <tr key={s.id}>
-              <td className="px-4 py-3 font-medium text-gray-900">{s.name}</td>
-              <td className="px-4 py-3 text-gray-500">{s.contact_phone || '—'}</td>
-              <td className="px-4 py-3 text-gray-500">{s.contact_email || '—'}</td>
+              <td className="px-4 py-3 font-medium text-[var(--text-primary)]">{s.name}</td>
+              <td className="px-4 py-3 text-[var(--text-secondary)]">{s.contact_phone || '—'}</td>
+              <td className="px-4 py-3 text-[var(--text-secondary)]">{s.contact_email || '—'}</td>
               <td className="px-4 py-3 text-right">
-                <button onClick={() => onEdit(s)} className="rounded p-1.5 text-gray-500 hover:bg-gray-100" title="Edit">
+                <button onClick={() => onEdit(s)} className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--surface-3)]" title="Edit">
                   <Edit2 className="h-4 w-4" />
                 </button>
               </td>
@@ -321,7 +321,7 @@ function SuppliersTable({ suppliers, onEdit }) {
 }
 
 const PO_STATUS_STYLES = {
-  draft: 'bg-gray-100 text-gray-600',
+  draft: 'bg-[var(--surface-3)] text-[var(--text-secondary)]',
   ordered: 'bg-blue-100 text-blue-700',
   received: 'bg-green-100 text-green-700',
   cancelled: 'bg-red-100 text-red-700',
@@ -330,17 +330,17 @@ const PO_STATUS_STYLES = {
 function PurchaseOrdersTable({ purchaseOrders, onReceive }) {
   if (purchaseOrders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400">
+      <div className="flex flex-col items-center justify-center py-20 text-[var(--text-tertiary)]">
         <ClipboardList className="mb-4 h-16 w-16" />
         <p className="text-lg font-medium">No purchase orders yet</p>
       </div>
     );
   }
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-200">
+    <div className="overflow-hidden rounded-xl border border-[var(--border)]">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50">
-          <tr className="text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+        <thead className="bg-[var(--surface-3)]">
+          <tr className="text-left text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
             <th className="px-4 py-3">Supplier</th>
             <th className="px-4 py-3 text-right">Items</th>
             <th className="px-4 py-3 text-right">Total Cost</th>
@@ -349,16 +349,16 @@ function PurchaseOrdersTable({ purchaseOrders, onReceive }) {
             <th className="px-4 py-3 text-right">Actions</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-[var(--border-light)]">
           {purchaseOrders.map((po) => (
             <tr key={po.id}>
-              <td className="px-4 py-3 font-medium text-gray-900">{po.supplier_name}</td>
-              <td className="px-4 py-3 text-right text-gray-500">{po.item_count}</td>
-              <td className="px-4 py-3 text-right text-gray-500">Rs. {Number(po.total_cost).toLocaleString()}</td>
+              <td className="px-4 py-3 font-medium text-[var(--text-primary)]">{po.supplier_name}</td>
+              <td className="px-4 py-3 text-right text-[var(--text-secondary)]">{po.item_count}</td>
+              <td className="px-4 py-3 text-right text-[var(--text-secondary)]">Rs. {Number(po.total_cost).toLocaleString()}</td>
               <td className="px-4 py-3">
                 <span className={`badge ${PO_STATUS_STYLES[po.status]}`}>{po.status}</span>
               </td>
-              <td className="px-4 py-3 text-gray-500">{new Date(po.created_at).toLocaleDateString()}</td>
+              <td className="px-4 py-3 text-[var(--text-secondary)]">{new Date(po.created_at).toLocaleDateString()}</td>
               <td className="px-4 py-3 text-right">
                 {(po.status === 'draft' || po.status === 'ordered') && (
                   <button onClick={() => onReceive(po.id)} className="btn-secondary text-xs">
@@ -408,12 +408,12 @@ function IngredientFormModal({ ingredient, suppliers, onClose, onSaved }) {
     <Modal open={true} onClose={onClose} title={ingredient ? 'Edit Ingredient' : 'New Ingredient'}>
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Name</label>
           <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Chicken (whole)" />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Unit</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Unit</label>
             <select className="input" value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
               <option value="kg">kg</option>
               <option value="litre">litre</option>
@@ -423,22 +423,22 @@ function IngredientFormModal({ ingredient, suppliers, onClose, onSaved }) {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Current Stock</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Current Stock</label>
             <input type="number" className="input" min="0" step="0.1" value={form.current_stock} onChange={(e) => setForm({ ...form, current_stock: Number(e.target.value) })} />
           </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Low Stock Threshold</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Low Stock Threshold</label>
             <input type="number" className="input" min="0" step="0.1" value={form.low_stock_threshold} onChange={(e) => setForm({ ...form, low_stock_threshold: Number(e.target.value) })} />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Cost/Unit (PKR)</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Cost/Unit (PKR)</label>
             <input type="number" className="input" min="0" step="0.01" value={form.cost_per_unit} onChange={(e) => setForm({ ...form, cost_per_unit: Number(e.target.value) })} />
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Preferred Supplier</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Preferred Supplier</label>
           <select className="input" value={form.preferred_supplier_id} onChange={(e) => setForm({ ...form, preferred_supplier_id: e.target.value })}>
             <option value="">None</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -483,15 +483,15 @@ function SupplierFormModal({ supplier, onClose, onSaved }) {
     <Modal open={true} onClose={onClose} title={supplier ? 'Edit Supplier' : 'New Supplier'}>
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Name</label>
           <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Phone</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Phone</label>
           <input className="input" value={form.contact_phone} onChange={(e) => setForm({ ...form, contact_phone: e.target.value })} />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Email</label>
           <input className="input" value={form.contact_email} onChange={(e) => setForm({ ...form, contact_email: e.target.value })} />
         </div>
       </div>
@@ -547,14 +547,14 @@ function PurchaseOrderFormModal({ suppliers, ingredients, onClose, onCreated }) 
     <Modal open={true} onClose={onClose} title="New Purchase Order" size="lg">
       <div className="space-y-3">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Supplier</label>
+          <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Supplier</label>
           <select className="input" value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
             <option value="">Select a supplier...</option>
             {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div className="space-y-2">
-          <label className="block text-xs font-medium text-gray-600">Line Items</label>
+          <label className="block text-xs font-medium text-[var(--text-secondary)]">Line Items</label>
           {lines.map((line, i) => (
             <div key={i} className="flex items-center gap-2">
               <select className="input flex-1 text-sm" value={line.ingredient_id} onChange={(e) => updateLine(i, 'ingredient_id', e.target.value)}>
@@ -564,7 +564,7 @@ function PurchaseOrderFormModal({ suppliers, ingredients, onClose, onCreated }) 
               <input type="number" className="input w-24 text-sm" placeholder="Qty" min="0" step="0.1" value={line.quantity} onChange={(e) => updateLine(i, 'quantity', e.target.value)} />
               <input type="number" className="input w-28 text-sm" placeholder="Unit cost" min="0" step="0.01" value={line.unit_cost} onChange={(e) => updateLine(i, 'unit_cost', e.target.value)} />
               {lines.length > 1 && (
-                <button onClick={() => removeLine(i)} className="text-gray-400 hover:text-red-500"><X className="h-4 w-4" /></button>
+                <button onClick={() => removeLine(i)} className="text-[var(--text-tertiary)] hover:text-red-500"><X className="h-4 w-4" /></button>
               )}
             </div>
           ))}

@@ -26,6 +26,7 @@ export const PERMISSIONS = [
   { key: 'riders.reconcile', description: "Run a rider's cash reconciliation" },
   { key: 'tables.close', description: 'Close a dine-in table session' },
   { key: 'website.manage', description: 'Edit and publish the restaurant landing page' },
+  { key: 'support.manage', description: 'View, reply to, and resolve customer support tickets' },
   { key: 'staff.manage', description: 'Manage staff role permissions (owner only, not itself grantable)' },
 ];
 

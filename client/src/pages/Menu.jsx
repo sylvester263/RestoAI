@@ -159,8 +159,8 @@ export default function Menu() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Menu</h1>
-          <p className="text-sm text-gray-500">{items.length} items</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Menu</h1>
+          <p className="text-sm text-[var(--text-secondary)]">{items.length} items</p>
         </div>
         <button onClick={startNew} className="btn-primary">
           <Plus className="h-4 w-4" /> Add Item
@@ -169,7 +169,7 @@ export default function Menu() {
 
       {/* Search */}
       <div className="relative mb-6">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
         <input
           className="input pl-10"
           placeholder="Search menu items..."
@@ -186,25 +186,25 @@ export default function Menu() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Name</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Name</label>
                   <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Urdu Name</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Urdu Name</label>
                   <input className="input text-right" dir="rtl" value={form.name_urdu} onChange={(e) => setForm({ ...form, name_urdu: e.target.value })} />
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Description</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Description</label>
                 <input className="input" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Price (PKR)</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Price (PKR)</label>
                   <input className="input" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Category</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Category</label>
                   <select className="input" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}>
                     <option value="">None</option>
                     {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -212,13 +212,13 @@ export default function Menu() {
                 </div>
               </div>
               <div>
-                <label className="mb-1 block text-xs font-medium text-gray-600">Tags (comma-separated)</label>
+                <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Tags (comma-separated)</label>
                 <input className="input" value={form.tags} onChange={(e) => setForm({ ...form, tags: e.target.value })} />
               </div>
               {/* Image upload — only for existing items (not new, which aren't saved yet) */}
               {editing !== 'new' && (
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-gray-600">Photo</label>
+                  <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Photo</label>
                   {form.image_url ? (
                     <div className="relative inline-block">
                       <img src={form.image_url} alt="menu item" className="h-24 w-24 rounded-lg object-cover" />
@@ -234,7 +234,7 @@ export default function Menu() {
                     <button
                       onClick={() => fileInputRef.current?.click()}
                       disabled={imgUploading}
-                      className="flex items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"
+                      className="flex items-center gap-2 rounded-lg border-2 border-dashed border-[var(--border)] px-4 py-3 text-sm text-gray-500 hover:border-brand-400 hover:text-brand-600"
                     >
                       <Image className="h-4 w-4" />
                       {imgUploading ? 'Uploading...' : 'Upload photo'}
@@ -247,14 +247,14 @@ export default function Menu() {
                     className="hidden"
                     onChange={handleImageUpload}
                   />
-                  {editing === 'new' && <p className="mt-1 text-xs text-gray-400">Save the item first, then add a photo.</p>}
+                  {editing === 'new' && <p className="mt-1 text-xs text-[var(--text-tertiary)]">Save the item first, then add a photo.</p>}
                 </div>
               )}
 
               {/* Recipe (impl-08) — which ingredients this item consumes, and how much */}
               {editing !== 'new' && (
                 <div>
-                  <label className="mb-1 flex items-center gap-1 text-xs font-medium text-gray-600">
+                  <label className="mb-1 flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)]">
                     <Beaker className="h-3 w-3" /> Recipe (for auto-deplete stock)
                   </label>
                   <div className="space-y-2">
@@ -277,7 +277,7 @@ export default function Menu() {
                           value={line.quantity_required}
                           onChange={(e) => updateRecipeLine(i, 'quantity_required', e.target.value)}
                         />
-                        <button onClick={() => removeRecipeLine(i)} className="text-gray-400 hover:text-red-500">
+                        <button onClick={() => removeRecipeLine(i)} className="text-[var(--text-tertiary)] hover:text-red-500">
                           <X className="h-4 w-4" />
                         </button>
                       </div>
@@ -303,50 +303,50 @@ export default function Menu() {
       {/* Menu table */}
       <div className="card overflow-hidden p-0">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-gray-200 bg-gray-50">
+          <thead className="border-b border-[var(--border)] bg-[var(--surface-3)]">
             <tr>
-              <th className="px-4 py-3 font-medium text-gray-600">Item</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Category</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Price</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Status</th>
-              <th className="px-4 py-3 font-medium text-gray-600">Actions</th>
+              <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Item</th>
+              <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Category</th>
+              <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Price</th>
+              <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Status</th>
+              <th className="px-4 py-3 font-medium text-[var(--text-secondary)]">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-[var(--border-light)]">
             {filtered.map((item) => (
-              <tr key={item.id} className="hover:bg-gray-50">
+              <tr key={item.id} className="hover:bg-[var(--surface-3)]">
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-3">
                     {item.image_url ? (
                       <img src={item.image_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
                     ) : (
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100">
-                        <Image className="h-4 w-4 text-gray-300" />
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--surface-3)]">
+                        <Image className="h-4 w-4 text-[var(--text-tertiary)]" />
                       </div>
                     )}
                     <div>
-                      <p className="font-medium text-gray-900">{item.name}</p>
-                      {item.name_urdu && <p className="text-xs text-gray-400" dir="rtl">{item.name_urdu}</p>}
+                      <p className="font-medium text-[var(--text-primary)]">{item.name}</p>
+                      {item.name_urdu && <p className="text-xs text-[var(--text-tertiary)]" dir="rtl">{item.name_urdu}</p>}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-gray-600">{item.category_name || '—'}</td>
+                <td className="px-4 py-3 text-[var(--text-secondary)]">{item.category_name || '—'}</td>
                 <td className="px-4 py-3 font-medium">Rs. {Number(item.price).toLocaleString()}</td>
                 <td className="px-4 py-3">
                   <button onClick={() => toggleAvailability(item)} className="flex items-center gap-1">
                     {item.is_available ? (
                       <span className="badge bg-green-100 text-green-700"><ToggleRight className="mr-1 h-3 w-3" /> Available</span>
                     ) : (
-                      <span className="badge bg-gray-100 text-gray-500"><ToggleLeft className="mr-1 h-3 w-3" /> Unavailable</span>
+                      <span className="badge bg-[var(--surface-3)] text-[var(--text-secondary)]"><ToggleLeft className="mr-1 h-3 w-3" /> Unavailable</span>
                     )}
                   </button>
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2">
-                    <button onClick={() => startEdit(item)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                    <button onClick={() => startEdit(item)} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)] hover:text-[var(--text-secondary)]">
                       <Pencil className="h-4 w-4" />
                     </button>
-                    <button onClick={() => handleDelete(item.id)} className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600">
+                    <button onClick={() => handleDelete(item.id)} className="rounded p-1 text-[var(--text-tertiary)] hover:bg-red-50 hover:text-red-600">
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
@@ -356,7 +356,7 @@ export default function Menu() {
           </tbody>
         </table>
         {filtered.length === 0 && (
-          <div className="py-12 text-center text-sm text-gray-400">No items found</div>
+          <div className="py-12 text-center text-sm text-[var(--text-tertiary)]">No items found</div>
         )}
       </div>
     </div>

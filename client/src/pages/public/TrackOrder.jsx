@@ -58,7 +58,7 @@ export default function TrackOrder() {
   if (error || !order) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-gray-500">We couldn't find that order.</p>
+        <p className="text-[var(--text-secondary)]">We couldn't find that order.</p>
         <Link to={`/order/${tenantSlug}`} className="text-sm text-brand-600 hover:underline">Back to menu</Link>
       </div>
     );
@@ -68,7 +68,7 @@ export default function TrackOrder() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
         <XCircle className="h-10 w-10 text-red-500" />
-        <p className="font-medium text-gray-900">This order was cancelled</p>
+        <p className="font-medium text-[var(--text-primary)]">This order was cancelled</p>
         <Link to={`/order/${tenantSlug}`} className="text-sm text-brand-600 hover:underline">Back to menu</Link>
       </div>
     );
@@ -77,10 +77,10 @@ export default function TrackOrder() {
   const stepIndex = STEPS.findIndex((s) => s.key === order.status);
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-6">
+    <div className="min-h-screen bg-[var(--surface-1)] px-4 py-6">
       <div className="mx-auto max-w-lg">
-        <h1 className="mb-1 text-2xl font-bold text-gray-900">Order #{order.order_number}</h1>
-        <p className="mb-6 text-sm text-gray-500">Tracking your order</p>
+        <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Order #{order.order_number}</h1>
+        <p className="mb-6 text-sm text-[var(--text-secondary)]">Tracking your order</p>
 
         <NotifyBanner tenantSlug={tenantSlug} phone={phone} status={order.status} />
 
@@ -105,10 +105,10 @@ export default function TrackOrder() {
               const reached = i <= stepIndex;
               return (
                 <div key={step.key} className="flex items-center gap-3">
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-full ${reached ? 'bg-brand-100 text-brand-600' : 'bg-gray-100 text-gray-400'}`}>
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-full ${reached ? 'bg-brand-100 text-brand-600' : 'bg-[var(--surface-3)] text-[var(--text-tertiary)]'}`}>
                     <Icon className="h-4 w-4" />
                   </div>
-                  <span className={reached ? 'font-medium text-gray-900' : 'text-gray-400'}>{step.label}</span>
+                  <span className={reached ? 'font-medium text-[var(--text-primary)]' : 'text-[var(--text-tertiary)]'}>{step.label}</span>
                 </div>
               );
             })}
@@ -116,7 +116,7 @@ export default function TrackOrder() {
         </div>
 
         <div className="card">
-          <h2 className="mb-3 text-sm font-semibold text-gray-600">Order details</h2>
+          <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Order details</h2>
           <div className="space-y-2 text-sm">
             {order.items.map((item, i) => (
               <div key={i} className="flex justify-between">
@@ -125,11 +125,11 @@ export default function TrackOrder() {
               </div>
             ))}
           </div>
-          <div className="mt-3 flex justify-between border-t border-gray-100 pt-3 text-base font-semibold text-gray-900">
+          <div className="mt-3 flex justify-between border-t border-[var(--border-light)] pt-3 text-base font-semibold text-[var(--text-primary)]">
             <span>Total</span>
             <span>Rs. {Number(order.total).toLocaleString()}</span>
           </div>
-          <p className="mt-3 text-xs text-gray-500">Delivering to: {order.delivery_address}</p>
+          <p className="mt-3 text-xs text-[var(--text-secondary)]">Delivering to: {order.delivery_address}</p>
         </div>
 
         {order.status === 'delivered' && (
@@ -162,9 +162,9 @@ function ReferralCard({ tenantSlug, phone }) {
 
   return (
     <div className="card mt-4 flex items-center justify-between gap-3">
-      <div className="flex items-center gap-2 text-sm text-gray-700">
+      <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
         <Gift className="h-4 w-4 shrink-0 text-brand-600" />
-        <span>Share code <span className="font-mono font-semibold text-gray-900">{code}</span> — your friend gets a discount on their first order, and you earn a reward once it's delivered.</span>
+        <span>Share code <span className="font-mono font-semibold text-[var(--text-primary)]">{code}</span> — your friend gets a discount on their first order, and you earn a reward once it's delivered.</span>
       </div>
       <button onClick={handleCopy} className="btn-secondary shrink-0 px-3 py-1.5 text-xs">
         {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
@@ -200,7 +200,7 @@ function NotifyBanner({ tenantSlug, phone, status }) {
         Get notified the moment your order status changes.
       </div>
       <div className="flex shrink-0 gap-2">
-        <button onClick={() => setDismissed(true)} className="text-xs text-gray-500 hover:text-gray-700">Not now</button>
+        <button onClick={() => setDismissed(true)} className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-secondary)]">Not now</button>
         <button onClick={handleEnable} disabled={subscribing} className="btn-primary px-3 py-1.5 text-xs">
           {subscribing ? 'Enabling...' : 'Enable'}
         </button>
@@ -233,7 +233,7 @@ function ReviewPrompt({ tenantSlug, orderId, phone }) {
 
   if (submitted) {
     return (
-      <div className="card mt-4 text-center text-sm text-gray-600">
+      <div className="card mt-4 text-center text-sm text-[var(--text-secondary)]">
         Thanks for your feedback! 🎉
       </div>
     );
@@ -241,7 +241,7 @@ function ReviewPrompt({ tenantSlug, orderId, phone }) {
 
   return (
     <div className="card mt-4">
-      <h2 className="mb-3 text-sm font-semibold text-gray-600">How was your order?</h2>
+      <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">How was your order?</h2>
       <div className="mb-3 flex gap-1">
         {[1, 2, 3, 4, 5].map((n) => (
           <button

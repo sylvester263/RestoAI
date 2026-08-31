@@ -22,7 +22,7 @@ export default function DarkModeToggle({ className = '' }) {
   return (
     <button
       onClick={cycleMode}
-      className={`rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300 ${className}`}
+      className={`rounded-lg p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)] hover:text-[var(--text-secondary)] ${className}`}
       aria-label={`Color theme: ${current.label}. Click to change.`}
       title={`Theme: ${current.label}`}
     >

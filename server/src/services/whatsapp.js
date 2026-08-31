@@ -8,6 +8,8 @@
 import config from '../config.js';
 import { query } from '../db/pool.js';
 import { parseOrderMessage, generateRecommendation } from './ai-agent.js';
+import { handleSupportMessage } from './customer-support-agent.js';
+import { handleOwnerMessage } from './business-assistant-agent.js';
 import { getOrCreateCustomer, calculatePricing, createOrder } from './orders.js';
 import { getBalance } from './loyalty.js';
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder } from './coupons.js';
@@ -26,6 +28,22 @@ export async function processWhatsAppMessage(tenantId, message) {
   if (!text) {
     // Only handle text messages for MVP
     return { reply: "I can only process text messages right now. Please type your order!" };
+  }
+
+  // ── impl-28: Owner/manager routing check ──
+  // BEFORE any intent classification or customer pipeline logic, check if
+  // the sender's phone matches a verified users.phone for owner/manager
+  // role on this tenant. If matched, route entirely to the business
+  // assistant — never let the two paths blend.
+  const ownerRes = await query(
+    `SELECT id, name, role, phone FROM users
+     WHERE tenant_id = $1 AND phone = $2 AND role IN ('owner', 'manager')`,
+    [tenantId, phone],
+  );
+  if (ownerRes.rows.length > 0) {
+    const ownerUser = ownerRes.rows[0];
+    const result = await handleOwnerMessage(tenantId, ownerUser, text);
+    return result;
   }
 
   // 1. Get or create conversation record
@@ -52,6 +70,39 @@ export async function processWhatsAppMessage(tenantId, message) {
   const pendingDraft = conversationContext.pending_draft;
   let reply;
   let parsed = null;
+
+  // 5-pre. Support mode: if the conversation is already in a support flow,
+  // route ALL messages through the support handler until the ticket is
+  // resolved. This prevents a customer mid-support from accidentally
+  // triggering a new order flow, and ensures resolution confirmations
+  // are handled correctly (no silent closure).
+  if (conversationContext.in_support) {
+    const supportResult = await handleSupportMessage(tenantId, customer, phone, text, conversation);
+    reply = supportResult.reply;
+    parsed = { intent: 'support' };
+
+    // Update conversation context
+    if (!conversationContext.messages) conversationContext.messages = [];
+    conversationContext.messages.push({ role: 'customer', message: text, timestamp: new Date().toISOString() });
+    conversationContext.messages.push({ role: 'bot', message: reply, timestamp: new Date().toISOString() });
+    conversationContext.messages = conversationContext.messages.slice(-20);
+
+    // Check if the support ticket is now resolved — clear in_support flag
+    const ticketCheck = await query(
+      `SELECT status FROM support_tickets WHERE tenant_id = $1 AND customer_id = $2 AND status IN ('open','escalated','ai_handled') ORDER BY created_at DESC LIMIT 1`,
+      [tenantId, customer.id],
+    );
+    if (ticketCheck.rows.length === 0) {
+      delete conversationContext.in_support;
+    }
+
+    await query(
+      `UPDATE conversations SET context = $2, updated_at = NOW() WHERE id = $1`,
+      [conversation.id, JSON.stringify(conversationContext)],
+    );
+    await sendReply(phone, reply);
+    return { reply, parsed };
+  }
 
   // 5a. Handle confirmation of a pending draft order
   const AFFIRMATIVE = ['confirm', 'yes', 'ok', 'haan', 'ji', 'yup', 'yeah', 'done', 'sure', 'bilkul'];
@@ -90,6 +141,11 @@ export async function processWhatsAppMessage(tenantId, message) {
     } else if (parsed.intent === 'loyalty_balance') {
       const balance = await getBalance(tenantId, customer.id);
       reply = `You have ${balance} loyalty points! 🎉`;
+    } else if (parsed.intent === 'support') {
+      // Support intent detected — enter support mode
+      conversationContext.in_support = true;
+      const supportResult = await handleSupportMessage(tenantId, customer, phone, text, conversation);
+      reply = supportResult.reply;
     }
   }
   // 5c. No pending draft — classify and handle normally
@@ -112,6 +168,11 @@ export async function processWhatsAppMessage(tenantId, message) {
     } else if (parsed.intent === 'loyalty_balance') {
       const balance = await getBalance(tenantId, customer.id);
       reply = `You have ${balance} loyalty points! 🎉`;
+    } else if (parsed.intent === 'support') {
+      // Support intent detected — enter support mode
+      conversationContext.in_support = true;
+      const supportResult = await handleSupportMessage(tenantId, customer, phone, text, conversation);
+      reply = supportResult.reply;
     }
     // For greeting/question/chitchat/menu_request — reply is already set from parsed.reply_message
   }

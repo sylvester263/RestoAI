@@ -45,7 +45,7 @@ export default function Permissions() {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center py-20 text-gray-400">Loading permissions...</div>;
+  if (loading) return <div className="flex items-center justify-center py-20 text-[var(--text-tertiary)]">Loading permissions...</div>;
   if (error && permissions.length === 0) {
     return <div className="py-20 text-center text-sm text-red-600">{error}</div>;
   }
@@ -54,8 +54,8 @@ export default function Permissions() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900"><ShieldCheck className="h-6 w-6 text-brand-600" /> Staff Permissions</h1>
-          <p className="text-sm text-gray-500">Choose what Manager and Staff accounts can do. Owner always has full access.</p>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-[var(--text-primary)]"><ShieldCheck className="h-6 w-6 text-brand-600" /> Staff Permissions</h1>
+          <p className="text-sm text-[var(--text-secondary)]">Choose what Manager and Staff accounts can do. Owner always has full access.</p>
         </div>
         <button onClick={handleSave} disabled={saving} className="btn-primary">
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <><Check className="h-4 w-4" /> Saved</> : 'Save Changes'}
@@ -67,29 +67,29 @@ export default function Permissions() {
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-gray-100 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+            <tr className="border-b border-[var(--border-light)] text-left text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
               <th className="py-3 pr-4">Permission</th>
               <th className="w-24 py-3 text-center">Owner</th>
               <th className="w-24 py-3 text-center">Manager</th>
               <th className="w-24 py-3 text-center">Staff</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-[var(--border-light)]">
             {permissions.map((p) => (
               <tr key={p.key}>
                 <td className="py-3 pr-4">
-                  <p className="font-medium text-gray-900">{p.key}</p>
-                  <p className="text-xs text-gray-500">{p.description}</p>
+                  <p className="font-medium text-[var(--text-primary)]">{p.key}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{p.description}</p>
                 </td>
                 <td className="text-center">
-                  <input type="checkbox" checked disabled className="h-4 w-4 cursor-not-allowed rounded border-gray-300 opacity-50" />
+                  <input type="checkbox" checked disabled className="h-4 w-4 cursor-not-allowed rounded border-[var(--border)] opacity-50" />
                 </td>
                 <td className="text-center">
                   <input
                     type="checkbox"
                     checked={grants.manager.includes(p.key)}
                     onChange={() => toggle('manager', p.key)}
-                    className="h-4 w-4 cursor-pointer rounded border-gray-300 text-brand-600"
+                    className="h-4 w-4 cursor-pointer rounded border-[var(--border)] text-brand-600"
                   />
                 </td>
                 <td className="text-center">
@@ -97,7 +97,7 @@ export default function Permissions() {
                     type="checkbox"
                     checked={grants.staff.includes(p.key)}
                     onChange={() => toggle('staff', p.key)}
-                    className="h-4 w-4 cursor-pointer rounded border-gray-300 text-brand-600"
+                    className="h-4 w-4 cursor-pointer rounded border-[var(--border)] text-brand-600"
                   />
                 </td>
               </tr>

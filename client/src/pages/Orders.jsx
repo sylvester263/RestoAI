@@ -9,7 +9,7 @@ const STATUS_COLORS = {
   confirmed: 'bg-yellow-100 text-yellow-700',
   preparing: 'bg-orange-100 text-orange-700',
   ready: 'bg-emerald-100 text-emerald-700',
-  delivered: 'bg-gray-100 text-gray-600',
+  delivered: 'bg-gray-100 text-[var(--text-secondary)]',
   cancelled: 'bg-red-100 text-red-700',
 };
 
@@ -68,24 +68,24 @@ export default function Orders() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
-        <p className="text-sm text-gray-500">{total} total orders</p>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Orders</h1>
+        <p className="text-sm text-[var(--text-secondary)]">{total} total orders</p>
       </div>
 
       {/* Filters */}
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-64">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
           <input className="input pl-10" placeholder="Search by customer, phone, or order #..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="flex items-center gap-2">
-          <Filter className="h-4 w-4 text-gray-400" />
+          <Filter className="h-4 w-4 text-[var(--text-tertiary)]" />
           {['', 'new', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'].map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
               className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                statusFilter === s ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                statusFilter === s ? 'bg-brand-600 text-white' : 'bg-[var(--surface-3)] text-[var(--text-secondary)] hover:bg-[var(--border)]'
               }`}
             >
               {s || 'All'}
@@ -104,46 +104,46 @@ export default function Orders() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">
                   <div>
-                    <p className="font-semibold text-gray-900">#{order.order_number}</p>
-                    <p className="text-xs text-gray-500">{new Date(order.created_at).toLocaleString()}</p>
+                    <p className="font-semibold text-[var(--text-primary)]">#{order.order_number}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{new Date(order.created_at).toLocaleString()}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{order.customer_name || 'Unknown'}</p>
-                    <p className="text-xs text-gray-500">{order.customer_phone}</p>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">{order.customer_name || 'Unknown'}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{order.customer_phone}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
                   <span className={`badge ${STATUS_COLORS[order.status]}`}>{order.status}</span>
                   <span className="text-sm font-semibold">Rs. {Number(order.total).toLocaleString()}</span>
-                  <span className="text-xs text-gray-400 uppercase">{order.channel}</span>
+                  <span className="text-xs text-[var(--text-tertiary)] uppercase">{order.channel}</span>
                   {order.payment && (
                     <span className={`badge ${order.payment.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                       {order.payment.method.toUpperCase()} · {order.payment.status}
                     </span>
                   )}
-                  {expanded === order.id ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                  {expanded === order.id ? <ChevronUp className="h-4 w-4 text-[var(--text-tertiary)]" /> : <ChevronDown className="h-4 w-4 text-[var(--text-tertiary)]" />}
                 </div>
               </div>
 
               {/* Expanded details */}
               {expanded === order.id && (
-                <div className="mt-4 border-t border-gray-100 pt-4">
+                <div className="mt-4 border-t border-[var(--border-light)] pt-4">
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <p className="font-medium text-gray-700">Delivery Address</p>
-                      <p className="text-gray-600">{order.delivery_address || 'N/A'}</p>
+                      <p className="font-medium text-[var(--text-secondary)]">Delivery Address</p>
+                      <p className="text-[var(--text-secondary)]">{order.delivery_address || 'N/A'}</p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-700">Payment</p>
-                      <p className="text-gray-600 capitalize">
+                      <p className="font-medium text-[var(--text-secondary)]">Payment</p>
+                      <p className="text-[var(--text-secondary)] capitalize">
                         {order.payment
                           ? `${order.payment.method} — ${order.payment.status} (Rs. ${Number(order.payment.amount).toLocaleString()})`
                           : order.payment_method}
                       </p>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-700">Breakdown</p>
-                      <p className="text-gray-600">
+                      <p className="font-medium text-[var(--text-secondary)]">Breakdown</p>
+                      <p className="text-[var(--text-secondary)]">
                         Subtotal: Rs. {Number(order.subtotal).toLocaleString()} | Tax: Rs. {Number(order.tax).toLocaleString()} | Delivery: Rs. {Number(order.delivery_fee).toLocaleString()}
                       </p>
                     </div>

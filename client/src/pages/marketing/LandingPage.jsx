@@ -9,6 +9,7 @@ import HeroImage from './HeroImage';
 import ScrollReveal from './ScrollReveal';
 import ScreenshotFrame from './ScreenshotFrame';
 import AITeamSection from './AITeamSection';
+import DarkModeToggle from '../../components/DarkModeToggle';
 import whatsappChat from '../../assets/marketing/whatsapp-chat.webp';
 import publicMenu from '../../assets/marketing/public-menu.webp';
 import checkout from '../../assets/marketing/checkout.webp';
@@ -68,12 +69,12 @@ export default function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-[var(--surface-1)] text-[var(--text-primary)]">
       <Header menuOpen={menuOpen} setMenuOpen={setMenuOpen} />
       <Hero />
 
       <FeatureSection
-        n="01" id="ordering" title="Ordering" bg="bg-gray-50"
+        n="01" id="ordering" title="Ordering" bg="bg-[var(--surface-3)]"
         subtitle="WhatsApp, your own storefront, and dine-in — every order lands in the same queue, no aggregator in between."
       >
         <div className="grid gap-5 sm:grid-cols-3">
@@ -81,7 +82,7 @@ export default function LandingPage() {
           <ScreenshotFrame src={publicMenu} alt="RestoAI branded public ordering storefront" />
           <ScreenshotFrame src={checkout} alt="Checkout screen on the branded storefront" />
         </div>
-        <p className="mt-4 text-center text-sm text-gray-500">
+        <p className="mt-4 text-center text-sm text-[var(--text-secondary)]">
           Plus in-store token &amp; menu boards for the counter — <ScreenshotLink src={tokenBoard} />
         </p>
       </FeatureSection>
@@ -94,7 +95,7 @@ export default function LandingPage() {
       </FeatureSection>
 
       <FeatureSection
-        n="03" id="operations" title="Run Your Whole Operation" bg="bg-gray-50"
+        n="03" id="operations" title="Run Your Whole Operation" bg="bg-[var(--surface-3)]"
         subtitle="Kitchen display, till, and stock — the tools your shift actually runs on, not a back-office afterthought."
       >
         <div className="grid gap-5 sm:grid-cols-3">
@@ -112,7 +113,7 @@ export default function LandingPage() {
       </FeatureSection>
 
       <FeatureSection
-        n="05" id="growth" title="Grow Your Customers" bg="bg-gray-50"
+        n="05" id="growth" title="Grow Your Customers" bg="bg-[var(--surface-3)]"
         subtitle="Profiles, coupons, and campaigns — the tools that bring a customer back without a commission cut."
       >
         <div className="grid gap-5 sm:grid-cols-3">
@@ -153,7 +154,7 @@ function FeatureSection({ n, id, title, subtitle, bg = '', children }) {
         <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
           <span className="text-sm font-bold tracking-wide text-brand-600">{n}</span>
           <h2 className="mt-2 text-2xl font-bold sm:text-3xl">{title}</h2>
-          <p className="mt-3 text-gray-600">{subtitle}</p>
+          <p className="mt-3 text-[var(--text-secondary)]">{subtitle}</p>
         </ScrollReveal>
         <ScrollReveal as="div" className="mt-12" delay={0.1}>
           {children}
@@ -181,9 +182,9 @@ function LoginDropdown() {
         Log in <ChevronDown className="h-3.5 w-3.5" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-40 overflow-hidden rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          <Link to="/login" className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpen(false)}>Owner login</Link>
-          <Link to="/login" className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" onClick={() => setOpen(false)}>Staff login</Link>
+        <div className="absolute right-0 top-full mt-2 w-40 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-2)] py-1 shadow-lg">
+          <Link to="/login" className="block px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-3)]" onClick={() => setOpen(false)}>Owner login</Link>
+          <Link to="/login" className="block px-3 py-2 text-sm text-[var(--text-secondary)] hover:bg-[var(--surface-3)]" onClick={() => setOpen(false)}>Staff login</Link>
         </div>
       )}
     </div>
@@ -192,33 +193,34 @@ function LoginDropdown() {
 
 function Header({ menuOpen, setMenuOpen }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--surface-2)]/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
         <div className="flex items-center gap-2">
           <ChefHat className="h-6 w-6 text-brand-600" />
-          <span className="text-lg font-bold">RestoAI</span>
+          <span className="text-lg font-bold text-[var(--text-primary)]">RestoAI</span>
         </div>
 
-        <nav className="hidden items-center gap-8 text-sm font-medium text-gray-600 md:flex">
-          <a href="#ordering" className="hover:text-gray-900">Features</a>
-          <a href="#pricing" className="hover:text-gray-900">Pricing</a>
+        <nav className="hidden items-center gap-8 text-sm font-medium text-[var(--text-secondary)] md:flex">
+          <a href="#ordering" className="hover:text-[var(--text-primary)]">Features</a>
+          <a href="#pricing" className="hover:text-[var(--text-primary)]">Pricing</a>
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
+          <DarkModeToggle />
           <LoginDropdown />
           <Link to="/rider/login" className="btn-secondary text-sm">Rider login</Link>
           <Link to="/login?mode=register" className="btn-primary text-sm">Start free</Link>
         </div>
 
-        <button className="text-gray-500 md:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu">
+        <button className="text-[var(--text-secondary)] md:hidden" onClick={() => setMenuOpen(!menuOpen)} aria-label="Toggle menu">
           {menuOpen ? <X className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
         </button>
       </div>
 
       {menuOpen && (
-        <div className="space-y-3 border-t border-gray-200 px-4 py-4 md:hidden">
-          <a href="#ordering" className="block text-sm font-medium text-gray-600" onClick={() => setMenuOpen(false)}>Features</a>
-          <a href="#pricing" className="block text-sm font-medium text-gray-600" onClick={() => setMenuOpen(false)}>Pricing</a>
+        <div className="space-y-3 border-t border-[var(--border)] px-4 py-4 md:hidden">
+          <a href="#ordering" className="block text-sm font-medium text-[var(--text-secondary)]" onClick={() => setMenuOpen(false)}>Features</a>
+          <a href="#pricing" className="block text-sm font-medium text-[var(--text-secondary)]" onClick={() => setMenuOpen(false)}>Pricing</a>
           <div className="flex flex-col gap-2 pt-2">
             <Link to="/login" className="btn-secondary justify-center text-sm">Owner login</Link>
             <Link to="/login" className="btn-secondary justify-center text-sm">Staff login</Link>
@@ -238,7 +240,7 @@ function Hero() {
         <h1 className="text-3xl font-bold leading-tight tracking-tight sm:text-5xl">
           Escape the 25-35% commission.<br className="hidden lg:block" /> Run your restaurant your way.
         </h1>
-        <p className="mx-auto mt-5 max-w-2xl text-base text-gray-600 sm:text-lg lg:mx-0">
+        <p className="mx-auto mt-5 max-w-2xl text-base text-[var(--text-secondary)] sm:text-lg lg:mx-0">
           RestoAI is an AI-native operations platform built for Pakistani restaurants — WhatsApp ordering,
           your own branded storefront, dine-in QR, and a full back-of-house, all with zero commission on every order.
         </p>
@@ -260,22 +262,22 @@ function Hero() {
 
 function RolesSection() {
   return (
-    <section className="border-t border-gray-200 bg-gray-50">
+    <section className="border-t border-[var(--border)] bg-[var(--surface-3)]">
       <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
         <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
           <h2 className="text-2xl font-bold sm:text-3xl">One system, every role</h2>
-          <p className="mt-3 text-gray-600">
+          <p className="mt-3 text-[var(--text-secondary)]">
             Owners, staff, and riders each get a login built for how they actually work — all on one platform.
           </p>
         </ScrollReveal>
         <div className="mt-12 grid gap-8 sm:grid-cols-3">
           {ROLES.map((r, i) => (
             <ScrollReveal key={r.title} as="div" className="text-center" delay={i * 0.08}>
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--surface-2)] shadow-sm">
                 <r.icon className="h-6 w-6 text-brand-600" />
               </div>
               <h3 className="mt-4 text-base font-semibold">{r.title}</h3>
-              <p className="mt-2 text-sm text-gray-600">{r.desc}</p>
+              <p className="mt-2 text-sm text-[var(--text-secondary)]">{r.desc}</p>
             </ScrollReveal>
           ))}
         </div>
@@ -289,21 +291,21 @@ function WhyThisExists() {
     <section className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
       <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
         <h2 className="text-2xl font-bold sm:text-3xl">Why this exists</h2>
-        <p className="mt-3 text-gray-600">
+        <p className="mt-3 text-[var(--text-secondary)]">
           Pakistani restaurants have absorbed aggregator commissions and platform-side failures for years —
           this isn't a hypothetical pain point.
         </p>
       </ScrollReveal>
       <div className="mt-12 grid gap-6 sm:grid-cols-3">
         {MARKET_FACTS.map((f, i) => (
-          <ScrollReveal key={f.label} as="div" className="rounded-xl border border-gray-200 p-6 text-center" delay={i * 0.08}>
+          <ScrollReveal key={f.label} as="div" className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-6 text-center" delay={i * 0.08}>
             <f.icon className="mx-auto h-6 w-6 text-brand-600" />
-            <p className="mt-3 text-2xl font-bold text-gray-900">{f.stat}</p>
-            <p className="mt-2 text-sm text-gray-600">{f.label}</p>
+            <p className="mt-3 text-2xl font-bold text-[var(--text-primary)]">{f.stat}</p>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">{f.label}</p>
           </ScrollReveal>
         ))}
       </div>
-      <ScrollReveal as="div" delay={0.2} className="mt-6 rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-500">
+      <ScrollReveal as="div" delay={0.2} className="mt-6 rounded-xl bg-[var(--surface-3)] p-6 text-center text-sm text-[var(--text-secondary)]">
         A 2020 Karachi restaurant boycott followed a commission jump from 18% to 35% — a documented, litigated
         pain point owners still reference today, not a marketing talking point.
       </ScrollReveal>
@@ -313,19 +315,19 @@ function WhyThisExists() {
 
 function Pricing() {
   return (
-    <section id="pricing" className="border-t border-gray-200 bg-gray-50">
+    <section id="pricing" className="border-t border-[var(--border)] bg-[var(--surface-3)]">
       <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6 sm:py-24">
         <ScrollReveal as="div">
           <h2 className="text-2xl font-bold sm:text-3xl">Flat pricing, tailored to your restaurant. Never a commission.</h2>
-          <p className="mx-auto mt-3 max-w-xl text-gray-600">
+          <p className="mx-auto mt-3 max-w-xl text-[var(--text-secondary)]">
             Your plan depends on your restaurant's size and branches, so we quote it directly — one thing never changes: 0% commission, on every order, always.
           </p>
         </ScrollReveal>
-        <ScrollReveal as="div" delay={0.1} className="mx-auto mt-10 max-w-sm rounded-2xl border border-gray-200 bg-white p-8">
+        <ScrollReveal as="div" delay={0.1} className="mx-auto mt-10 max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-8">
           <p className="text-sm font-medium uppercase tracking-wide text-brand-700">Flat monthly plan</p>
-          <p className="mt-2 text-4xl font-bold">Contact for pricing</p>
-          <p className="mt-1 text-sm text-gray-500">Final numbers not yet set — a plan sized to your restaurant, quoted directly</p>
-          <ul className="mt-6 space-y-2 text-left text-sm text-gray-600">
+          <p className="mt-2 text-4xl font-bold text-[var(--text-primary)]">Contact for pricing</p>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">Final numbers not yet set — a plan sized to your restaurant, quoted directly</p>
+          <ul className="mt-6 space-y-2 text-left text-sm text-[var(--text-secondary)]">
             {['0% commission on every order, always', 'Every feature above included', 'Cancel anytime'].map((li) => (
               <li key={li} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" /> {li}</li>
             ))}
@@ -342,7 +344,7 @@ function FinalCta() {
     <section id="contact" className="mx-auto max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
       <ScrollReveal as="div">
         <h2 className="text-center text-2xl font-bold sm:text-3xl">Ready to keep more of every order?</h2>
-        <p className="mx-auto mt-3 max-w-xl text-center text-gray-600">
+        <p className="mx-auto mt-3 max-w-xl text-center text-[var(--text-secondary)]">
           Start free, or leave your details and we'll reach out.
         </p>
         <div className="mt-8 flex justify-center">
@@ -382,7 +384,7 @@ function ContactForm() {
     return (
       <div className="card text-center">
         <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-green-600" />
-        <p className="text-sm font-medium text-gray-900">Thanks — we'll be in touch soon.</p>
+        <p className="text-sm font-medium text-[var(--text-primary)]">Thanks — we'll be in touch soon.</p>
       </div>
     );
   }
@@ -408,8 +410,8 @@ function ContactForm() {
 
 function Footer() {
   return (
-    <footer className="border-t border-gray-200">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 text-sm text-gray-500 sm:flex-row sm:px-6">
+    <footer className="border-t border-[var(--border)]">
+      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-8 text-sm text-[var(--text-secondary)] sm:flex-row sm:px-6">
         <div className="flex items-center gap-2">
           <ChefHat className="h-4 w-4" />
           <span>RestoAI</span>

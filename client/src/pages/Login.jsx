@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { ChefHat, Eye, EyeOff } from 'lucide-react';
+import DarkModeToggle from '../components/DarkModeToggle';
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -30,19 +31,20 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-50 to-gray-100 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-[var(--surface-1)] px-4">
       <div className="w-full max-w-md">
         {/* Brand header */}
-        <div className="mb-8 text-center">
+        <div className="relative mb-8 text-center">
+                  <DarkModeToggle className="absolute right-0 top-0" />
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600 shadow-lg">
             <ChefHat className="h-8 w-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">RestoAI</h1>
-          <p className="mt-1 text-sm text-gray-500">AI-powered restaurant operations</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">RestoAI</h1>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">AI-powered restaurant operations</p>
         </div>
 
         <div className="card">
-          <h2 className="mb-6 text-lg font-semibold text-gray-900">
+          <h2 className="mb-6 text-lg font-semibold text-[var(--text-primary)]">
             {isRegister ? 'Create your restaurant' : 'Sign in to your account'}
           </h2>
 
@@ -54,30 +56,30 @@ export default function Login() {
             {isRegister && (
               <>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Your Name</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">Your Name</label>
                   <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Restaurant Name</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">Restaurant Name</label>
                   <input className="input" value={form.restaurantName} onChange={(e) => setForm({ ...form, restaurantName: e.target.value })} required />
                 </div>
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-gray-700">Restaurant Slug</label>
+                  <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">Restaurant Slug</label>
                   <input className="input" value={form.restaurantSlug} onChange={(e) => setForm({ ...form, restaurantSlug: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })} placeholder="my-restaurant" required />
                 </div>
               </>
             )}
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Email</label>
+              <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">Email</label>
               <input className="input" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Password</label>
+              <label className="mb-1 block text-sm font-medium text-[var(--text-secondary)]">Password</label>
               <div className="relative">
                 <input className="input pr-10" type={showPassword ? 'text' : 'password'} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]">
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
@@ -88,7 +90,7 @@ export default function Login() {
             </button>
           </form>
 
-          <div className="mt-4 text-center text-sm text-gray-500">
+          <div className="mt-4 text-center text-sm text-[var(--text-secondary)]">
             {isRegister ? 'Already have an account?' : "Don't have an account?"}{' '}
             <button onClick={() => setIsRegister(!isRegister)} className="font-medium text-brand-600 hover:text-brand-700">
               {isRegister ? 'Sign in' : 'Register'}
@@ -96,7 +98,7 @@ export default function Login() {
           </div>
 
           {!isRegister && (
-            <p className="mt-3 text-center text-xs text-gray-400">
+            <p className="mt-3 text-center text-xs text-[var(--text-tertiary)]">
               Demo: ahmed@karahi.pk / demo1234
             </p>
           )}

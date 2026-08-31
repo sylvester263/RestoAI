@@ -953,6 +953,50 @@ async function migrate() {
       ON CONFLICT (user_id, branch_id) DO NOTHING;
     `);
 
+    // ── Customer support agent (impl-27) ──
+    // Tickets track every support conversation from first contact through
+    // resolution. status='ai_handled' means the AI resolved it AND the
+    // customer confirmed; 'escalated' means a human is handling it.
+    // A ticket is never marked resolved without explicit customer confirmation
+    // or explicit staff action (no silent closure / "vanity deflection").
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_tickets (
+        id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        tenant_id               UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        customer_id             UUID NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+        order_id                UUID REFERENCES orders(id),
+        category                VARCHAR(30) NOT NULL CHECK (category IN ('order_issue','complaint','question','feedback','other')),
+        status                  VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','ai_handled','escalated','resolved')),
+        ai_classification       TEXT,
+        ai_suggested_resolution TEXT,
+        pending_confirmation    BOOLEAN NOT NULL DEFAULT false,
+        resolved_by             UUID REFERENCES users(id),
+        resolved_at             TIMESTAMPTZ,
+        created_at              TIMESTAMPTZ DEFAULT NOW(),
+        updated_at              TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_tenant ON support_tickets(tenant_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_customer ON support_tickets(customer_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_support_tickets_status ON support_tickets(tenant_id, status);`);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_messages (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        ticket_id   UUID NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE,
+        sender      VARCHAR(10) NOT NULL CHECK (sender IN ('customer','ai','staff')),
+        content     TEXT NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_support_messages_ticket ON support_messages(ticket_id);`);
+
+    // ── Owner WhatsApp assistant (impl-28) — verified users.phone lookup
+    // distinguishes owner/manager messages from customer messages before
+    // any intent classification runs. ──
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_phone ON users(tenant_id, phone) WHERE phone IS NOT NULL;`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

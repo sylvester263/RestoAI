@@ -105,7 +105,7 @@ router.post('/simulate', authenticate, (req, res, next) => {
   return next();
 }, async (req, res, next) => {
   try {
-    const { phone, message } = req.body;
+    const { phone, message, fromPhone } = req.body;
     if (!phone || !message) {
       return res.status(400).json({ error: { message: 'phone and message are required' } });
     }
@@ -114,8 +114,13 @@ router.post('/simulate', authenticate, (req, res, next) => {
     // tenant_id passed in the request body is ignored.
     const tenantId = req.user.tenant_id;
 
+    // fromPhone allows testing the owner-routing check: pass the actual
+    // phone number that should be checked against users.phone. If omitted,
+    // defaults to `phone` (the receiving number), which is the normal case.
+    const senderPhone = fromPhone || phone;
+
     const simulatedMsg = {
-      from: phone,
+      from: senderPhone,
       type: 'text',
       text: { body: message },
       timestamp: Math.floor(Date.now() / 1000).toString(),

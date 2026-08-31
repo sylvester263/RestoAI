@@ -18,10 +18,18 @@ async function seed() {
     // ── Demo owner user ──
     const passwordHash = await bcrypt.hash('demo1234', 10);
     await client.query(`
-      INSERT INTO users (tenant_id, name, email, password_hash, role)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (email) DO NOTHING;
-    `, [tenantId, 'Ahmed Malik', 'ahmed@karahi.pk', passwordHash, 'owner']);
+      INSERT INTO users (tenant_id, name, email, password_hash, role, phone)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (email) DO UPDATE SET phone = EXCLUDED.phone;
+    `, [tenantId, 'Ahmed Malik', 'ahmed@karahi.pk', passwordHash, 'owner', '+923009999001']);
+
+    // ── Demo manager user ──
+    const managerHash = await bcrypt.hash('manager1234', 10);
+    await client.query(`
+      INSERT INTO users (tenant_id, name, email, password_hash, role, phone)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (email) DO UPDATE SET phone = EXCLUDED.phone;
+    `, [tenantId, 'Sara Manager', 'sara@karahi.pk', managerHash, 'manager', '+923009999002']);
 
     // ── Demo staff user ──
     const staffHash = await bcrypt.hash('staff1234', 10);

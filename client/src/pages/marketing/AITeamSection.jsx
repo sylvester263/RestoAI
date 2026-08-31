@@ -40,12 +40,12 @@ const TABS = [
     icon: Database,
     description: 'A WhatsApp order, a dine-in QR order, and a walk-in POS order are the same order underneath — one customer record, one menu, one queue, no reconciling four systems by hand.',
     content: (
-      <div className="flex h-full flex-col items-center justify-center gap-6 rounded-xl border border-gray-200 bg-white p-8 shadow-lg sm:p-12">
+      <div className="flex h-full flex-col items-center justify-center gap-6 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-8 shadow-lg sm:p-12">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {CHANNELS.map((c) => (
-            <div key={c.label} className="flex flex-col items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+            <div key={c.label} className="flex flex-col items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-3)] px-4 py-3">
               <c.icon className="h-5 w-5 text-brand-600" />
-              <span className="text-xs font-medium text-gray-600">{c.label}</span>
+              <span className="text-xs font-medium text-[var(--text-secondary)]">{c.label}</span>
             </div>
           ))}
         </div>
@@ -72,7 +72,7 @@ export default function AITeamSection() {
             className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
               tab.id === activeId
                 ? 'border-brand-600 bg-brand-600 text-white'
-                : 'border-gray-200 bg-white text-gray-600 hover:border-brand-300 hover:text-brand-700'
+                : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-secondary)] hover:border-brand-300 hover:text-brand-700'
             }`}
           >
             <tab.icon className="h-4 w-4" />
@@ -82,7 +82,7 @@ export default function AITeamSection() {
       </div>
 
       <div className="mt-8 grid gap-8 sm:grid-cols-2 sm:items-center">
-        <p className="text-base text-gray-600 sm:order-2">{active.description}</p>
+        <p className="text-base text-[var(--text-secondary)] sm:order-2">{active.description}</p>
         <div className="sm:order-1">{active.content}</div>
       </div>
     </div>

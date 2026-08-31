@@ -63,8 +63,8 @@ export function Hero({ content, config, tenant, theme, dark }) {
   if (config.heroStyle === 'compact') {
     return (
       <section className="px-6 py-16 text-center">
-        <h1 className={`${config.fontClass} mb-3 text-3xl font-bold text-gray-900 sm:text-4xl`}>{hero.headline}</h1>
-        {hero.subheadline && <p className="mb-6 text-base text-gray-600">{hero.subheadline}</p>}
+        <h1 className={`${config.fontClass} mb-3 text-3xl font-bold ${dark ? 'text-white' : 'text-gray-900'} sm:text-4xl`}>{hero.headline}</h1>
+        {hero.subheadline && <p className={`mb-6 text-base ${dark ? 'text-gray-400' : 'text-gray-600'}`}>{hero.subheadline}</p>}
         <div className="flex justify-center"><HeroCtas config={config} tenantSlug={tenant.slug} accent={accent} /></div>
       </section>
     );
@@ -74,8 +74,8 @@ export function Hero({ content, config, tenant, theme, dark }) {
   return (
     <section className="grid gap-8 px-6 py-16 sm:grid-cols-2 sm:items-center sm:px-12">
       <div>
-        <h1 className={`${config.fontClass} mb-4 text-3xl font-bold text-gray-900 sm:text-4xl`}>{hero.headline}</h1>
-        {hero.subheadline && <p className="mb-6 text-base text-gray-600">{hero.subheadline}</p>}
+        <h1 className={`${config.fontClass} mb-4 text-3xl font-bold ${dark ? 'text-white' : 'text-gray-900'} sm:text-4xl`}>{hero.headline}</h1>
+        {hero.subheadline && <p className={`mb-6 text-base ${dark ? 'text-gray-400' : 'text-gray-600'}`}>{hero.subheadline}</p>}
         <HeroCtas config={config} tenantSlug={tenant.slug} accent={accent} />
       </div>
       {hero.image_url && (

@@ -85,7 +85,7 @@ export default function TableOrder() {
   if (notFound) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 text-center">
-        <p className="text-gray-500">This table QR code isn't recognized.</p>
+        <p className="text-[var(--text-secondary)]">This table QR code isn't recognized.</p>
       </div>
     );
   }
@@ -100,10 +100,10 @@ export default function TableOrder() {
   const sessionEnded = session.status !== 'open';
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-28">
-      <div className="border-b border-gray-200 bg-white px-4 py-6">
-        <h1 className="text-2xl font-bold text-gray-900">{restaurant?.name}</h1>
-        <p className="text-sm text-gray-500">Table {session.table_number}</p>
+    <div className="min-h-screen bg-[var(--surface-1)] pb-28">
+      <div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-6">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">{restaurant?.name}</h1>
+        <p className="text-sm text-[var(--text-secondary)]">Table {session.table_number}</p>
         <div className="mt-3 flex gap-2">
           <button onClick={() => setView('menu')} className={view === 'menu' ? 'btn-primary' : 'btn-secondary'}>Menu</button>
           <button onClick={loadBill} className={view === 'bill' ? 'btn-primary' : 'btn-secondary'}>
@@ -129,15 +129,15 @@ export default function TableOrder() {
           )}
           {Object.entries(grouped).map(([category, catItems]) => (
             <div key={category}>
-              <h2 className="mb-3 text-lg font-semibold text-gray-900">{category}</h2>
+              <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">{category}</h2>
               <div className="space-y-3">
                 {catItems.map((item) => {
                   const qty = quantityOf(item.id);
                   return (
                     <div key={item.id} className="card flex items-center justify-between gap-4">
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{item.name}</p>
-                        {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
+                        <p className="font-medium text-[var(--text-primary)]">{item.name}</p>
+                        {item.description && <p className="text-sm text-[var(--text-secondary)]">{item.description}</p>}
                         <p className="mt-1 text-sm font-semibold text-brand-600">Rs. {Number(item.price).toLocaleString()}</p>
                       </div>
                       {sessionEnded ? null : qty === 0 ? (
@@ -146,11 +146,11 @@ export default function TableOrder() {
                         </button>
                       ) : (
                         <div className="flex shrink-0 items-center gap-3">
-                          <button onClick={() => handleQuantityChange(item, -1)} className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50">
+                          <button onClick={() => handleQuantityChange(item, -1)} className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--surface-3)]">
                             <Minus className="h-4 w-4" />
                           </button>
                           <span className="w-6 text-center font-medium">{qty}</span>
-                          <button onClick={() => handleQuantityChange(item, 1)} className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50">
+                          <button onClick={() => handleQuantityChange(item, 1)} className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--surface-3)]">
                             <Plus className="h-4 w-4" />
                           </button>
                         </div>
@@ -167,13 +167,13 @@ export default function TableOrder() {
       {view === 'bill' && bill && (
         <div className="mx-auto max-w-2xl px-4 py-6">
           <div className="card mb-4">
-            <h2 className="mb-3 text-sm font-semibold text-gray-600">Itemized bill</h2>
+            <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Itemized bill</h2>
             {bill.rounds.length === 0 ? (
-              <p className="text-sm text-gray-400">No orders placed yet.</p>
+              <p className="text-sm text-[var(--text-tertiary)]">No orders placed yet.</p>
             ) : (
               bill.rounds.map((round) => (
-                <div key={round.id} className="mb-3 border-b border-gray-100 pb-3 last:border-0">
-                  <p className="mb-1 text-xs font-medium text-gray-400">Round · Rs. {Number(round.total).toLocaleString()}</p>
+                <div key={round.id} className="mb-3 border-b border-[var(--border-light)] pb-3 last:border-0">
+                  <p className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">Round · Rs. {Number(round.total).toLocaleString()}</p>
                   {round.items.map((i, idx) => (
                     <div key={idx} className="flex justify-between text-sm">
                       <span>{i.quantity}x {i.name}</span>
@@ -183,14 +183,14 @@ export default function TableOrder() {
                 </div>
               ))
             )}
-            <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-semibold text-gray-900">
+            <div className="flex justify-between border-t border-[var(--border)] pt-3 text-base font-semibold text-[var(--text-primary)]">
               <span>Grand Total</span>
               <span>Rs. {bill.grand_total.toLocaleString()}</span>
             </div>
           </div>
 
           <div className="card mb-4">
-            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-600"><Users className="h-4 w-4" /> Split evenly</h2>
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Users className="h-4 w-4" /> Split evenly</h2>
             <div className="flex items-center gap-3">
               <input
                 type="number"
@@ -199,8 +199,8 @@ export default function TableOrder() {
                 value={splitCount}
                 onChange={(e) => setSplitCount(Math.max(1, parseInt(e.target.value) || 1))}
               />
-              <span className="text-sm text-gray-500">people</span>
-              <span className="ml-auto font-semibold text-gray-900">Rs. {Math.ceil(bill.grand_total / splitCount).toLocaleString()} each</span>
+              <span className="text-sm text-[var(--text-secondary)]">people</span>
+              <span className="ml-auto font-semibold text-[var(--text-primary)]">Rs. {Math.ceil(bill.grand_total / splitCount).toLocaleString()} each</span>
             </div>
           </div>
 
@@ -208,13 +208,13 @@ export default function TableOrder() {
             <button onClick={handleRequestBill} className="btn-primary w-full justify-center">Request Bill from Staff</button>
           )}
           {session.status === 'bill_requested' && (
-            <p className="text-center text-sm text-gray-500">Bill requested — staff will come to settle up.</p>
+            <p className="text-center text-sm text-[var(--text-secondary)]">Bill requested — staff will come to settle up.</p>
           )}
         </div>
       )}
 
       {view === 'menu' && cartCount > 0 && !sessionEnded && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white p-4">
+        <div className="fixed bottom-0 left-0 right-0 border-t border-[var(--border)] bg-[var(--surface-2)] p-4">
           <button
             onClick={handlePlaceRound}
             disabled={placing}

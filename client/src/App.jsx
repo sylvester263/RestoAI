@@ -33,6 +33,7 @@ import LandingPage from './pages/marketing/LandingPage';
 import InviteAccept from './pages/InviteAccept';
 import RiderLogin from './pages/rider/RiderLogin';
 import RiderDashboard from './pages/rider/RiderDashboard';
+import Support from './pages/Support';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -100,6 +101,7 @@ export default function App() {
                 <Route path="/website" element={<LandingPageEditor />} />
                 <Route path="/insights" element={<Insights />} />
                 <Route path="/whatsapp" element={<WhatsAppDemo />} />
+                <Route path="/support" element={<Support />} />
               </Routes>
             </Layout>
           </ProtectedRoute>

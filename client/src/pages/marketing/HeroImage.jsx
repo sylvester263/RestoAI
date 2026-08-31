@@ -10,7 +10,7 @@ export default function HeroImage() {
       <img
         src={whatsappChat}
         alt="RestoAI WhatsApp ordering conversation"
-        className="w-56 rounded-[1.75rem] border-4 border-gray-900 shadow-2xl sm:w-64"
+        className="w-56 rounded-[1.75rem] border-4 border-gray-900 shadow-2xl dark:border-gray-600 sm:w-64"
         style={{ transform: 'rotate(-6deg)' }}
       />
     </div>

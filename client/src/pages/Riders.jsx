@@ -115,8 +115,8 @@ export default function Riders() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Riders &amp; Delivery</h1>
-          <p className="text-sm text-gray-500">Assign deliveries, track riders, reconcile cash.</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Riders &amp; Delivery</h1>
+          <p className="text-sm text-[var(--text-secondary)]">Assign deliveries, track riders, reconcile cash.</p>
         </div>
         {canManage && (
           <button onClick={() => setShowNewRider(true)} className="btn-primary"><Plus className="h-4 w-4" /> Add Rider</button>
@@ -126,18 +126,18 @@ export default function Riders() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Roster */}
         <div className="card">
-          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Bike className="h-4 w-4" /> Roster</h2>
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Bike className="h-4 w-4" /> Roster</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {riders.length === 0 && <EmptyState icon={Bike} title="No riders yet" description="Add your first rider to start managing deliveries." action={canManage ? { label: 'Add Rider', onClick: () => setShowNewRider(true) } : undefined} />}
             {riders.map((r) => (
-              <div key={r.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-3">
+              <div key={r.id} className="flex items-center justify-between rounded-lg border border-[var(--border-light)] p-3">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{r.name}</p>
-                  <p className="text-xs text-gray-500">{r.phone} · {r.branch_name}</p>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">{r.name}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">{r.phone} · {r.branch_name}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="badge bg-blue-100 text-blue-700">{r.active_deliveries} active</span>
-                  <span className={`badge ${r.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{r.status}</span>
+                  <span className={`badge ${r.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-[var(--surface-3)] text-[var(--text-secondary)]'}`}>{r.status}</span>
                   {canManage && (
                     <button onClick={() => handleToggleRiderStatus(r)} className="text-xs font-medium text-brand-600 hover:underline">
                       {r.status === 'active' ? 'Deactivate' : 'Activate'}
@@ -159,16 +159,16 @@ export default function Riders() {
 
         {/* Unassigned deliveries */}
         <div className="card">
-          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Package className="h-4 w-4" /> Unassigned Deliveries</h2>
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Package className="h-4 w-4" /> Unassigned Deliveries</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {unassigned.length === 0 && <EmptyState icon={Package} title="All caught up" description="No unassigned deliveries right now." />}
             {unassigned.map((o) => (
-              <div key={o.id} className="rounded-lg border border-gray-100 p-3">
+              <div key={o.id} className="rounded-lg border border-[var(--border-light)] p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-900">#{o.order_number} · {o.customer_name || 'Unknown'}</p>
-                  <span className="text-sm font-semibold text-gray-900">Rs. {Number(o.total).toLocaleString()}</span>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">#{o.order_number} · {o.customer_name || 'Unknown'}</p>
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">Rs. {Number(o.total).toLocaleString()}</span>
                 </div>
-                <p className="mb-2 text-xs text-gray-500">{o.delivery_address}</p>
+                <p className="mb-2 text-xs text-[var(--text-secondary)]">{o.delivery_address}</p>
                 <div className="flex gap-2">
                   <select
                     className="input text-xs"
@@ -187,7 +187,7 @@ export default function Riders() {
                 </div>
 
                 {suggestions[o.id] === 'loading' && (
-                  <p className="mt-2 text-xs text-gray-400">Asking the agent...</p>
+                  <p className="mt-2 text-xs text-[var(--text-tertiary)]">Asking the agent...</p>
                 )}
                 {suggestions[o.id] && suggestions[o.id] !== 'loading' && (
                   suggestions[o.id].error ? (
@@ -211,16 +211,16 @@ export default function Riders() {
 
         {/* Active deliveries */}
         <div className="card">
-          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Truck className="h-4 w-4" /> Active Deliveries</h2>
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Truck className="h-4 w-4" /> Active Deliveries</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {active.length === 0 && <EmptyState icon={Truck} title="No active deliveries" description="Deliveries in progress will show here." />}
             {active.map((a) => (
-              <div key={a.id} className="rounded-lg border border-gray-100 p-3">
+              <div key={a.id} className="rounded-lg border border-[var(--border-light)] p-3">
                 <div className="mb-1 flex items-center justify-between">
-                  <p className="text-sm font-medium text-gray-900">#{a.order_number} · {a.customer_name || 'Unknown'}</p>
-                  <span className="text-sm font-semibold text-gray-900">Rs. {Number(a.total).toLocaleString()}</span>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">#{a.order_number} · {a.customer_name || 'Unknown'}</p>
+                  <span className="text-sm font-semibold text-[var(--text-primary)]">Rs. {Number(a.total).toLocaleString()}</span>
                 </div>
-                <p className="mb-2 text-xs text-gray-500">Rider: {a.rider_name} · {a.picked_up_at ? 'Picked up' : 'Not picked up'}</p>
+                <p className="mb-2 text-xs text-[var(--text-secondary)]">Rider: {a.rider_name} · {a.picked_up_at ? 'Picked up' : 'Not picked up'}</p>
                 <div className="flex gap-2">
                   {!a.picked_up_at && (
                     <button onClick={() => handleDeliveryStatus(a.order_id, 'picked_up')} className="btn-secondary text-xs">Mark Picked Up</button>
@@ -236,20 +236,20 @@ export default function Riders() {
 
         {/* Reconciliation history */}
         <div className="card">
-          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-700"><Wallet className="h-4 w-4" /> Reconciliation History</h2>
+          <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Wallet className="h-4 w-4" /> Reconciliation History</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {reconciliations.length === 0 && <EmptyState icon={Wallet} title="No reconciliations yet" description="Cash reconciliations will appear here." />}
             {reconciliations.map((r) => (
-              <div key={r.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-3 text-sm">
+              <div key={r.id} className="flex items-center justify-between rounded-lg border border-[var(--border-light)] p-3 text-sm">
                 <div>
-                  <p className="font-medium text-gray-900">{r.rider_name}</p>
-                  <p className="text-xs text-gray-500">
+                  <p className="font-medium text-[var(--text-primary)]">{r.rider_name}</p>
+                  <p className="text-xs text-[var(--text-secondary)]">
                     {new Date(r.period_start).toLocaleDateString()} – {new Date(r.period_end).toLocaleDateString()}
                   </p>
                 </div>
                 <div className="text-right">
                   <p>Expected Rs. {Number(r.total_expected).toLocaleString()} · Collected Rs. {Number(r.total_collected).toLocaleString()}</p>
-                  <p className={Number(r.variance) === 0 ? 'text-gray-400' : Number(r.variance) < 0 ? 'text-red-600' : 'text-green-600'}>
+                  <p className={Number(r.variance) === 0 ? 'text-[var(--text-tertiary)]' : Number(r.variance) < 0 ? 'text-red-600' : 'text-green-600'}>
                     Variance: {Number(r.variance) > 0 ? '+' : ''}{Number(r.variance).toLocaleString()}
                   </p>
                 </div>
@@ -296,7 +296,7 @@ function NewRiderModal({ onClose, onCreated }) {
         <input className="input" placeholder="Rider name" value={name} onChange={(e) => setName(e.target.value)} />
         <input className="input" placeholder="Phone number" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </div>
-      <p className="mt-2 text-xs text-gray-400">A login PIN is generated automatically — you'll see it once after saving, to share with the rider.</p>
+      <p className="mt-2 text-xs text-[var(--text-tertiary)]">A login PIN is generated automatically — you'll see it once after saving, to share with the rider.</p>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       <button onClick={handleCreate} disabled={saving || !name || !phone} className="btn-primary mt-4 w-full justify-center">
         {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add Rider'}
@@ -317,12 +317,12 @@ function PinResultModal({ rider, pin, onClose }) {
 
   return (
     <Modal open={true} onClose={onClose} title={`${rider.name}'s PIN`} size="md">
-      <p className="mb-3 text-sm text-gray-500">
+      <p className="mb-3 text-sm text-[var(--text-secondary)]">
         Share this PIN with {rider.name} directly (in person or by phone) — it won't be shown again. They log in at{' '}
-        <span className="font-medium text-gray-700">/rider/login</span> with their phone number and this PIN.
+        <span className="font-medium text-[var(--text-secondary)]">/rider/login</span> with their phone number and this PIN.
       </p>
-      <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
-        <span className="text-2xl font-bold tracking-widest text-gray-900">{pin}</span>
+      <div className="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--surface-3)] px-4 py-3">
+        <span className="text-2xl font-bold tracking-widest text-[var(--text-primary)]">{pin}</span>
         <button onClick={handleCopy} className="btn-secondary text-xs">
           {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
         </button>
@@ -359,11 +359,11 @@ function ReconcileModal({ rider, onClose, onDone }) {
         <>
           <div className="mb-3 grid grid-cols-2 gap-2">
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">From</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">From</label>
               <input type="date" className="input" value={start} onChange={(e) => setStart(e.target.value)} />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-medium text-gray-600">To</label>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">To</label>
               <input type="date" className="input" value={end} onChange={(e) => setEnd(e.target.value)} />
             </div>
           </div>
@@ -374,9 +374,9 @@ function ReconcileModal({ rider, onClose, onDone }) {
         </>
       ) : (
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Deliveries reconciled</span><span>{result.assignments_reconciled}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Expected</span><span>Rs. {Number(result.reconciliation.total_expected).toLocaleString()}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Collected</span><span>Rs. {Number(result.reconciliation.total_collected).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Deliveries reconciled</span><span>{result.assignments_reconciled}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Expected</span><span>Rs. {Number(result.reconciliation.total_expected).toLocaleString()}</span></div>
+          <div className="flex justify-between"><span className="text-[var(--text-secondary)]">Collected</span><span>Rs. {Number(result.reconciliation.total_collected).toLocaleString()}</span></div>
           <div className="flex justify-between font-semibold"><span>Variance</span><span>Rs. {Number(result.reconciliation.variance).toLocaleString()}</span></div>
           <button onClick={onDone} className="btn-primary mt-4 w-full justify-center">Done</button>
         </div>

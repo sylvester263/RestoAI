@@ -5,6 +5,7 @@ import { toast } from '../../components/ui/toast';
 import Modal from '../../components/ui/Modal';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { Bike, LogOut, Package, CheckCircle2, Wallet, MapPin, Phone } from 'lucide-react';
+import DarkModeToggle from '../../components/DarkModeToggle';
 
 export default function RiderDashboard() {
   const navigate = useNavigate();
@@ -93,19 +94,22 @@ export default function RiderDashboard() {
   const completedToday = assignments.filter((a) => a.delivered_at);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-8">
+    <div className="min-h-screen bg-[var(--surface-1)] pb-8">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
         <div className="flex items-center gap-2">
           <Bike className="h-5 w-5 text-brand-600" />
           <div>
-            <p className="text-sm font-semibold text-gray-900">{rider?.name}</p>
-            <p className="text-xs text-gray-500">{rider?.branch_name} · {rider?.tenant_name}</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)]">{rider?.name}</p>
+            <p className="text-xs text-[var(--text-secondary)]">{rider?.branch_name} · {rider?.tenant_name}</p>
           </div>
         </div>
-        <button onClick={handleLogout} className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
-          <LogOut className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <DarkModeToggle />
+          <button onClick={handleLogout} className="rounded-lg p-2 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)]">
+            <LogOut className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       <div className="mx-auto max-w-lg px-4 py-4">
@@ -116,36 +120,36 @@ export default function RiderDashboard() {
           <div className="flex items-center gap-2">
             <Wallet className="h-5 w-5 text-brand-600" />
             <div>
-              <p className="text-xs text-gray-500">Cash collected today</p>
-              <p className="text-lg font-bold text-gray-900">Rs. {Number(summary.cash_collected_today).toLocaleString()}</p>
+              <p className="text-xs text-[var(--text-secondary)]">Cash collected today</p>
+              <p className="text-lg font-bold text-[var(--text-primary)]">Rs. {Number(summary.cash_collected_today).toLocaleString()}</p>
             </div>
           </div>
           <div className="text-right">
-            <p className="text-xs text-gray-500">Delivered</p>
-            <p className="text-lg font-bold text-gray-900">{summary.delivered_today}</p>
+            <p className="text-xs text-[var(--text-secondary)]">Delivered</p>
+            <p className="text-lg font-bold text-[var(--text-primary)]">{summary.delivered_today}</p>
           </div>
         </div>
 
         {/* Active deliveries */}
-        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-700"><Package className="h-4 w-4" /> Your deliveries ({active.length})</h2>
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]"><Package className="h-4 w-4" /> Your deliveries ({active.length})</h2>
         <div className="mb-6 space-y-3">
-          {active.length === 0 && <p className="rounded-lg border border-dashed border-gray-200 p-4 text-center text-sm text-gray-400">No deliveries assigned right now</p>}
+          {active.length === 0 && <p className="rounded-lg border border-dashed border-[var(--border)] p-4 text-center text-sm text-[var(--text-tertiary)]">No deliveries assigned right now</p>}
           {active.map((a) => (
             <div key={a.id} className="card">
               <div className="mb-2 flex items-center justify-between">
-                <p className="font-semibold text-gray-900">Order #{a.order_number}</p>
-                <span className="text-sm font-semibold text-gray-900">Rs. {Number(a.total).toLocaleString()}</span>
+                <p className="font-semibold text-[var(--text-primary)]">Order #{a.order_number}</p>
+                <span className="text-sm font-semibold text-[var(--text-primary)]">Rs. {Number(a.total).toLocaleString()}</span>
               </div>
-              {a.customer_name && <p className="mb-1 text-sm text-gray-600">{a.customer_name}</p>}
+              {a.customer_name && <p className="mb-1 text-sm text-[var(--text-secondary)]">{a.customer_name}</p>}
               {a.customer_phone && (
                 <a href={`tel:${a.customer_phone}`} className="mb-1 flex items-center gap-1 text-sm text-brand-600">
                   <Phone className="h-3 w-3" /> {a.customer_phone}
                 </a>
               )}
               {a.delivery_address && (
-                <p className="mb-3 flex items-start gap-1 text-sm text-gray-500"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /> {a.delivery_address}</p>
+                <p className="mb-3 flex items-start gap-1 text-sm text-[var(--text-secondary)]"><MapPin className="mt-0.5 h-3 w-3 shrink-0" /> {a.delivery_address}</p>
               )}
-              <p className="mb-3 text-xs uppercase tracking-wide text-gray-400">
+              <p className="mb-3 text-xs uppercase tracking-wide text-[var(--text-tertiary)]">
                 {a.payment_method === 'cash' ? 'Cash on delivery' : a.payment_method} · {a.picked_up_at ? 'Picked up' : 'Not picked up yet'}
               </p>
               <div className="flex gap-2">
@@ -164,12 +168,12 @@ export default function RiderDashboard() {
 
         {completedToday.length > 0 && (
           <>
-            <h2 className="mb-2 text-sm font-semibold text-gray-700">Delivered today ({completedToday.length})</h2>
+            <h2 className="mb-2 text-sm font-semibold text-[var(--text-primary)]">Delivered today ({completedToday.length})</h2>
             <div className="space-y-2">
               {completedToday.map((a) => (
-                <div key={a.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-white px-3 py-2 text-sm">
-                  <span className="text-gray-700">#{a.order_number}</span>
-                  <span className="text-gray-500">{new Date(a.delivered_at).toLocaleTimeString()}</span>
+                <div key={a.id} className="flex items-center justify-between rounded-lg border border-[var(--border-light)] bg-[var(--surface-2)] px-3 py-2 text-sm dark:bg-gray-800">
+                  <span className="text-[var(--text-secondary)]">#{a.order_number}</span>
+                  <span className="text-[var(--text-tertiary)]">{new Date(a.delivered_at).toLocaleTimeString()}</span>
                 </div>
               ))}
             </div>
@@ -188,7 +192,7 @@ export default function RiderDashboard() {
       >
         {deliveryModal?.assignment?.payment_method === 'cash' && (
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Cash collected (Rs.)</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Cash collected (Rs.)</label>
             <input
               type="number"
               min="0"
@@ -200,7 +204,7 @@ export default function RiderDashboard() {
           </div>
         )}
         {deliveryModal?.assignment?.payment_method !== 'cash' && (
-          <p className="text-sm text-gray-600">Confirm delivery of order #{deliveryModal?.assignment?.order_number}?</p>
+          <p className="text-sm text-[var(--text-secondary)]">Confirm delivery of order #{deliveryModal?.assignment?.order_number}?</p>
         )}
       </Modal>
     </div>

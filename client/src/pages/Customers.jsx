@@ -14,19 +14,19 @@ export default function Customers() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
-          <p className="text-sm text-gray-500">Tag customers, build segments, review profiles.</p>
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Customers</h1>
+          <p className="text-sm text-[var(--text-secondary)]">Tag customers, build segments, review profiles.</p>
         </div>
-        <div className="flex rounded-lg border border-gray-200 bg-white p-1">
+        <div className="flex rounded-lg border border-[var(--border)] bg-white p-1">
           <button
             onClick={() => setTab('customers')}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'customers' ? 'bg-brand-600 text-white' : 'text-gray-600'}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'customers' ? 'bg-brand-600 text-white' : 'text-[var(--text-secondary)]'}`}
           >
             All Customers
           </button>
           <button
             onClick={() => setTab('segments')}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'segments' ? 'bg-brand-600 text-white' : 'text-gray-600'}`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium ${tab === 'segments' ? 'bg-brand-600 text-white' : 'text-[var(--text-secondary)]'}`}
           >
             Segments
           </button>
@@ -60,23 +60,23 @@ function CustomerList() {
     <div className="grid gap-6 lg:grid-cols-5">
       <div className="lg:col-span-2">
         <div className="mb-3 relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
           <input className="input pl-9" placeholder="Search by name or phone..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="max-h-[36rem] space-y-2 overflow-y-auto">
-          {!loading && customers.length === 0 && <p className="text-sm text-gray-400">No customers found</p>}
+          {!loading && customers.length === 0 && <p className="text-sm text-[var(--text-tertiary)]">No customers found</p>}
           {loading && <Skeleton.List rows={4} />}
           {customers.map((c) => (
             <button
               key={c.id}
               onClick={() => setSelectedId(c.id)}
-              className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedId === c.id ? 'border-brand-500 bg-brand-50' : 'border-gray-200 bg-white hover:border-gray-300'}`}
+              className={`w-full rounded-lg border p-3 text-left transition-colors ${selectedId === c.id ? 'border-brand-500 bg-brand-50' : 'border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--border)]'}`}
             >
               <div className="flex items-center justify-between">
-                <p className="text-sm font-semibold text-gray-900">{c.name || 'Unknown'}</p>
-                <span className="text-xs text-gray-400">{c.order_count} orders</span>
+                <p className="text-sm font-semibold text-[var(--text-primary)]">{c.name || 'Unknown'}</p>
+                <span className="text-xs text-[var(--text-tertiary)]">{c.order_count} orders</span>
               </div>
-              <p className="text-xs text-gray-500">{c.phone}</p>
+              <p className="text-xs text-[var(--text-secondary)]">{c.phone}</p>
               {c.tags.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {c.tags.map((t) => <span key={t} className="badge bg-purple-100 text-purple-700 text-[10px]">{t}</span>)}
@@ -89,7 +89,7 @@ function CustomerList() {
 
       <div className="lg:col-span-3">
         {selectedId ? <CustomerProfile id={selectedId} onTagsChanged={() => load(search)} /> : (
-          <div className="card flex h-64 items-center justify-center text-gray-400">Select a customer to view their profile</div>
+          <div className="card flex h-64 items-center justify-center text-[var(--text-tertiary)]">Select a customer to view their profile</div>
         )}
       </div>
     </div>
@@ -130,7 +130,7 @@ function CustomerProfile({ id, onTagsChanged }) {
     }
   }
 
-  if (loading || !profile) return <div className="card flex h-64 items-center justify-center text-gray-400"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+  if (loading || !profile) return <div className="card flex h-64 items-center justify-center text-[var(--text-tertiary)]"><Loader2 className="h-5 w-5 animate-spin" /></div>;
 
   const { customer, tags, orders, reviews, loyalty_balance } = profile;
 
@@ -139,25 +139,25 @@ function CustomerProfile({ id, onTagsChanged }) {
       <div className="card">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">{customer.name || 'Unknown'}</h2>
-            <p className="text-sm text-gray-500">{customer.phone}</p>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">{customer.name || 'Unknown'}</h2>
+            <p className="text-sm text-[var(--text-secondary)]">{customer.phone}</p>
           </div>
         </div>
         <div className="mb-3 grid grid-cols-3 gap-3 text-center">
-          <div className="rounded-lg bg-gray-50 p-3">
-            <ShoppingBag className="mx-auto mb-1 h-4 w-4 text-gray-400" />
-            <p className="text-lg font-bold text-gray-900">{customer.order_count}</p>
-            <p className="text-xs text-gray-500">Orders</p>
+          <div className="rounded-lg bg-[var(--surface-3)] p-3">
+            <ShoppingBag className="mx-auto mb-1 h-4 w-4 text-[var(--text-tertiary)]" />
+            <p className="text-lg font-bold text-[var(--text-primary)]">{customer.order_count}</p>
+            <p className="text-xs text-[var(--text-secondary)]">Orders</p>
           </div>
-          <div className="rounded-lg bg-gray-50 p-3">
-            <Wallet className="mx-auto mb-1 h-4 w-4 text-gray-400" />
-            <p className="text-lg font-bold text-gray-900">Rs. {Number(customer.total_spent).toLocaleString()}</p>
-            <p className="text-xs text-gray-500">Total Spent</p>
+          <div className="rounded-lg bg-[var(--surface-3)] p-3">
+            <Wallet className="mx-auto mb-1 h-4 w-4 text-[var(--text-tertiary)]" />
+            <p className="text-lg font-bold text-[var(--text-primary)]">Rs. {Number(customer.total_spent).toLocaleString()}</p>
+            <p className="text-xs text-[var(--text-secondary)]">Total Spent</p>
           </div>
-          <div className="rounded-lg bg-gray-50 p-3">
-            <Star className="mx-auto mb-1 h-4 w-4 text-gray-400" />
-            <p className="text-lg font-bold text-gray-900">{loyalty_balance ?? '—'}</p>
-            <p className="text-xs text-gray-500">Loyalty Points</p>
+          <div className="rounded-lg bg-[var(--surface-3)] p-3">
+            <Star className="mx-auto mb-1 h-4 w-4 text-[var(--text-tertiary)]" />
+            <p className="text-lg font-bold text-[var(--text-primary)]">{loyalty_balance ?? '—'}</p>
+            <p className="text-xs text-[var(--text-secondary)]">Loyalty Points</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -181,12 +181,12 @@ function CustomerProfile({ id, onTagsChanged }) {
       </div>
 
       <div className="card">
-        <h3 className="mb-3 text-sm font-semibold text-gray-700">Order History</h3>
+        <h3 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Order History</h3>
         <div className="max-h-48 space-y-2 overflow-y-auto">
-          {orders.length === 0 && <p className="text-sm text-gray-400">No orders yet</p>}
+          {orders.length === 0 && <p className="text-sm text-[var(--text-tertiary)]">No orders yet</p>}
           {orders.map((o) => (
             <div key={o.id} className="flex items-center justify-between text-sm">
-              <span>#{o.order_number} · <span className="uppercase text-xs text-gray-400">{o.channel}</span> · {o.status}</span>
+              <span>#{o.order_number} · <span className="uppercase text-xs text-[var(--text-tertiary)]">{o.channel}</span> · {o.status}</span>
               <span className="font-medium">Rs. {Number(o.total).toLocaleString()}</span>
             </div>
           ))}
@@ -195,12 +195,12 @@ function CustomerProfile({ id, onTagsChanged }) {
 
       {reviews.length > 0 && (
         <div className="card">
-          <h3 className="mb-3 text-sm font-semibold text-gray-700">Reviews</h3>
+          <h3 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Reviews</h3>
           <div className="space-y-2">
             {reviews.map((r, i) => (
               <div key={i} className="text-sm">
                 <span className="text-yellow-500">{'★'.repeat(r.rating)}</span>
-                {r.comment && <p className="text-gray-600">{r.comment}</p>}
+                {r.comment && <p className="text-[var(--text-secondary)]">{r.comment}</p>}
               </div>
             ))}
           </div>
@@ -217,7 +217,7 @@ const RFM_COLORS = {
   'Needs attention': 'bg-amber-50 border-amber-200 text-amber-700',
   'About to sleep': 'bg-orange-50 border-orange-200 text-orange-700',
   'Cannot lose them': 'bg-red-50 border-red-200 text-red-700',
-  'Lost': 'bg-gray-50 border-gray-200 text-gray-500',
+  'Lost': 'bg-[var(--surface-3)] border-[var(--border)] text-[var(--text-secondary)]',
 };
 
 function Segments() {
@@ -249,17 +249,17 @@ function Segments() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="mb-1 text-sm font-semibold text-gray-700">RFM segments</h2>
-        <p className="mb-3 text-xs text-gray-500">Built in — every customer with an order, scored by recency, frequency, and spend.</p>
+        <h2 className="mb-1 text-sm font-semibold text-[var(--text-secondary)]">RFM segments</h2>
+        <p className="mb-3 text-xs text-[var(--text-secondary)]">Built in — every customer with an order, scored by recency, frequency, and spend.</p>
         {rfmLoading ? (
-          <p className="text-sm text-gray-400">Scoring customers...</p>
+          <p className="text-sm text-[var(--text-tertiary)]">Scoring customers...</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {rfmSummary.map((s) => (
               <button
                 key={s.label}
                 onClick={() => handleRfmPreview(s.label)}
-                className={`rounded-lg border p-3 text-left transition-opacity hover:opacity-80 ${RFM_COLORS[s.label] || 'bg-gray-50 border-gray-200 text-gray-600'}`}
+                className={`rounded-lg border p-3 text-left transition-opacity hover:opacity-80 ${RFM_COLORS[s.label] || 'bg-[var(--surface-3)] border-[var(--border)] text-[var(--text-secondary)]'}`}
               >
                 <p className="text-lg font-bold">{s.count}</p>
                 <p className="text-xs font-medium">{s.label}</p>
@@ -270,15 +270,15 @@ function Segments() {
       </div>
 
       <div className="mb-4 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-700">Custom segments</h2>
+        <h2 className="text-sm font-semibold text-[var(--text-secondary)]">Custom segments</h2>
         <button onClick={() => setShowNew(true)} className="btn-primary"><Users className="h-4 w-4" /> New Segment</button>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {segments.length === 0 && <p className="text-sm text-gray-400">No segments yet</p>}
+        {segments.length === 0 && <p className="text-sm text-[var(--text-tertiary)]">No segments yet</p>}
         {segments.map((s) => (
           <div key={s.id} className="card">
-            <h3 className="mb-2 font-semibold text-gray-900">{s.name}</h3>
-            <div className="mb-3 space-y-1 text-xs text-gray-500">
+            <h3 className="mb-2 font-semibold text-[var(--text-primary)]">{s.name}</h3>
+            <div className="mb-3 space-y-1 text-xs text-[var(--text-secondary)]">
               {s.filter_rules.min_orders !== undefined && <p>Min orders: {s.filter_rules.min_orders}</p>}
               {s.filter_rules.min_spend !== undefined && <p>Min spend: Rs. {s.filter_rules.min_spend}</p>}
               {s.filter_rules.last_order_days_ago_lt !== undefined && <p>Ordered in last {s.filter_rules.last_order_days_ago_lt} days</p>}
@@ -353,12 +353,12 @@ function NewSegmentModal({ onClose, onCreated }) {
 function PreviewModal({ data, onClose }) {
   return (
     <Modal open={true} onClose={onClose} title={data.segment.name}>
-      <p className="mb-3 text-sm text-gray-500">{data.count} matching customer{data.count !== 1 ? 's' : ''}</p>
+      <p className="mb-3 text-sm text-[var(--text-secondary)]">{data.count} matching customer{data.count !== 1 ? 's' : ''}</p>
       <div className="max-h-[60vh] space-y-2 overflow-y-auto">
         {data.customers.map((c) => (
-          <div key={c.id} className="flex items-center justify-between rounded-lg border border-gray-100 p-2 text-sm">
+          <div key={c.id} className="flex items-center justify-between rounded-lg border border-[var(--border-light)] p-2 text-sm">
             <span>{c.name || c.phone}</span>
-            <span className="text-gray-400">{c.order_count} orders</span>
+            <span className="text-[var(--text-tertiary)]">{c.order_count} orders</span>
           </div>
         ))}
       </div>

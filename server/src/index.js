@@ -34,6 +34,7 @@ import riderAppRoutes from './routes/rider-app.js';
 import contactRoutes from './routes/contact.js';
 import analyticsRoutes from './routes/analytics.js';
 import eventRoutes from './routes/events.js';
+import supportRoutes from './routes/support.js';
 
 const app = express();
 
@@ -132,6 +133,7 @@ app.use('/api/rider-app', riderAppRoutes);
 app.use('/api/contact', contactRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/events', eventRoutes);
+app.use('/api/support', supportRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

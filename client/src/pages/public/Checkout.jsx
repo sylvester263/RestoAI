@@ -114,16 +114,16 @@ export default function Checkout() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 px-4 py-6">
+    <div className="min-h-screen bg-[var(--surface-1)] px-4 py-6">
       <div className="mx-auto max-w-lg">
-        <Link to={`/order/${tenantSlug}`} className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700">
+        <Link to={`/order/${tenantSlug}`} className="mb-4 inline-flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
           <ArrowLeft className="h-4 w-4" /> Back to menu
         </Link>
 
-        <h1 className="mb-4 text-2xl font-bold text-gray-900">Checkout</h1>
+        <h1 className="mb-4 text-2xl font-bold text-[var(--text-primary)]">Checkout</h1>
 
         <div className="card mb-4">
-          <h2 className="mb-3 text-sm font-semibold text-gray-600">Your order</h2>
+          <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Your order</h2>
           <div className="space-y-2 text-sm">
             {cart.map((item) => (
               <div key={item.menu_item_id} className="flex items-center justify-between gap-3">
@@ -135,7 +135,7 @@ export default function Checkout() {
               </div>
             ))}
           </div>
-          <div className="mt-3 space-y-1 border-t border-gray-100 pt-3 text-sm text-gray-600">
+          <div className="mt-3 space-y-1 border-t border-[var(--border-light)] pt-3 text-sm text-[var(--text-secondary)]">
             <div className="flex justify-between"><span>Subtotal</span><span>Rs. {subtotal.toLocaleString()}</span></div>
             <div className="flex justify-between"><span>Tax</span><span>Rs. {tax.toLocaleString()}</span></div>
             <div className="flex justify-between"><span>Delivery fee</span><span>Rs. {deliveryFee.toLocaleString()}</span></div>
@@ -145,7 +145,7 @@ export default function Checkout() {
             {coupon && (
               <div className="flex justify-between text-green-600"><span>Coupon ({coupon.code})</span><span>-Rs. {couponDiscount.toLocaleString()}</span></div>
             )}
-            <div className="flex justify-between text-base font-semibold text-gray-900">
+            <div className="flex justify-between text-base font-semibold text-[var(--text-primary)]">
               <span>Total</span><span>Rs. {total.toLocaleString()}</span>
             </div>
           </div>
@@ -186,7 +186,7 @@ export default function Checkout() {
                 type="checkbox"
                 checked={redeem}
                 onChange={(e) => setRedeem(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-brand-600"
+                className="h-4 w-4 rounded border-[var(--border)] text-brand-600"
               />
               <Gift className="h-4 w-4 shrink-0" />
               <span>
@@ -198,7 +198,7 @@ export default function Checkout() {
 
         <form onSubmit={handleSubmit} className="card space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Your name</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Your name</label>
             <input
               className="input"
               required
@@ -207,7 +207,7 @@ export default function Checkout() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Phone number</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Phone number</label>
             <input
               className="input"
               required
@@ -217,7 +217,7 @@ export default function Checkout() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Delivery address</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Delivery address</label>
             <input
               className="input"
               required
@@ -226,7 +226,7 @@ export default function Checkout() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Payment method</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Payment method</label>
             <select
               className="input"
               value={form.payment_method}
@@ -239,7 +239,7 @@ export default function Checkout() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-xs font-medium text-gray-600">Notes (optional)</label>
+            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Notes (optional)</label>
             <input
               className="input"
               value={form.notes}

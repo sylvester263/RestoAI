@@ -24,6 +24,7 @@ export const TEMPLATE_CONFIGS = {
     fontClass: 'font-serif',
     primaryCta: 'order',
     sectionBg: (i) => (i % 2 === 1 ? '#fffbeb' : '#ffffff'),
+    darkSectionBg: (i) => (i % 2 === 1 ? '#1c1917' : '#0c0a09'),
   },
   'modern-minimal': {
     order: ['hero', 'menu', 'about', 'gallery', 'contact'],
@@ -31,6 +32,7 @@ export const TEMPLATE_CONFIGS = {
     fontClass: 'font-sans',
     primaryCta: 'order',
     sectionBg: () => '#ffffff',
+    darkSectionBg: () => '#0c0a09',
   },
   'family-casual': {
     order: ['hero', 'testimonials', 'about', 'menu', 'gallery', 'hours', 'contact'],
@@ -38,6 +40,7 @@ export const TEMPLATE_CONFIGS = {
     fontClass: 'font-sans',
     primaryCta: 'order',
     sectionBg: (i) => (i % 2 === 1 ? '#f0fdfa' : '#ffffff'),
+    darkSectionBg: (i) => (i % 2 === 1 ? '#042f2e' : '#0c0a09'),
   },
   'fine-dining': {
     order: ['hero', 'about', 'gallery', 'menu', 'testimonials', 'hours', 'contact'],
@@ -45,6 +48,7 @@ export const TEMPLATE_CONFIGS = {
     fontClass: 'font-serif',
     primaryCta: 'reserve',
     sectionBg: () => '#0c0a09',
+    darkSectionBg: () => '#0c0a09',
     dark: true,
   },
   'fast-casual': {
@@ -53,5 +57,6 @@ export const TEMPLATE_CONFIGS = {
     fontClass: 'font-sans',
     primaryCta: 'order',
     sectionBg: (i) => (i % 2 === 1 ? '#fef2f2' : '#ffffff'),
+    darkSectionBg: (i) => (i % 2 === 1 ? '#1c1917' : '#0c0a09'),
   },
 };

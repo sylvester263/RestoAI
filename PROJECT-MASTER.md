@@ -58,6 +58,9 @@ Row-locking (`FOR UPDATE`) confirmed present and correctly transaction-scoped on
 - `restaurant-saas-development-plan.md`, `customer-app-specification.md` — original planning docs
 - `impl-00-INDEX.md` through `impl-25-branch-analytics.md` — all feature build specs; per Section 2, every one of these is now code-confirmed built
 - `impl-agents-INDEX.md`, `impl-14` through `impl-21` — the 8 agent specs, all code-confirmed built
+- `impl-26-landing-page-redesign.md` — marketing site redesign (real screenshots, static hero image after 3D was removed, scroll motion)
+- `impl-27-customer-support-agent.md` — new, not yet built. WhatsApp support/complaint flow, 4th intent alongside order/recommendation/reservation. **Confirmed gap: no customer support system existed before this spec.**
+- `impl-28-owner-whatsapp-assistant.md` — new, not yet built. Two-way conversational business assistant on the owner's own WhatsApp, extending impl-14's one-way daily briefing. Key design: verified `users.phone` routing check distinguishes owner/manager messages from customer messages before intent classification.
 
 This master document is the entry point — read this first.
 

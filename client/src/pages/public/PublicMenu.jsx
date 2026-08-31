@@ -77,7 +77,7 @@ export default function PublicMenu() {
   if (notFound) {
     return (
       <div className="flex min-h-screen items-center justify-center px-4 text-center">
-        <p className="text-gray-500">This restaurant couldn't be found.</p>
+        <p className="text-[var(--text-secondary)]">This restaurant couldn't be found.</p>
       </div>
     );
   }
@@ -94,12 +94,12 @@ export default function PublicMenu() {
   const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-28">
-      <div className="border-b border-gray-200 bg-white px-4 py-6">
+    <div className="min-h-screen bg-[var(--surface-1)] pb-28">
+      <div className="border-b border-[var(--border)] bg-[var(--surface-2)] px-4 py-6">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{restaurant?.name}</h1>
-            {restaurant?.address && <p className="text-sm text-gray-500">{restaurant.address}</p>}
+            <h1 className="text-2xl font-bold text-[var(--text-primary)]">{restaurant?.name}</h1>
+            {restaurant?.address && <p className="text-sm text-[var(--text-secondary)]">{restaurant.address}</p>}
           </div>
           <div className="flex shrink-0 gap-2">
             <button onClick={() => navigate(`/order/${tenantSlug}/loyalty`)} className="btn-secondary text-sm">
@@ -115,7 +115,7 @@ export default function PublicMenu() {
       <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
         {Object.entries(grouped).map(([category, catItems]) => (
           <div key={category}>
-            <h2 className="mb-3 text-lg font-semibold text-gray-900">{category}</h2>
+            <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">{category}</h2>
             <div className="space-y-3">
               {catItems.map((item) => {
                 const qty = quantityOf(item.id);
@@ -142,14 +142,14 @@ export default function PublicMenu() {
                     </div>
                     <div className="flex flex-1 items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className={`font-medium text-gray-900 ${!item.is_available ? 'line-through text-gray-400' : ''}`}>{item.name}</p>
-                        {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
+                        <p className={`font-medium text-[var(--text-primary)] ${!item.is_available ? 'line-through text-[var(--text-tertiary)]' : ''}`}>{item.name}</p>
+                        {item.description && <p className="text-sm text-[var(--text-secondary)]">{item.description}</p>}
                         <div className="mt-1 flex items-center gap-2">
-                          <p className={`text-sm font-semibold ${item.is_available ? 'text-brand-600' : 'text-gray-400'}`}>
+                          <p className={`text-sm font-semibold ${item.is_available ? 'text-brand-600' : 'text-[var(--text-tertiary)]'}`}>
                             Rs. {Number(item.price).toLocaleString()}
                           </p>
                           {ratings[item.id] && (
-                            <span className="flex items-center gap-0.5 text-xs text-gray-500">
+                            <span className="flex items-center gap-0.5 text-xs text-[var(--text-secondary)]">
                               <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
                               {ratings[item.id].average} ({ratings[item.id].count})
                             </span>
@@ -165,14 +165,14 @@ export default function PublicMenu() {
                           <div className="flex shrink-0 items-center gap-3">
                             <button
                               onClick={() => handleQuantityChange(item, -1)}
-                              className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
+                              className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--surface-1)]"
                             >
                               <Minus className="h-4 w-4" />
                             </button>
                             <span className="w-6 text-center font-medium">{qty}</span>
                             <button
                               onClick={() => handleQuantityChange(item, 1)}
-                              className="rounded-lg border border-gray-300 p-2 text-gray-600 hover:bg-gray-50"
+                              className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--surface-1)]"
                             >
                               <Plus className="h-4 w-4" />
                             </button>
@@ -187,12 +187,12 @@ export default function PublicMenu() {
           </div>
         ))}
         {items.length === 0 && (
-          <div className="py-12 text-center text-sm text-gray-400">No menu items available right now</div>
+          <div className="py-12 text-center text-sm text-[var(--text-tertiary)]">No menu items available right now</div>
         )}
       </div>
 
       {cartCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white p-4">
+        <div className="fixed bottom-0 left-0 right-0 border-t border-[var(--border)] bg-[var(--surface-2)] p-4">
           <button
             onClick={() => navigate(`/order/${tenantSlug}/checkout`)}
             className="btn-primary mx-auto flex w-full max-w-2xl items-center justify-between"

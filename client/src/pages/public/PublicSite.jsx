@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import { sitesApi } from '../../lib/api';
 import { TEMPLATE_CONFIGS } from './landing/templates';
 import { Hero, About, MenuHighlights, Gallery, Testimonials, HoursLocation, Contact } from './landing/Sections';
+import DarkModeToggle from '../../components/DarkModeToggle';
+import useDarkMode from '../../hooks/useDarkMode';
 
 const SECTION_COMPONENTS = {
   hero: Hero,
@@ -41,14 +43,16 @@ export default function PublicSite() {
   }
 
   const config = TEMPLATE_CONFIGS[site.template_id] || TEMPLATE_CONFIGS['classic-warm'];
-  const dark = !!config.dark;
+  const { isDark: userDark } = useDarkMode();
+  const dark = !!config.dark || userDark;
 
   return (
-    <div className={`min-h-screen ${config.fontClass} ${dark ? 'bg-gray-900' : 'bg-white'}`}>
+    <div className={`min-h-screen ${config.fontClass} ${dark ? 'bg-stone-950 text-gray-100' : 'bg-white text-gray-900'}`}>
       {config.order.map((key, i) => {
         const Section = SECTION_COMPONENTS[key];
         if (!Section) return null;
-        const bg = config.sectionBg(i);
+        const bgFn = dark && config.darkSectionBg ? config.darkSectionBg : config.sectionBg;
+        const bg = bgFn(i);
         return (
           <Section
             key={key}
@@ -64,7 +68,10 @@ export default function PublicSite() {
           />
         );
       })}
-      <footer className={`py-6 text-center text-xs ${dark ? 'text-gray-500' : 'text-gray-400'}`}>
+      <footer className={`py-6 text-center text-xs ${dark ? 'text-stone-500' : 'text-gray-400'}`}>
+        <div className="mb-2 flex justify-center">
+          <DarkModeToggle />
+        </div>
         {site.tenant.name} · Powered by RestoAI
       </footer>
     </div>
