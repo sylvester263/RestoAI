@@ -31,6 +31,8 @@ import PublicSite from './pages/public/PublicSite';
 import TokenBoard from './pages/display/TokenBoard';
 import MenuBoard from './pages/display/MenuBoard';
 import LandingPage from './pages/marketing/LandingPage';
+import Terms from './pages/marketing/Terms';
+import Privacy from './pages/marketing/Privacy';
 import InviteAccept from './pages/InviteAccept';
 import RiderLogin from './pages/rider/RiderLogin';
 import RiderDashboard from './pages/rider/RiderDashboard';
@@ -74,6 +76,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Home />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
       <Route path="/login" element={<Login />} />
       <Route path="/invite/:token" element={<InviteAccept />} />
       <Route path="/rider/login" element={<RiderLogin />} />

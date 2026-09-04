@@ -417,6 +417,10 @@ function Footer() {
           <span>RestoAI</span>
         </div>
         <p>Built for Pakistani restaurants. Zero commission, always.</p>
+        <div className="flex items-center gap-4">
+          <Link to="/terms" className="hover:text-[var(--text-primary)]">Terms</Link>
+          <Link to="/privacy" className="hover:text-[var(--text-primary)]">Privacy</Link>
+        </div>
       </div>
     </footer>
   );
