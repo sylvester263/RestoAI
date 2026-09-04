@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import crypto from 'crypto';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
@@ -60,6 +60,7 @@ router.get('/:id/menu-board', async (req, res, next) => {
 });
 
 router.use(authenticate);
+router.use(checkTenantActive);
 
 const branchSchema = z.object({
   name: z.string().min(1),

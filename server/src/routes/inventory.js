@@ -5,12 +5,13 @@
  * conceptually part of a menu item's own definition.
  */
 import { Router } from 'express';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 const ingredientSchema = z.object({
   name: z.string().min(1).max(150),

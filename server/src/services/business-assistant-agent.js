@@ -130,7 +130,7 @@ export async function handleOwnerMessage(tenantId, user, text) {
     reply = await handleDataQuestion(tenantId, user, text);
   }
 
-  await sendReply(user.phone, reply);
+  await sendReply(user.phone, reply, tenantId);
   return { reply };
 }
 

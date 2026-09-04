@@ -10,7 +10,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { requireCronSecret } from '../middleware/cron-auth.js';
 import { query } from '../db/pool.js';
 
@@ -40,7 +40,7 @@ function requireOwner(req, res, next) {
 }
 
 // ── Agent settings (owner-only, per-tenant automation toggles) ──
-router.get('/settings', authenticate, requireOwner, async (req, res, next) => {
+router.get('/settings', authenticate, checkTenantActive, requireOwner, async (req, res, next) => {
   try {
     const result = await query(
       'SELECT agent_winback_enabled, agent_dispatch_mode FROM tenants WHERE id = $1',
@@ -60,7 +60,7 @@ const settingsSchema = z.object({
   dispatch_mode: z.enum(['suggest_only', 'auto']).optional(),
 });
 
-router.put('/settings', authenticate, requireOwner, async (req, res, next) => {
+router.put('/settings', authenticate, checkTenantActive, requireOwner, async (req, res, next) => {
   try {
     const data = settingsSchema.parse(req.body);
     const sets = [];
@@ -151,7 +151,7 @@ async function runWinback(req, res, next) {
 router.get('/winback/run', agentRunLimiter, requireCronSecret, runWinback);
 router.post('/winback/run', agentRunLimiter, requireCronSecret, runWinback);
 
-router.get('/winback/preview', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.get('/winback/preview', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const lapsed = await findLapsedCustomers(req.user.tenant_id);
     res.json({ customers: lapsed });
@@ -162,7 +162,7 @@ router.get('/winback/preview', authenticate, authorize('reports.view'), async (r
 
 // ═══ impl-16 — Dispatch ═══
 
-router.get('/dispatch/suggest/:orderId', authenticate, authorize('orders.status_update'), async (req, res, next) => {
+router.get('/dispatch/suggest/:orderId', authenticate, checkTenantActive, authorize('orders.status_update'), async (req, res, next) => {
   try {
     const suggestion = await previewSuggestion(req.params.orderId, req.user.tenant_id);
     if (!suggestion) {
@@ -177,7 +177,7 @@ router.get('/dispatch/suggest/:orderId', authenticate, authorize('orders.status_
   }
 });
 
-router.post('/dispatch/auto-assign', authenticate, authorize('orders.status_update'), async (req, res, next) => {
+router.post('/dispatch/auto-assign', authenticate, checkTenantActive, authorize('orders.status_update'), async (req, res, next) => {
   try {
     const { order_id } = req.body;
     if (!order_id) {
@@ -224,7 +224,7 @@ async function runReconciliationScan(req, res, next) {
 router.get('/reconciliation/run', agentRunLimiter, requireCronSecret, runReconciliationScan);
 router.post('/reconciliation/run', agentRunLimiter, requireCronSecret, runReconciliationScan);
 
-router.get('/reconciliation/flags', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.get('/reconciliation/flags', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const status = req.query.status || 'open';
     const result = await query(
@@ -242,7 +242,7 @@ router.get('/reconciliation/flags', authenticate, authorize('reports.view'), asy
 
 const flagStatusSchema = z.object({ status: z.enum(['open', 'reviewed', 'resolved', 'dismissed']) });
 
-router.put('/reconciliation/flags/:id/status', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.put('/reconciliation/flags/:id/status', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const data = flagStatusSchema.parse(req.body);
     const result = await query(
@@ -285,7 +285,7 @@ async function runAbuseDetection(req, res, next) {
 router.get('/abuse-detection/run', agentRunLimiter, requireCronSecret, runAbuseDetection);
 router.post('/abuse-detection/run', agentRunLimiter, requireCronSecret, runAbuseDetection);
 
-router.get('/abuse-detection/flags', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.get('/abuse-detection/flags', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const status = req.query.status || 'open';
     const result = await query(
@@ -302,7 +302,7 @@ router.get('/abuse-detection/flags', authenticate, authorize('reports.view'), as
 
 const abuseStatusSchema = z.object({ status: z.enum(['open', 'reviewed', 'confirmed', 'false_positive']) });
 
-router.put('/abuse-detection/flags/:id/status', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.put('/abuse-detection/flags/:id/status', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const data = abuseStatusSchema.parse(req.body);
     const result = await query(
@@ -344,7 +344,7 @@ async function runReplenishment(req, res, next) {
 router.get('/replenishment/run', agentRunLimiter, requireCronSecret, runReplenishment);
 router.post('/replenishment/run', agentRunLimiter, requireCronSecret, runReplenishment);
 
-router.get('/replenishment/suggestions', authenticate, authorize('inventory.manage'), async (req, res, next) => {
+router.get('/replenishment/suggestions', authenticate, checkTenantActive, authorize('inventory.manage'), async (req, res, next) => {
   try {
     const status = req.query.status || 'pending';
     const result = await query(
@@ -360,7 +360,7 @@ router.get('/replenishment/suggestions', authenticate, authorize('inventory.mana
   }
 });
 
-router.post('/replenishment/suggestions/:id/approve', authenticate, authorize('inventory.manage'), async (req, res, next) => {
+router.post('/replenishment/suggestions/:id/approve', authenticate, checkTenantActive, authorize('inventory.manage'), async (req, res, next) => {
   try {
     const suggRes = await query(
       `SELECT * FROM agent_replenishment_suggestions WHERE id = $1 AND tenant_id = $2 AND status = 'pending'`,
@@ -395,7 +395,7 @@ router.post('/replenishment/suggestions/:id/approve', authenticate, authorize('i
 
 const suggestionStatusSchema = z.object({ status: z.enum(['dismissed']) });
 
-router.put('/replenishment/suggestions/:id/status', authenticate, authorize('inventory.manage'), async (req, res, next) => {
+router.put('/replenishment/suggestions/:id/status', authenticate, checkTenantActive, authorize('inventory.manage'), async (req, res, next) => {
   try {
     const data = suggestionStatusSchema.parse(req.body);
     const result = await query(
@@ -437,7 +437,7 @@ async function runMenuInsights(req, res, next) {
 router.get('/menu-insights/run', agentRunLimiter, requireCronSecret, runMenuInsights);
 router.post('/menu-insights/run', agentRunLimiter, requireCronSecret, runMenuInsights);
 
-router.get('/menu-insights', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.get('/menu-insights', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const status = req.query.status || 'new';
     const result = await query(
@@ -455,7 +455,7 @@ router.get('/menu-insights', authenticate, authorize('reports.view'), async (req
 
 const menuInsightStatusSchema = z.object({ status: z.enum(['new', 'acknowledged', 'acted_on', 'dismissed']) });
 
-router.put('/menu-insights/:id/status', authenticate, authorize('reports.view'), async (req, res, next) => {
+router.put('/menu-insights/:id/status', authenticate, checkTenantActive, authorize('reports.view'), async (req, res, next) => {
   try {
     const data = menuInsightStatusSchema.parse(req.body);
     const result = await query(

@@ -10,7 +10,7 @@ import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
   Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck,
-  Sparkles, Tag, UserPlus, Menu, X, ChevronDown, Search, Headphones,
+  Sparkles, Tag, UserPlus, Menu, X, ChevronDown, Search, Headphones, Link2,
 } from 'lucide-react';
 
 // ── Grouped navigation ──────────────────────────────────────────────
@@ -62,6 +62,7 @@ const roleGatedItems = {
     { to: '/staff', icon: UserPlus, label: 'Staff', roles: ['owner', 'manager'] },
     { to: '/coupons', icon: Tag, label: 'Coupons', roles: ['owner', 'manager'] },
     { to: '/permissions', icon: ShieldCheck, label: 'Permissions', roles: ['owner'] },
+    { to: '/whatsapp-connect', icon: Link2, label: 'WhatsApp Connect', roles: ['owner', 'manager'] },
   ],
   'Intelligence': [
     { to: '/agents', icon: Sparkles, label: 'AI Agents', roles: ['owner', 'manager'] },

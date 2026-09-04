@@ -8,12 +8,13 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, invalidatePermissionsCache } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, invalidatePermissionsCache } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { PERMISSIONS, PERMISSION_KEYS, EDITABLE_ROLES } from '../services/permissions.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 function requireOwner(req, res, next) {
   if (req.user.role !== 'owner') {

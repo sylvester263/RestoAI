@@ -191,6 +191,13 @@ export const api = {
   simulateWhatsApp: (phone, message) =>
     request('/whatsapp/simulate', { method: 'POST', body: JSON.stringify({ phone, message }) }),
 
+  // WhatsApp Embedded Signup (impl-30) — connecting the tenant's own number
+  getWhatsAppConnectStatus: () => request('/whatsapp-connect/status'),
+  getWhatsAppConnectSession: () => request('/whatsapp-connect/session', { method: 'POST' }),
+  submitWhatsAppConnectCallback: (body) =>
+    request('/whatsapp-connect/callback', { method: 'POST', body: JSON.stringify(body) }),
+  disconnectWhatsApp: () => request('/whatsapp-connect/disconnect', { method: 'POST' }),
+
   // Inventory — ingredients (impl-08)
   getIngredients: (params = {}) => {
     const qs = new URLSearchParams(params).toString();

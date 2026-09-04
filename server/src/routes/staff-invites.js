@@ -9,7 +9,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
 import config from '../config.js';
@@ -21,7 +21,7 @@ const INVITE_EXPIRY_DAYS = 7;
 // ── GET /api/staff-invites ──
 // Pending/expired invites for this tenant, so the owner can see who hasn't
 // accepted yet. (Public accept below deliberately doesn't require auth.)
-router.get('/', authenticate, authorize('staff.manage'), async (req, res, next) => {
+router.get('/', authenticate, checkTenantActive, authorize('staff.manage'), async (req, res, next) => {
   try {
     const result = await query(
       `SELECT si.id, si.email, si.phone, si.role, si.branch_id, si.status, si.expires_at, si.created_at,
@@ -50,7 +50,7 @@ const createSchema = z.object({
 // WhatsApp if a phone is given (already built, demo-mode-safe); either way
 // the link is always returned in the response so the owner can share it
 // directly — this environment has no email sending configured.
-router.post('/', authenticate, authorize('staff.manage'), async (req, res, next) => {
+router.post('/', authenticate, checkTenantActive, authorize('staff.manage'), async (req, res, next) => {
   try {
     const data = createSchema.parse(req.body);
 
@@ -88,7 +88,7 @@ router.post('/', authenticate, authorize('staff.manage'), async (req, res, next)
     if (data.phone) {
       const tenantRes = await query('SELECT name FROM tenants WHERE id = $1', [req.user.tenant_id]);
       const tenantName = tenantRes.rows[0]?.name || 'your team';
-      sendReply(data.phone, `You've been invited to join ${tenantName} on RestoAI as ${data.role}. Set up your account: ${inviteLink}`)
+      sendReply(data.phone, `You've been invited to join ${tenantName} on RestoAI as ${data.role}. Set up your account: ${inviteLink}`, req.user.tenant_id)
         .catch((err) => console.error('[staff-invites] whatsapp send failed:', err.message));
     }
 

@@ -36,6 +36,7 @@ import analyticsRoutes from './routes/analytics.js';
 import eventRoutes from './routes/events.js';
 import supportRoutes from './routes/support.js';
 import superAdminRoutes from './routes/super-admin.js';
+import whatsappConnectRoutes from './routes/whatsapp-connect.js';
 
 const app = express();
 
@@ -93,6 +94,13 @@ app.use('/api/branches/:id/menu-board', displayBoardLimiter);
 const sitesLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
 app.use('/api/sites', sitesLimiter);
 
+// impl-30: authenticated (owner-only), but /callback drives real external
+// side effects against Meta's API (number registration, webhook
+// subscription) — a generous ceiling that just rules out retry-storm abuse,
+// not tuned tight since legitimate usage is a handful of calls ever per tenant.
+const whatsappConnectLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+app.use('/api/whatsapp-connect', whatsappConnectLimiter);
+
 // ── Health check ──
 // Verifies DB connectivity too, so a deployment issue (e.g. bad DATABASE_URL)
 // is visible here rather than only surfacing on the first real request.
@@ -135,6 +143,7 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/support', supportRoutes);
+app.use('/api/whatsapp-connect', whatsappConnectRoutes);
 // ── impl-29: Super Admin Panel — separate auth domain, rate-limited like /api/auth ──
 app.use('/api/super-admin', authLimiter);
 app.use('/api/super-admin', superAdminRoutes);

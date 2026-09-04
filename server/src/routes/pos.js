@@ -8,7 +8,7 @@
  */
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query, withTransaction } from '../db/pool.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
 import {
@@ -19,6 +19,7 @@ import { emit } from '../services/event-bus.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // Refunds move money back out of the business — gated on the actual role,
 // same as agents.js's requireOwner, not on a role_permissions flag an owner

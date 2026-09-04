@@ -1033,6 +1033,20 @@ async function migrate() {
     await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_period_end TIMESTAMPTZ;`);
     await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_notes TEXT;`);
 
+    // ── WhatsApp Embedded Signup (impl-30) — per-tenant number connection.
+    // whatsapp_phone_number_id already exists (added earlier for webhook
+    // tenant-routing) — not duplicated here. ──
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_waba_id VARCHAR(50);`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_connection_status VARCHAR(20) NOT NULL DEFAULT 'not_connected' CHECK (whatsapp_connection_status IN ('not_connected','connected','error'));`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_connected_at TIMESTAMPTZ;`);
+    // Two-step verification PIN — encrypted at rest (services/encryption.js), never plaintext.
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_pin_encrypted TEXT;`);
+    // Not in the original spec's column list, added because step 9 requires
+    // "enough detail (logged server-side...) to debug" an error state —
+    // console.error alone would be lost by the time an owner reports it.
+    // Never returned raw to the frontend; status endpoint returns a generic message.
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_connection_error TEXT;`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

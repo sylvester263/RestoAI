@@ -8,6 +8,7 @@ import Orders from './pages/Orders';
 import Kitchen from './pages/Kitchen';
 import Insights from './pages/Insights';
 import WhatsAppDemo from './pages/WhatsAppDemo';
+import WhatsAppConnect from './pages/WhatsAppConnect';
 import PublicMenu from './pages/public/PublicMenu';
 import Checkout from './pages/public/Checkout';
 import TrackOrder from './pages/public/TrackOrder';
@@ -122,6 +123,7 @@ export default function App() {
                 <Route path="/website" element={<LandingPageEditor />} />
                 <Route path="/insights" element={<Insights />} />
                 <Route path="/whatsapp" element={<WhatsAppDemo />} />
+                <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
                 <Route path="/support" element={<Support />} />
               </Routes>
             </Layout>

@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { createCoupon } from '../services/coupons.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // ── GET /api/coupons ──
 router.get('/', authorize('coupons.manage'), async (req, res, next) => {

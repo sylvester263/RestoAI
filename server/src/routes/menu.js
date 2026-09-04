@@ -2,12 +2,13 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import { put, del } from '@vercel/blob';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // digitize() calls a paid Qwen vision API per request — limit per-user, not just per-IP
 const digitizeLimiter = rateLimit({

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // generateInsights() calls Qwen twice (SQL + summary) per request — limit per-user
 const insightsLimiter = rateLimit({

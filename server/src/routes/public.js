@@ -331,6 +331,7 @@ router.post('/:tenantSlug/reservations', reservationLimiter, async (req, res, ne
     sendReply(
       data.customer_phone,
       `✅ Table booked at ${req.tenant.name} for ${data.party_size} on ${when}. See you then!`,
+      req.tenant.id,
     ).catch(() => {});
 
     res.status(201).json({ reservation });

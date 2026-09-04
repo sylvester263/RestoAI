@@ -6,7 +6,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { waitUntil } from '@vercel/functions';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query, withTransaction } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
 import { buildSegmentQuery, computeRFM, RFM_LABELS } from '../services/segments.js';
@@ -14,6 +14,7 @@ import { z } from 'zod';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 const campaignSchema = z.object({
   name: z.string().min(1).max(150),
@@ -181,7 +182,7 @@ router.post('/:id/send', authorize('campaigns.send'), campaignSendLimiter, async
       for (const recipient of recipients.rows) {
         const message = campaign.message_template.replace(/\{\{name\}\}/g, recipient.name || 'Valued Customer');
         try {
-          await sendReply(recipient.phone, message);
+          await sendReply(recipient.phone, message, req.user.tenant_id);
           await query(
             "UPDATE broadcast_recipients SET status = 'sent', sent_at = NOW() WHERE id = $1",
             [recipient.id],

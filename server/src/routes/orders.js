@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { notifyStatusChange, STATUS_MESSAGES } from '../services/whatsapp.js';
 import { awardPointsForOrder } from '../services/loyalty.js';
@@ -11,6 +11,7 @@ import { emit } from '../services/event-bus.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // Side effects fired whenever an order's status changes — shared by the
 // kitchen-flow status PATCH below and the rider delivery-status endpoint

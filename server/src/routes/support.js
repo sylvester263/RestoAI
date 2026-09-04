@@ -1,13 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { staffReplyToTicket, updateTicketStatus } from '../services/customer-support-agent.js';
 
 const router = Router();
 
 // All support routes require authentication
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // ── GET /api/support/tickets ──
 // List tickets for the caller's tenant, optionally filtered by status.

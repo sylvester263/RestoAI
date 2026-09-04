@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import config from '../config.js';
 import { query } from '../db/pool.js';
 import { processWhatsAppMessage } from '../services/whatsapp.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, checkTenantActive } from '../middleware/auth.js';
 
 const router = Router();
 
@@ -98,7 +98,7 @@ router.post('/webhook', verifyMetaSignature, async (req, res, next) => {
 // Dev-only endpoint to simulate a WhatsApp message without needing the real API.
 // Requires auth; always uses the caller's own tenant regardless of what the
 // request body claims, and is disabled entirely in production.
-router.post('/simulate', authenticate, (req, res, next) => {
+router.post('/simulate', authenticate, checkTenantActive, (req, res, next) => {
   if (config.nodeEnv === 'production') {
     return res.status(404).end();
   }

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 const statusSchema = z.object({
   status: z.enum(['confirmed', 'seated', 'completed', 'cancelled', 'no_show']),

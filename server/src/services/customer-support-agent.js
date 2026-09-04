@@ -125,7 +125,7 @@ export async function handleSupportMessage(tenantId, customer, phone, text, conv
   }
 
   // 4. Send the reply via WhatsApp
-  await sendReply(phone, reply);
+  await sendReply(phone, reply, tenantId);
 
   return { reply };
 }
@@ -466,7 +466,7 @@ export async function staffReplyToTicket(ticketId, tenantId, userId, content) {
   await logMessage(ticketId, 'staff', content);
 
   // Send via WhatsApp to the customer
-  await sendReply(ticket.phone, `🏪 *Team Response:*\n${content}`);
+  await sendReply(ticket.phone, `🏪 *Team Response:*\n${content}`, tenantId);
 
   // Update ticket — staff interaction clears pending_confirmation
   await query(

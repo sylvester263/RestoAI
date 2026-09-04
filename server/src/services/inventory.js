@@ -198,7 +198,7 @@ export async function alertIfCrossedThreshold(tenantId, touchedIngredients) {
     const phone = tenantRes.rows[0]?.phone;
     if (!phone) return;
     const lines = crossed.map((i) => `${i.name}: ${parseFloat(i.current_stock).toFixed(1)}${i.unit} left`).join(', ');
-    await sendReply(phone, `⚠️ Low stock alert: ${lines}`);
+    await sendReply(phone, `⚠️ Low stock alert: ${lines}`, tenantId);
   } catch (err) {
     console.error('[inventory] low-stock alert failed:', err.message);
   }

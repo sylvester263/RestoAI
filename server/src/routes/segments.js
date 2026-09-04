@@ -1,11 +1,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { filterRulesSchema, buildSegmentQuery, computeRFM, RFM_LABELS } from '../services/segments.js';
 
 const router = Router();
 router.use(authenticate);
+router.use(checkTenantActive);
 
 // ── GET /api/segments ──
 router.get('/', async (req, res, next) => {

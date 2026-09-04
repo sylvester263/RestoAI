@@ -52,6 +52,6 @@ export async function sendBriefingForTenant(tenantId) {
     throw err;
   }
 
-  await sendReply(phone, content);
+  await sendReply(phone, content, tenantId);
   return { status: 'sent' };
 }

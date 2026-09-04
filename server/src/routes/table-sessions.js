@@ -8,7 +8,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
-import { authenticate, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
 
 const router = Router();
@@ -187,7 +187,7 @@ router.get('/:id/bill', async (req, res, next) => {
 
 // ── POST /api/table-sessions/:id/close ──
 // Staff closes the session once payment is settled.
-router.post('/:id/close', authenticate, authorize('tables.close'), async (req, res, next) => {
+router.post('/:id/close', authenticate, checkTenantActive, authorize('tables.close'), async (req, res, next) => {
   try {
     const session = await loadSession(req.params.id);
     if (!session || session.tenant_id !== req.user.tenant_id) {

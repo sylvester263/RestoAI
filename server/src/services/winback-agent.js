@@ -102,7 +102,7 @@ export async function sendWinbackToCustomer(tenantId, customer, tenant) {
   const discountValue = SEGMENT_DISCOUNT[customer.rfm_segment] ?? DEFAULT_DISCOUNT;
   const coupon = await createCustomerCoupon(tenantId, customer.id, { discountType: 'percent', discountValue, expiryDays: 7 });
   const message = await craftWinbackMessage(customer, tenant, coupon);
-  await sendReply(customer.phone, message);
+  await sendReply(customer.phone, message, tenantId);
   await query(
     `INSERT INTO agent_winback_log (tenant_id, customer_id, days_since_last_order, message_sent, coupon_id)
      VALUES ($1, $2, $3, $4, $5)`,

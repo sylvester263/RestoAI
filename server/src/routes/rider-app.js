@@ -8,11 +8,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
-import { authenticateRider } from '../middleware/auth.js';
+import { authenticateRider, checkRiderTenantActive } from '../middleware/auth.js';
 import { applyDeliveryStatus, deliveryStatusSchema } from './orders.js';
 
 const router = Router();
 router.use(authenticateRider);
+router.use(checkRiderTenantActive);
 
 // ── GET /api/rider-app/me ──
 router.get('/me', async (req, res, next) => {

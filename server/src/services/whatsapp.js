@@ -100,7 +100,7 @@ export async function processWhatsAppMessage(tenantId, message) {
       `UPDATE conversations SET context = $2, updated_at = NOW() WHERE id = $1`,
       [conversation.id, JSON.stringify(conversationContext)],
     );
-    await sendReply(phone, reply);
+    await sendReply(phone, reply, tenantId);
     return { reply, parsed };
   }
 
@@ -189,7 +189,7 @@ export async function processWhatsAppMessage(tenantId, message) {
   );
 
   // 10. Send reply via WhatsApp (or log for demo)
-  await sendReply(phone, reply);
+  await sendReply(phone, reply, tenantId);
 
   return { reply, parsed };
 }
@@ -344,8 +344,28 @@ async function finalizeOrder(tenantId, customer, draft) {
   return order;
 }
 
+// ── Helper: resolve which Meta phone_number_id a tenant's messages should
+// send from. impl-30 (Embedded Signup) lets each tenant connect their own
+// number — prefer that; fall back to the single platform-wide env-configured
+// number for tenants that haven't connected one yet (unchanged legacy
+// behavior, e.g. demo/single-tenant deployments before impl-30 is used). ──
+async function resolveSendingPhoneNumberId(tenantId) {
+  if (tenantId) {
+    const res = await query(
+      `SELECT whatsapp_phone_number_id FROM tenants WHERE id = $1 AND whatsapp_connection_status = 'connected'`,
+      [tenantId],
+    );
+    const id = res.rows[0]?.whatsapp_phone_number_id;
+    if (id) return id;
+  }
+  return config.whatsapp.phoneNumberId || null;
+}
+
 // ── Helper: Send reply via WhatsApp Cloud API ──
-export async function sendReply(phone, text) {
+// tenantId is optional but should be passed whenever the caller has one —
+// it's what makes a per-tenant connected number (impl-30) actually used
+// instead of silently falling back to the platform default for every tenant.
+export async function sendReply(phone, text, tenantId) {
   // In demo mode (no token or placeholder), log to console instead of sending
   const token = config.whatsapp.token;
   if (!token || token.startsWith('your-')) {
@@ -353,7 +373,13 @@ export async function sendReply(phone, text) {
     return;
   }
 
-  const url = `https://graph.facebook.com/${config.whatsapp.apiVersion}/${config.whatsapp.phoneNumberId}/messages`;
+  const phoneNumberId = await resolveSendingPhoneNumberId(tenantId);
+  if (!phoneNumberId) {
+    console.error(`[whatsapp] no phone_number_id available (tenant ${tenantId || 'unknown'}) — cannot send`);
+    return;
+  }
+
+  const url = `https://graph.facebook.com/${config.whatsapp.apiVersion}/${phoneNumberId}/messages`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
@@ -409,7 +435,7 @@ export async function notifyStatusChange(orderId, tenantId, newStatus) {
       }
     }
 
-    await sendReply(phone, template);
+    await sendReply(phone, template, tenantId);
   } catch (err) {
     console.error('[whatsapp] status notification failed:', err.message);
   }
