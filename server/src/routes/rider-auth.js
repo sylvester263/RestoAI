@@ -40,12 +40,19 @@ router.post('/login', riderLoginLimiter, async (req, res, next) => {
   try {
     const data = loginSchema.parse(req.body);
 
-    const tenantRes = await query('SELECT id FROM tenants WHERE slug = $1', [data.tenantSlug]);
+    const tenantRes = await query('SELECT id, subscription_status FROM tenants WHERE slug = $1', [data.tenantSlug]);
     const tenant = tenantRes.rows[0];
     // Same generic message whether the tenant, phone, or PIN was wrong —
     // never reveal which part failed.
     if (!tenant) {
       return res.status(401).json({ error: { message: 'Invalid restaurant, phone, or PIN' } });
+    }
+
+    // ── impl-29: Block login for suspended tenants ──
+    if (tenant.subscription_status === 'suspended') {
+      return res.status(403).json({
+        error: { message: 'This account has been suspended. Please contact support.' },
+      });
     }
 
     const riderRes = await query(

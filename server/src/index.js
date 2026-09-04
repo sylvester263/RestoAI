@@ -35,6 +35,7 @@ import contactRoutes from './routes/contact.js';
 import analyticsRoutes from './routes/analytics.js';
 import eventRoutes from './routes/events.js';
 import supportRoutes from './routes/support.js';
+import superAdminRoutes from './routes/super-admin.js';
 
 const app = express();
 
@@ -134,6 +135,9 @@ app.use('/api/contact', contactRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/support', supportRoutes);
+// ── impl-29: Super Admin Panel — separate auth domain, rate-limited like /api/auth ──
+app.use('/api/super-admin', authLimiter);
+app.use('/api/super-admin', superAdminRoutes);
 
 // ── Global error handler ──
 app.use(errorHandler);

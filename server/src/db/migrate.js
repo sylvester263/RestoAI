@@ -997,6 +997,42 @@ async function migrate() {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_phone ON users(tenant_id, phone) WHERE phone IS NOT NULL;`);
 
+    // ── Super Admin Panel (impl-29) — platform operator tenant management ──
+    // Completely separate from tenant-scoped users — never joined or conflated.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS super_admins (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        email         VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        totp_secret   TEXT,
+        totp_enabled  BOOLEAN NOT NULL DEFAULT false,
+        created_at    TIMESTAMPTZ DEFAULT NOW(),
+        last_login_at TIMESTAMPTZ
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS super_admin_audit_log (
+        id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        super_admin_id   UUID NOT NULL REFERENCES super_admins(id),
+        action           VARCHAR(50) NOT NULL,
+        target_tenant_id UUID REFERENCES tenants(id),
+        details          JSONB,
+        ip_address       VARCHAR(45),
+        created_at       TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_tenant ON super_admin_audit_log(target_tenant_id);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_super_admin_audit_admin ON super_admin_audit_log(super_admin_id);`);
+
+    // Subscription tracking on tenants — enables the super admin to manage
+    // trial/active/suspended/cancelled status and expiration dates.
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(20) NOT NULL DEFAULT 'trial' CHECK (subscription_status IN ('trial','active','suspended','cancelled'));`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_plan VARCHAR(50);`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_period_start TIMESTAMPTZ;`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_period_end TIMESTAMPTZ;`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS subscription_notes TEXT;`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

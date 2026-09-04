@@ -149,3 +149,88 @@ export async function attachBranchAccess(req, res, next) {
 export function canSeeBranch(req, branchId) {
   return req.user.branchAccess === null || req.user.branchAccess.has(branchId);
 }
+
+// ── impl-29: Tenant suspension enforcement ──
+// Lightweight per-tenant cache so we don't query the DB on every single request.
+// 60s TTL is fine — if a super admin suspends a tenant, at worst their existing
+// sessions keep working for another minute, which is acceptable for this use case.
+const tenantStatusCache = new Map(); // tenantId -> { status, at }
+const TENANT_STATUS_TTL_MS = 60_000;
+
+async function getTenantSubscriptionStatus(tenantId) {
+  const cached = tenantStatusCache.get(tenantId);
+  if (cached && Date.now() - cached.at < TENANT_STATUS_TTL_MS) {
+    return cached.status;
+  }
+  const res = await query(
+    "SELECT subscription_status FROM tenants WHERE id = $1",
+    [tenantId],
+  );
+  const status = res.rows[0]?.subscription_status || 'trial';
+  tenantStatusCache.set(tenantId, { status, at: Date.now() });
+  return status;
+}
+
+/**
+ * Middleware that rejects requests from suspended tenants.
+ * Must follow authenticate() (needs req.user.tenant_id).
+ * Apply to all tenant-scoped routes where suspension should block access.
+ */
+export async function checkTenantActive(req, res, next) {
+  try {
+    const status = await getTenantSubscriptionStatus(req.user.tenant_id);
+    if (status === 'suspended') {
+      return res.status(403).json({
+        error: { message: 'This account has been suspended. Please contact support.' },
+      });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * Same as checkTenantActive but for rider routes (uses req.rider.tenant_id).
+ */
+export async function checkRiderTenantActive(req, res, next) {
+  try {
+    const status = await getTenantSubscriptionStatus(req.rider.tenant_id);
+    if (status === 'suspended') {
+      return res.status(403).json({
+        error: { message: 'This account has been suspended. Please contact support.' },
+      });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── impl-29: Super Admin authentication ──
+// Structurally parallel to authenticate() and authenticateRider() above,
+// but uses a completely dedicated JWT secret (SUPER_ADMIN_JWT_SECRET) and
+// requires type: 'super_admin' in the claim. This ensures three-way
+// non-interchangeability: tenant JWTs can't access super-admin routes,
+// super-admin JWTs can't access tenant routes, rider JWTs can't access
+// either of the other two.
+export function authenticateSuperAdmin(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    return res.status(401).json({ error: { message: 'Super admin authentication required' } });
+  }
+  try {
+    const token = header.slice(7);
+    const decoded = jwt.verify(token, config.superAdmin.secret);
+    if (decoded.type !== 'super_admin') {
+      return res.status(401).json({ error: { message: 'Invalid token type — super admin session required' } });
+    }
+    req.superAdmin = {
+      id: decoded.admin_id,
+      email: decoded.email,
+    };
+    next();
+  } catch {
+    return res.status(401).json({ error: { message: 'Invalid or expired super admin token' } });
+  }
+}

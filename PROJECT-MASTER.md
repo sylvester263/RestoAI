@@ -59,8 +59,10 @@ Row-locking (`FOR UPDATE`) confirmed present and correctly transaction-scoped on
 - `impl-00-INDEX.md` through `impl-25-branch-analytics.md` — all feature build specs; per Section 2, every one of these is now code-confirmed built
 - `impl-agents-INDEX.md`, `impl-14` through `impl-21` — the 8 agent specs, all code-confirmed built
 - `impl-26-landing-page-redesign.md` — marketing site redesign (real screenshots, static hero image after 3D was removed, scroll motion)
-- `impl-27-customer-support-agent.md` — new, not yet built. WhatsApp support/complaint flow, 4th intent alongside order/recommendation/reservation. **Confirmed gap: no customer support system existed before this spec.**
-- `impl-28-owner-whatsapp-assistant.md` — new, not yet built. Two-way conversational business assistant on the owner's own WhatsApp, extending impl-14's one-way daily briefing. Key design: verified `users.phone` routing check distinguishes owner/manager messages from customer messages before intent classification.
+- `impl-27-customer-support-agent.md` — **BUILT AND VERIFIED (2026-08-30)**. `support_tickets`/`support_messages` tables confirmed, "support" intent live in the classifier, escalation path live-tested (complaint language → immediate escalation, zero AI-attempted resolution, correct reply), admin `Support.jsx` (457 lines) wired and functional.
+- `impl-28-owner-whatsapp-assistant.md` — **BUILT AND VERIFIED (2026-08-30)**. `users.phone` + unique index confirmed. **Security boundary live-tested and holds**: an unregistered phone asking a business-data question was correctly routed to the customer support pipeline (zero business data leaked); a verified owner phone got a real, data-grounded answer. `business-assistant-agent.js` (362 lines) — rate limited, branch-access scoped for managers, "what needs attention" aggregation across all 4 agent flag tables.
+- `impl-29-super-admin-panel.md` — new, not yet built. Platform-operator tenant/subscription management (expiration tracking, extend/suspend/comp), scoped deliberately small. **Key design: structurally separate auth from every existing role — dedicated JWT secret, mandatory TOTP MFA, full audit-log middleware, and a required touchpoint in the existing `authenticate` middleware to actually enforce suspension.** Impersonation, dunning automation, and platform analytics are explicitly deferred.
+- **Agent count is now 10, not 8** — update any presentation/pitch material accordingly.
 
 This master document is the entry point — read this first.
 

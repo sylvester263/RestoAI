@@ -111,12 +111,20 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
 
+    // ── impl-29: Block login for suspended tenants ──
     const tenantRes = await query('SELECT * FROM tenants WHERE id = $1', [user.tenant_id]);
+    const tenant = tenantRes.rows[0];
+    if (tenant?.subscription_status === 'suspended') {
+      return res.status(403).json({
+        error: { message: 'This account has been suspended. Please contact support.' },
+      });
+    }
+
     const token = signToken(user);
     res.json({
       token,
       user: { id: user.id, name: user.name, email: user.email, role: user.role, tenant_id: user.tenant_id },
-      tenant: tenantRes.rows[0],
+      tenant,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {

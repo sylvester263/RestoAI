@@ -34,6 +34,8 @@ import InviteAccept from './pages/InviteAccept';
 import RiderLogin from './pages/rider/RiderLogin';
 import RiderDashboard from './pages/rider/RiderDashboard';
 import Support from './pages/Support';
+import SuperAdminAuth from './super-admin/SuperAdminAuth';
+import SuperAdminApp from './super-admin/SuperAdminApp';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -59,6 +61,14 @@ function Home() {
   return user ? <Navigate to="/dashboard" /> : <LandingPage />;
 }
 
+// Super admin guard — checks for the dedicated superAdminToken (separate from tenant JWT).
+// Completely independent from the tenant-side ProtectedRoute.
+function SuperAdminRoute({ children }) {
+  const token = localStorage.getItem('superAdminToken');
+  if (!token) return <Navigate to="/super-admin/login" />;
+  return children;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -77,6 +87,17 @@ export default function App() {
       <Route path="/site/:subdomain" element={<PublicSite />} />
       <Route path="/display/token-board/:branchId" element={<TokenBoard />} />
       <Route path="/display/menu-board/:branchId" element={<MenuBoard />} />
+      {/* ── impl-29: Super Admin Panel — completely separate from tenant admin ── */}
+      <Route path="/super-admin/login" element={
+        localStorage.getItem('superAdminToken')
+          ? <Navigate to="/super-admin" />
+          : <SuperAdminAuth onAuthenticated={() => window.location.href = '/super-admin'} />
+      } />
+      <Route path="/super-admin" element={
+        <SuperAdminRoute>
+          <SuperAdminApp onLogout={() => window.location.href = '/super-admin/login'} />
+        </SuperAdminRoute>
+      } />
       <Route path="/kitchen" element={<ProtectedRoute><Kitchen /></ProtectedRoute>} />
       <Route
         path="/*"
