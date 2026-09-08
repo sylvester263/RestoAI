@@ -93,9 +93,20 @@ router.get('/', authorize('orders.view'), async (req, res, next) => {
 
     // List query
     const listParams = [...params, Number(limit), Number(offset)];
+    // Items and the current rider ride along so the Orders page can show what
+    // was ordered, the customer's note, and who is delivering without a
+    // second request per row.
     const result = await query(
-      `SELECT o.*, c.name as customer_name, c.phone as customer_phone
+      `SELECT o.*, c.name as customer_name, c.phone as customer_phone,
+              COALESCE((SELECT json_agg(json_build_object('name', oi.name, 'quantity', oi.quantity, 'total_price', oi.total_price, 'notes', oi.notes) ORDER BY oi.name)
+                        FROM order_items oi WHERE oi.order_id = o.id), '[]') AS items,
+              ra.rider_name, ra.picked_up_at AS rider_picked_up_at, ra.delivered_at AS rider_delivered_at
        FROM orders o ${joinClause}
+       LEFT JOIN LATERAL (
+         SELECT r.name AS rider_name, x.picked_up_at, x.delivered_at
+         FROM rider_assignments x JOIN riders r ON r.id = x.rider_id
+         WHERE x.order_id = o.id ORDER BY x.assigned_at DESC LIMIT 1
+       ) ra ON true
        WHERE ${whereClause}
        ORDER BY o.created_at DESC LIMIT $${idx} OFFSET $${idx + 1}`,
       listParams,

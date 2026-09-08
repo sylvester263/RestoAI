@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Skeleton } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
-import { Search, Filter, ChevronDown, ChevronUp, ShoppingBag } from 'lucide-react';
+import { toast, confirmAction } from '../components/ui/toast';
+import { Search, Filter, ChevronDown, ChevronUp, ShoppingBag, XCircle } from 'lucide-react';
 
 const STATUS_COLORS = {
   new: 'bg-blue-100 text-blue-700',
@@ -54,9 +55,25 @@ export default function Orders() {
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: next } : o)));
 
     // Reconcile in background — roll back on failure
-    api.updateOrderStatus(order.id, next).catch(() => {
+    api.updateOrderStatus(order.id, next).catch((err) => {
       setOrders(snapshot);
+      toast.error(`Couldn't update order #${order.order_number}: ${err.message}`);
     });
+  }
+
+  async function cancelOrder(order) {
+    const ok = await confirmAction(
+      `Cancel order #${order.order_number}?`,
+      'The customer will be told their order was cancelled. This cannot be undone.',
+    );
+    if (!ok) return;
+    try {
+      await api.updateOrderStatus(order.id, 'cancelled');
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'cancelled' } : o)));
+      toast.success(`Order #${order.order_number} cancelled — customer notified`);
+    } catch (err) {
+      toast.error(`Couldn't cancel order #${order.order_number}: ${err.message}`);
+    }
   }
 
   const filtered = orders.filter((o) =>
@@ -147,15 +164,52 @@ export default function Orders() {
                         Subtotal: Rs. {Number(order.subtotal).toLocaleString()} | Tax: Rs. {Number(order.tax).toLocaleString()} | Delivery: Rs. {Number(order.delivery_fee).toLocaleString()}
                       </p>
                     </div>
+                    <div>
+                      <p className="font-medium text-[var(--text-secondary)]">Items</p>
+                      <ul className="text-[var(--text-secondary)]">
+                        {(order.items || []).map((item, i) => (
+                          <li key={i} className="flex justify-between gap-3">
+                            <span>{item.quantity}x {item.name}</span>
+                            <span>Rs. {Number(item.total_price).toLocaleString()}</span>
+                          </li>
+                        ))}
+                        {(!order.items || order.items.length === 0) && <li>No items recorded</li>}
+                      </ul>
+                    </div>
+                    {order.delivery_address && !order.table_session_id && (
+                      <div>
+                        <p className="font-medium text-[var(--text-secondary)]">Rider</p>
+                        <p className="text-[var(--text-secondary)]">
+                          {order.rider_name
+                            ? `${order.rider_name} · ${order.rider_delivered_at ? 'delivered' : order.rider_picked_up_at ? 'on the way' : 'assigned, not picked up yet'}`
+                            : 'Not assigned yet'}
+                        </p>
+                      </div>
+                    )}
+                    {order.notes && (
+                      <div className="col-span-2 rounded-lg border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-amber-900">
+                        <span className="mr-1 font-semibold">Customer note:</span>{order.notes}
+                      </div>
+                    )}
                   </div>
-                  {NEXT_STATUS[order.status] && (
-                    <div className="mt-4">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); advanceStatus(order); }}
-                        className="btn-primary text-sm"
-                      >
-                        Move to {NEXT_STATUS[order.status]}
-                      </button>
+                  {(NEXT_STATUS[order.status] || !['delivered', 'cancelled'].includes(order.status)) && (
+                    <div className="mt-4 flex items-center gap-3">
+                      {NEXT_STATUS[order.status] && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); advanceStatus(order); }}
+                          className="btn-primary text-sm"
+                        >
+                          Move to {NEXT_STATUS[order.status]}
+                        </button>
+                      )}
+                      {!['delivered', 'cancelled'].includes(order.status) && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); cancelOrder(order); }}
+                          className="btn-secondary text-sm text-red-600 hover:bg-red-50"
+                        >
+                          <XCircle className="h-4 w-4" /> Cancel order
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

@@ -13,6 +13,14 @@ const STEPS = [
   { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
 ];
 
+// What the customer still has to do about money, in their words.
+const PAYMENT_REMINDERS = {
+  cash: (total) => `Pay Rs. ${total} in cash when your order arrives.`,
+  jazzcash: (total) => `Pay Rs. ${total} by JazzCash to the rider when your order arrives.`,
+  easypaisa: (total) => `Pay Rs. ${total} by EasyPaisa to the rider when your order arrives.`,
+  card: (total) => `Pay Rs. ${total} by card when your order arrives.`,
+};
+
 export default function TrackOrder() {
   const { tenantSlug, orderId } = useParams();
   const [searchParams] = useSearchParams();
@@ -75,12 +83,36 @@ export default function TrackOrder() {
   }
 
   const stepIndex = STEPS.findIndex((s) => s.key === order.status);
+  // Checkout redirects here with `placed=1`. Until the kitchen has moved the
+  // order along, this page is the customer's receipt — it must say plainly
+  // that the order went through, not just start tracking it.
+  const justPlaced = searchParams.get('placed') === '1' && ['new', 'confirmed'].includes(order.status);
+  const paymentReminder = PAYMENT_REMINDERS[order.payment_method]?.(Number(order.total).toLocaleString());
 
   return (
     <div className="min-h-screen bg-[var(--surface-1)] px-4 py-6">
       <div className="mx-auto max-w-lg">
-        <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Order #{order.order_number}</h1>
-        <p className="mb-6 text-sm text-[var(--text-secondary)]">Tracking your order</p>
+        {justPlaced ? (
+          <div className="card mb-4 border-green-200 bg-green-50">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="mt-0.5 h-7 w-7 shrink-0 text-green-600" />
+              <div className="space-y-1.5 text-sm text-green-900">
+                <h1 className="text-xl font-bold">Your order has been placed! 🎉</h1>
+                <p>Order <span className="font-semibold">#{order.order_number}</span> is with the restaurant. They will confirm it in a moment and start cooking.</p>
+                {paymentReminder && <p className="font-medium">{paymentReminder}</p>}
+                {order.notes && (
+                  <p className="text-green-800">Your note — <span className="italic">"{order.notes}"</span> — has been passed to the kitchen.</p>
+                )}
+                <p className="text-xs text-green-700">Keep this page open or come back to it any time; it updates on its own. We'll also message you on WhatsApp at each step.</p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Order #{order.order_number}</h1>
+            <p className="mb-6 text-sm text-[var(--text-secondary)]">Tracking your order</p>
+          </>
+        )}
 
         <NotifyBanner tenantSlug={tenantSlug} phone={phone} status={order.status} />
 
@@ -130,6 +162,12 @@ export default function TrackOrder() {
             <span>Rs. {Number(order.total).toLocaleString()}</span>
           </div>
           <p className="mt-3 text-xs text-[var(--text-secondary)]">Delivering to: {order.delivery_address}</p>
+          {paymentReminder && order.status !== 'delivered' && (
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">{paymentReminder}</p>
+          )}
+          {order.notes && (
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">Your note: <span className="italic">"{order.notes}"</span></p>
+          )}
         </div>
 
         {order.status === 'delivered' && (

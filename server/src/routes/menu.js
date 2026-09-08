@@ -94,6 +94,11 @@ router.post('/', authorize('menu.edit'), async (req, res, next) => {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
     }
+    // uq_menu_items_branch_name — one name per branch, so a double-click on
+    // Save or a re-run seed can't create the same dish twice.
+    if (err.code === '23505') {
+      return res.status(409).json({ error: { message: `An item called "${req.body?.name}" already exists in this branch.` } });
+    }
     next(err);
   }
 });

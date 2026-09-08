@@ -409,6 +409,32 @@ export const STATUS_MESSAGES = {
   cancelled: 'Your order has been cancelled. Sorry for the inconvenience.',
 };
 
+const PAYMENT_LINES = {
+  cash: (total) => `Please keep Rs. ${total} ready in cash for the rider.`,
+  jazzcash: (total) => `Pay Rs. ${total} by JazzCash to the rider when your order arrives.`,
+  easypaisa: (total) => `Pay Rs. ${total} by EasyPaisa to the rider when your order arrives.`,
+  card: (total) => `Pay Rs. ${total} by card when your order arrives.`,
+};
+
+// Sent the moment a web order is placed. Deliberately worded as "received",
+// not "confirmed": the kitchen's confirmation (STATUS_MESSAGES.confirmed)
+// follows as its own message, and the two must not read as duplicates.
+export function orderPlacedMessage({ restaurantName, order, items, paymentMethod, notes }) {
+  const total = Number(order.total).toLocaleString();
+  const lines = [
+    `📝 We've received your order #${order.order_number} at ${restaurantName}.`,
+    '',
+    ...items.map((i) => `  • ${i.quantity}x ${i.name} — Rs. ${Number(i.total_price).toLocaleString()}`),
+    '',
+    `💰 Total: Rs. ${total}`,
+  ];
+  const pay = PAYMENT_LINES[paymentMethod];
+  if (pay) lines.push(pay(total));
+  if (notes) lines.push(`📋 Your note: "${notes}"`);
+  lines.push('', "We'll message you as soon as the kitchen confirms it.");
+  return lines.join('\n');
+}
+
 export async function notifyStatusChange(orderId, tenantId, newStatus) {
   let template = STATUS_MESSAGES[newStatus];
   if (!template) return;

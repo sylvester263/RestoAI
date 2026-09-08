@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
+import { friendlyValidationMessage } from '../utils/validation-messages.js';
 
 const router = Router();
 
@@ -119,7 +120,7 @@ router.post('/:id/orders', async (req, res, next) => {
     res.status(201).json({ order: { id: order.id, order_number: order.order_number, status: order.status, total: order.total, items: order.items } });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     if (err instanceof OrderError) {
       return res.status(err.status).json({ error: { message: err.message } });

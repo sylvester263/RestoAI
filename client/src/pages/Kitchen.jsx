@@ -119,6 +119,13 @@ export default function Kitchen() {
                   ))}
                 </div>
 
+                {/* Customer's note — the one thing they typed for the cook, so it gets the loudest slot on the card */}
+                {order.notes && (
+                  <div className="mb-4 rounded-lg border-l-4 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <span className="mr-1 font-semibold">Customer note:</span>{order.notes}
+                  </div>
+                )}
+
                 {/* Footer */}
                 <div className="flex items-center justify-between border-t border-gray-200 pt-3">
                   <div className="text-xs text-gray-500">

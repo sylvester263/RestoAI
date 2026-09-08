@@ -1052,6 +1052,14 @@ async function migrate() {
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_menu_items_tenant ON menu_items(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_menu_items_branch ON menu_items(branch_id);`);
+    // One branch name per tenant, one category/dish/ingredient name per
+    // branch. Added 2026-09-09 after a thrice-run seed produced three
+    // "Gulberg Main" branches with three copies of the menu; these let the
+    // seed (db/seed.js) upsert on ON CONFLICT instead of blind-inserting.
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_branches_tenant_name ON branches (tenant_id, lower(name));`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_menu_categories_branch_name ON menu_categories (tenant_id, branch_id, lower(name));`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_menu_items_branch_name ON menu_items (tenant_id, branch_id, lower(name));`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_ingredients_branch_name ON ingredients (tenant_id, branch_id, lower(name));`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);`);

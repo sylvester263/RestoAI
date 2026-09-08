@@ -40,9 +40,14 @@ async function seed() {
     `, [tenantId, 'Bilal Staff', 'bilal@karahi.pk', staffHash, 'staff']);
 
     // ── Main branch ──
+    // Every block below is an upsert keyed on a natural identifier, so the
+    // seed can be re-run safely. (It was run three times against the live
+    // demo tenant in Aug 2026 and produced three "Gulberg Main" branches,
+    // each with its own copy of the menu — see uq_* indexes in migrate.js.)
     const branchRes = await client.query(`
       INSERT INTO branches (tenant_id, name, address, phone)
       VALUES ($1, $2, $3, $4)
+      ON CONFLICT (tenant_id, lower(name)) DO UPDATE SET address = EXCLUDED.address, phone = EXCLUDED.phone
       RETURNING id;
     `, [tenantId, 'Gulberg Main', 'MM Alam Road, Gulberg III, Lahore', '+923001234567']);
     const branchId = branchRes.rows[0].id;
@@ -57,6 +62,7 @@ async function seed() {
       const res = await client.query(`
         INSERT INTO menu_categories (tenant_id, branch_id, name, sort_order)
         VALUES ($1, $2, $3, $4)
+        ON CONFLICT (tenant_id, branch_id, lower(name)) DO UPDATE SET sort_order = EXCLUDED.sort_order
         RETURNING id;
       `, [tenantId, branchId, name, order]);
       catIds[name] = res.rows[0].id;
@@ -84,9 +90,13 @@ async function seed() {
     ];
 
     for (const [name, urdu, desc, price, cat] of items) {
+      // Re-running refreshes copy and category but never touches price or
+      // availability — those may have been edited by the owner since.
       await client.query(`
         INSERT INTO menu_items (tenant_id, branch_id, category_id, name, name_urdu, description, price, tags)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8);
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (tenant_id, branch_id, lower(name)) DO UPDATE
+          SET category_id = EXCLUDED.category_id, name_urdu = EXCLUDED.name_urdu, description = EXCLUDED.description;
       `, [tenantId, branchId, catIds[cat], name, urdu, desc, price, [cat.toLowerCase()]]);
     }
 
@@ -112,9 +122,12 @@ async function seed() {
     `, [tenantId, '+923221234567', 'Fatima Noor', 'Flat 4B, Gulberg Centre', 3, 3450]);
 
     // ── Demo orders (last 7 days) ──
+    // Random sample data has no natural key, so it is only generated once:
+    // a tenant that already has orders keeps what it has.
+    const existingOrders = await client.query('SELECT 1 FROM orders WHERE tenant_id = $1 LIMIT 1', [tenantId]);
     const now = new Date();
     const statuses = ['delivered', 'delivered', 'delivered', 'preparing', 'new'];
-    for (let d = 0; d < 7; d++) {
+    for (let d = 0; d < (existingOrders.rows.length ? 0 : 7); d++) {
       const date = new Date(now);
       date.setDate(date.getDate() - d);
       const ordersPerDay = Math.floor(Math.random() * 3) + 1;
@@ -160,9 +173,11 @@ async function seed() {
       ['Yogurt', 'kg', 8, 3, 220], ['Naan Dough', 'kg', 20, 5, 150],
     ];
     for (const [name, unit, stock, threshold, costPerUnit] of ingredients) {
+      // Stock levels are live operational data — never reset them on re-run.
       await client.query(`
         INSERT INTO ingredients (tenant_id, branch_id, name, unit, current_stock, low_stock_threshold, cost_per_unit)
-        VALUES ($1, $2, $3, $4, $5, $6, $7);
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (tenant_id, branch_id, lower(name)) DO NOTHING;
       `, [tenantId, branchId, name, unit, stock, threshold, costPerUnit]);
     }
 

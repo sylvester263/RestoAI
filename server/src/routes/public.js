@@ -9,7 +9,8 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
-import { sendReply } from '../services/whatsapp.js';
+import { sendReply, orderPlacedMessage } from '../services/whatsapp.js';
+import { friendlyValidationMessage } from '../utils/validation-messages.js';
 import { generateRecommendation } from '../services/ai-agent.js';
 import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.js';
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder, getOrCreateReferralCode } from '../services/coupons.js';
@@ -137,6 +138,20 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
       await attachRedemptionToOrder(couponRedemptionId, order.id);
     }
 
+    // Tell the customer straight away that the order landed. Fire-and-forget:
+    // the order is already committed, a messaging hiccup must not fail it.
+    sendReply(
+      data.customer_phone,
+      orderPlacedMessage({
+        restaurantName: req.tenant.name,
+        order,
+        items: order.items,
+        paymentMethod: data.payment_method,
+        notes: data.notes,
+      }),
+      req.tenant.id,
+    ).catch((err) => console.error('[whatsapp] order-placed message failed:', err.message));
+
     res.status(201).json({
       order: {
         id: order.id,
@@ -147,13 +162,15 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
         delivery_fee: order.delivery_fee,
         discount_amount: order.discount_amount,
         total: order.total,
+        payment_method: order.payment_method,
+        notes: order.notes,
         items: order.items,
         created_at: order.created_at,
       },
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     if (err instanceof OrderError) {
       return res.status(err.status).json({ error: { message: err.message } });
@@ -222,7 +239,7 @@ router.post('/:tenantSlug/coupons/validate', async (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     if (err instanceof OrderError) {
       return res.status(err.status).json({ error: { message: err.message } });
@@ -260,7 +277,7 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
     const phone = (req.query.phone || '').toString().trim();
     const result = await query(
       `SELECT o.id, o.branch_id, o.order_number, o.status, o.subtotal, o.tax, o.delivery_fee, o.total,
-              o.delivery_address, o.payment_method, o.created_at, o.updated_at, c.phone as customer_phone
+              o.delivery_address, o.payment_method, o.notes, o.created_at, o.updated_at, c.phone as customer_phone
        FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
        WHERE o.tenant_id = $1 AND o.id = $2`,
@@ -337,7 +354,7 @@ router.post('/:tenantSlug/reservations', reservationLimiter, async (req, res, ne
     res.status(201).json({ reservation });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     next(err);
   }
@@ -397,7 +414,7 @@ router.post('/:tenantSlug/reviews', async (req, res, next) => {
     res.status(201).json({ review: result.rows[0] });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     next(err);
   }
@@ -447,7 +464,7 @@ router.post('/:tenantSlug/notifications/subscribe', async (req, res, next) => {
     res.status(201).json({ subscribed: true });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     next(err);
   }
@@ -471,7 +488,7 @@ router.post('/:tenantSlug/recommendations', async (req, res, next) => {
     res.json({ reply });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
+      return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     next(err);
   }

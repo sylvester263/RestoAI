@@ -97,7 +97,9 @@ export default function Checkout() {
       });
       setIdentity(tenantSlug, { name: form.name, phone: form.phone });
       clearCart(tenantSlug);
-      navigate(`/order/${tenantSlug}/track/${res.order.id}?phone=${encodeURIComponent(form.phone)}`);
+      // `placed=1` tells the tracking page to open in its "order placed" success
+      // state rather than the plain tracking view a returning visitor sees.
+      navigate(`/order/${tenantSlug}/track/${res.order.id}?phone=${encodeURIComponent(form.phone)}&placed=1`);
     } catch (err) {
       // The coupon may have been valid at preview but rejected at final
       // submit (e.g. someone else used the last redemption in between) —
