@@ -3,23 +3,20 @@ import { api } from '../lib/api';
 import { Skeleton } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import { toast, confirmAction } from '../components/ui/toast';
-import { Search, Filter, ChevronDown, ChevronUp, ShoppingBag, XCircle } from 'lucide-react';
+import { orderTypeLabel, statusLabel, nextStatusFor } from '../lib/orderType';
+import { Search, Filter, ChevronDown, ChevronUp, ShoppingBag, XCircle, Bike } from 'lucide-react';
 
 const STATUS_COLORS = {
   new: 'bg-blue-100 text-blue-700',
   confirmed: 'bg-yellow-100 text-yellow-700',
   preparing: 'bg-orange-100 text-orange-700',
   ready: 'bg-emerald-100 text-emerald-700',
+  out_for_delivery: 'bg-sky-100 text-sky-700',
   delivered: 'bg-gray-100 text-[var(--text-secondary)]',
   cancelled: 'bg-red-100 text-red-700',
 };
 
-const NEXT_STATUS = {
-  new: 'confirmed',
-  confirmed: 'preparing',
-  preparing: 'ready',
-  ready: 'delivered',
-};
+const STATUS_FILTERS = ['', 'new', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
 
 export default function Orders() {
   const [orders, setOrders] = useState([]);
@@ -47,7 +44,7 @@ export default function Orders() {
   useEffect(() => { loadOrders(); }, [statusFilter]);
 
   function advanceStatus(order) {
-    const next = NEXT_STATUS[order.status];
+    const next = nextStatusFor(order);
     if (!next) return;
     const snapshot = [...orders];
 
@@ -97,7 +94,7 @@ export default function Orders() {
         </div>
         <div className="flex items-center gap-2">
           <Filter className="h-4 w-4 text-[var(--text-tertiary)]" />
-          {['', 'new', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'].map((s) => (
+          {STATUS_FILTERS.map((s) => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
@@ -105,7 +102,7 @@ export default function Orders() {
                 statusFilter === s ? 'bg-brand-600 text-white' : 'bg-[var(--surface-3)] text-[var(--text-secondary)] hover:bg-[var(--border)]'
               }`}
             >
-              {s || 'All'}
+              {s ? statusLabel(s) : 'All'}
             </button>
           ))}
         </div>
@@ -130,9 +127,14 @@ export default function Orders() {
                   </div>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className={`badge ${STATUS_COLORS[order.status]}`}>{order.status}</span>
+                  <span className={`badge ${STATUS_COLORS[order.status]}`}>{statusLabel(order.status)}</span>
+                  {order.status === 'out_for_delivery' && (
+                    <span className="flex items-center gap-1 text-xs font-medium text-sky-700">
+                      <Bike className="h-3.5 w-3.5" /> {order.rider_name || 'rider'}
+                    </span>
+                  )}
                   <span className="text-sm font-semibold">Rs. {Number(order.total).toLocaleString()}</span>
-                  <span className="text-xs text-[var(--text-tertiary)] uppercase">{order.channel}</span>
+                  <span className="text-xs text-[var(--text-tertiary)]">{orderTypeLabel(order.order_type)} · <span className="uppercase">{order.channel}</span></span>
                   {order.payment && (
                     <span className={`badge ${order.payment.status === 'paid' ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                       {order.payment.method.toUpperCase()} · {order.payment.status}
@@ -176,7 +178,7 @@ export default function Orders() {
                         {(!order.items || order.items.length === 0) && <li>No items recorded</li>}
                       </ul>
                     </div>
-                    {order.delivery_address && !order.table_session_id && (
+                    {order.order_type === 'delivery' && (
                       <div>
                         <p className="font-medium text-[var(--text-secondary)]">Rider</p>
                         <p className="text-[var(--text-secondary)]">
@@ -192,14 +194,14 @@ export default function Orders() {
                       </div>
                     )}
                   </div>
-                  {(NEXT_STATUS[order.status] || !['delivered', 'cancelled'].includes(order.status)) && (
+                  {!['delivered', 'cancelled'].includes(order.status) && (
                     <div className="mt-4 flex items-center gap-3">
-                      {NEXT_STATUS[order.status] && (
+                      {nextStatusFor(order) && (
                         <button
                           onClick={(e) => { e.stopPropagation(); advanceStatus(order); }}
                           className="btn-primary text-sm"
                         >
-                          Move to {NEXT_STATUS[order.status]}
+                          Move to {statusLabel(nextStatusFor(order)).toLowerCase()}
                         </button>
                       )}
                       {!['delivered', 'cancelled'].includes(order.status) && (

@@ -3,23 +3,34 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getIdentity } from '../../lib/publicOrderStore';
 import { subscribeToPush, pushSupported } from '../../lib/push';
-import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell, Gift, Copy, Check } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell, Gift, Copy, Check, Bike } from 'lucide-react';
 
-const STEPS = [
-  { key: 'new', label: 'Order received', icon: AlertCircle },
-  { key: 'confirmed', label: 'Confirmed', icon: Clock },
-  { key: 'preparing', label: 'Preparing', icon: Flame },
-  { key: 'ready', label: 'Ready', icon: PackageCheck },
-  { key: 'delivered', label: 'Delivered', icon: CheckCircle2 },
-];
+// The stepper follows the order's lifecycle. `order_type` is decided by the
+// server (utils/order-type.js) and sent on the tracking payload — only
+// delivery orders have the "Out for delivery" leg; pickup and dine-in go
+// straight from Ready to Delivered, exactly as before.
+function stepsFor(orderType) {
+  const steps = [
+    { key: 'new', label: 'Order received', icon: AlertCircle },
+    { key: 'confirmed', label: 'Confirmed', icon: Clock },
+    { key: 'preparing', label: 'Preparing', icon: Flame },
+    { key: 'ready', label: 'Ready', icon: PackageCheck },
+  ];
+  if (orderType === 'delivery') steps.push({ key: 'out_for_delivery', label: 'Out for delivery', icon: Bike });
+  steps.push({ key: 'delivered', label: orderType === 'delivery' ? 'Delivered' : 'Completed', icon: CheckCircle2 });
+  return steps;
+}
 
 // What the customer still has to do about money, in their words.
-const PAYMENT_REMINDERS = {
-  cash: (total) => `Pay Rs. ${total} in cash when your order arrives.`,
-  jazzcash: (total) => `Pay Rs. ${total} by JazzCash to the rider when your order arrives.`,
-  easypaisa: (total) => `Pay Rs. ${total} by EasyPaisa to the rider when your order arrives.`,
-  card: (total) => `Pay Rs. ${total} by card when your order arrives.`,
-};
+const PAYMENT_METHOD_NAMES = { cash: 'in cash', jazzcash: 'by JazzCash', easypaisa: 'by EasyPaisa', card: 'by card' };
+function paymentReminderFor(order) {
+  const how = PAYMENT_METHOD_NAMES[order.payment_method];
+  if (!how) return null;
+  const total = Number(order.total).toLocaleString();
+  if (order.order_type === 'delivery') return `Pay Rs. ${total} ${how}${how === 'in cash' ? '' : ' to the rider'} when your order arrives.`;
+  if (order.order_type === 'pickup') return `Pay Rs. ${total} ${how} when you collect your order.`;
+  return null; // dine-in and counter orders settle at the table / till
+}
 
 export default function TrackOrder() {
   const { tenantSlug, orderId } = useParams();
@@ -82,12 +93,13 @@ export default function TrackOrder() {
     );
   }
 
+  const STEPS = stepsFor(order.order_type);
   const stepIndex = STEPS.findIndex((s) => s.key === order.status);
   // Checkout redirects here with `placed=1`. Until the kitchen has moved the
   // order along, this page is the customer's receipt — it must say plainly
   // that the order went through, not just start tracking it.
   const justPlaced = searchParams.get('placed') === '1' && ['new', 'confirmed'].includes(order.status);
-  const paymentReminder = PAYMENT_REMINDERS[order.payment_method]?.(Number(order.total).toLocaleString());
+  const paymentReminder = paymentReminderFor(order);
 
   return (
     <div className="min-h-screen bg-[var(--surface-1)] px-4 py-6">
@@ -161,7 +173,15 @@ export default function TrackOrder() {
             <span>Total</span>
             <span>Rs. {Number(order.total).toLocaleString()}</span>
           </div>
-          <p className="mt-3 text-xs text-[var(--text-secondary)]">Delivering to: {order.delivery_address}</p>
+          {order.order_type === 'delivery' && (
+            <p className="mt-3 text-xs text-[var(--text-secondary)]">Delivering to: {order.delivery_address}</p>
+          )}
+          {order.order_type === 'pickup' && (
+            <p className="mt-3 text-xs text-[var(--text-secondary)]">Collect from the restaurant when it's ready.</p>
+          )}
+          {order.order_type === 'dine_in' && (
+            <p className="mt-3 text-xs text-[var(--text-secondary)]">Served to your table.</p>
+          )}
           {paymentReminder && order.status !== 'delivered' && (
             <p className="mt-1 text-xs text-[var(--text-secondary)]">{paymentReminder}</p>
           )}

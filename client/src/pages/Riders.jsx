@@ -220,7 +220,16 @@ export default function Riders() {
                   <p className="text-sm font-medium text-[var(--text-primary)]">#{a.order_number} · {a.customer_name || 'Unknown'}</p>
                   <span className="text-sm font-semibold text-[var(--text-primary)]">Rs. {Number(a.total).toLocaleString()}</span>
                 </div>
-                <p className="mb-2 text-xs text-[var(--text-secondary)]">Rider: {a.rider_name} · {a.picked_up_at ? 'Picked up' : 'Not picked up'}</p>
+                <p className="mb-2 flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+                  <span>Rider: {a.rider_name}</span>
+                  {a.order_status === 'out_for_delivery' ? (
+                    <span className="badge bg-sky-100 text-sky-700"><Bike className="mr-1 h-3 w-3" /> Out for delivery</span>
+                  ) : a.picked_up_at ? (
+                    <span className="badge bg-[var(--surface-3)] text-[var(--text-secondary)]">Picked up</span>
+                  ) : (
+                    <span className="badge bg-amber-100 text-amber-700">Waiting for pickup</span>
+                  )}
+                </p>
                 <div className="flex gap-2">
                   {!a.picked_up_at && (
                     <button onClick={() => handleDeliveryStatus(a.order_id, 'picked_up')} className="btn-secondary text-xs">Mark Picked Up</button>

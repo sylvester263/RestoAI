@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
-import { notifyStatusChange, STATUS_MESSAGES } from '../services/whatsapp.js';
+import { notifyStatusChange, getStatusMessage } from '../services/whatsapp.js';
+import { getOrderType, orderTypeSql, canEnterStatus } from '../utils/order-type.js';
 import { awardPointsForOrder } from '../services/loyalty.js';
 import { sendPushToCustomer } from '../services/push.js';
 import { markCodPaidOnDelivery, getPaymentsForOrders } from '../services/payments.js';
@@ -16,10 +17,11 @@ router.use(checkTenantActive);
 // Side effects fired whenever an order's status changes — shared by the
 // kitchen-flow status PATCH below and the rider delivery-status endpoint
 // (riders.js), so there is exactly one place this logic lives.
-export function fireStatusChangeSideEffects(tenantId, order, status) {
+export function fireStatusChangeSideEffects(tenantId, order, status, { riderName = null } = {}) {
   notifyStatusChange(order.id, tenantId, status).catch(() => {});
-  if (STATUS_MESSAGES[status] && order.customer_id) {
-    sendPushToCustomer(order.customer_id, { title: 'Order update', body: STATUS_MESSAGES[status] }).catch(() => {});
+  const pushBody = getStatusMessage({ status, orderType: getOrderType(order), riderName });
+  if (pushBody && order.customer_id) {
+    sendPushToCustomer(order.customer_id, { title: 'Order update', body: pushBody }).catch(() => {});
   }
   if (status === 'delivered') {
     awardPointsForOrder(tenantId, order.id).catch((err) => console.error('[loyalty] award failed:', err.message));
@@ -32,7 +34,7 @@ export function fireStatusChangeSideEffects(tenantId, order, status) {
   // impl-16 dispatch agent: a delivery order just became ready for a rider.
   // Dynamic import avoids a circular dependency (dispatch-agent.js needs
   // createRiderAssignment, defined below in this same file).
-  if (status === 'confirmed' && order.delivery_address && !order.table_session_id) {
+  if (status === 'confirmed' && getOrderType(order) === 'delivery') {
     import('../services/dispatch-agent.js')
       .then(({ maybeAutoAssign }) => maybeAutoAssign(tenantId, order))
       .catch((err) => console.error('[dispatch-agent] auto-assign hook failed:', err.message));
@@ -97,7 +99,7 @@ router.get('/', authorize('orders.view'), async (req, res, next) => {
     // was ordered, the customer's note, and who is delivering without a
     // second request per row.
     const result = await query(
-      `SELECT o.*, c.name as customer_name, c.phone as customer_phone,
+      `SELECT o.*, ${orderTypeSql('o')} AS order_type, c.name as customer_name, c.phone as customer_phone,
               COALESCE((SELECT json_agg(json_build_object('name', oi.name, 'quantity', oi.quantity, 'total_price', oi.total_price, 'notes', oi.notes) ORDER BY oi.name)
                         FROM order_items oi WHERE oi.order_id = o.id), '[]') AS items,
               ra.rider_name, ra.picked_up_at AS rider_picked_up_at, ra.delivered_at AS rider_delivered_at
@@ -134,7 +136,7 @@ router.get('/', authorize('orders.view'), async (req, res, next) => {
 router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT o.*, rt.table_number,
+      `SELECT o.*, ${orderTypeSql('o')} AS order_type, rt.table_number,
         COALESCE(json_agg(json_build_object(
           'name', oi.name, 'quantity', oi.quantity, 'notes', oi.notes
         )) FILTER (WHERE oi.id IS NOT NULL), '[]') as items
@@ -162,11 +164,11 @@ router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
 router.get('/deliveries/unassigned', authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
-      `SELECT o.*, c.name as customer_name, c.phone as customer_phone
+      `SELECT o.*, ${orderTypeSql('o')} AS order_type, c.name as customer_name, c.phone as customer_phone
        FROM orders o
        LEFT JOIN customers c ON c.id = o.customer_id
        LEFT JOIN rider_assignments ra ON ra.order_id = o.id
-       WHERE o.tenant_id = $1 AND o.delivery_address IS NOT NULL AND o.table_session_id IS NULL
+       WHERE o.tenant_id = $1 AND ${orderTypeSql('o')} = 'delivery'
          AND ra.id IS NULL AND o.status IN ('confirmed', 'preparing', 'ready')
        ORDER BY o.created_at ASC`,
       [req.user.tenant_id],
@@ -181,7 +183,7 @@ router.get('/deliveries/unassigned', authorize('orders.view'), async (req, res, 
 router.get('/:id', authorize('orders.view'), async (req, res, next) => {
   try {
     const orderRes = await query(
-      `SELECT o.*, c.name as customer_name, c.phone as customer_phone
+      `SELECT o.*, ${orderTypeSql('o')} AS order_type, c.name as customer_name, c.phone as customer_phone
        FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
        WHERE o.tenant_id = $1 AND o.id = $2`,
@@ -208,9 +210,23 @@ router.get('/:id', authorize('orders.view'), async (req, res, next) => {
 router.patch('/:id/status', authorize('orders.status_update'), async (req, res, next) => {
   try {
     const { status } = req.body;
-    const validStatuses = ['new', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled'];
+    const validStatuses = ['new', 'confirmed', 'preparing', 'ready', 'out_for_delivery', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: { message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` } });
+    }
+
+    // out_for_delivery is a delivery-only state: check the order's type
+    // before touching it, so a pickup or dine-in order can never be pushed
+    // there by a direct API call.
+    const existing = await query(
+      'SELECT id, table_session_id, delivery_address, channel FROM orders WHERE tenant_id = $1 AND id = $2',
+      [req.user.tenant_id, req.params.id],
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: { message: 'Order not found' } });
+    }
+    if (!canEnterStatus(existing.rows[0], status)) {
+      return res.status(400).json({ error: { message: `Only delivery orders can be marked out for delivery — this is a ${getOrderType(existing.rows[0]).replace('_', '-')} order.` } });
     }
 
     const result = await query(
@@ -245,7 +261,7 @@ router.post('/:id/assign-rider', authorize('orders.status_update'), async (req, 
     if (!order) {
       return res.status(404).json({ error: { message: 'Order not found' } });
     }
-    if (!order.delivery_address || order.table_session_id) {
+    if (getOrderType(order) !== 'delivery') {
       return res.status(400).json({ error: { message: 'Only delivery orders can be assigned to a rider' } });
     }
     const existing = await query('SELECT id FROM rider_assignments WHERE order_id = $1', [order.id]);
@@ -309,9 +325,11 @@ export async function applyDeliveryStatus(tenantId, orderId, data, riderId = nul
     params.push(riderId);
   }
   const assignRes = await query(
-    `SELECT ra.*, o.payment_method, o.total, o.customer_id, o.status as order_status
+    `SELECT ra.*, o.payment_method, o.total, o.customer_id, o.status as order_status, o.branch_id,
+            o.table_session_id, o.delivery_address, o.channel, r.name AS rider_name
      FROM rider_assignments ra
      JOIN orders o ON o.id = ra.order_id
+     JOIN riders r ON r.id = ra.rider_id
      WHERE ra.order_id = $1 AND o.tenant_id = $2${riderClause}`,
     params,
   );
@@ -327,7 +345,27 @@ export async function applyDeliveryStatus(tenantId, orderId, data, riderId = nul
       `UPDATE rider_assignments SET picked_up_at = COALESCE(picked_up_at, NOW()) WHERE id = $1 RETURNING *`,
       [assignment.id],
     );
-    return { assignment: updated.rows[0] };
+    // The food has physically left the restaurant: the order itself moves to
+    // out_for_delivery (delivery orders only — utils/order-type.js decides),
+    // which is what updates the customer's tracking page and sends the
+    // "on its way, <rider> is bringing it" message. Idempotent: a repeat
+    // pickup call, or one on an already-delivered order, changes nothing.
+    let order = null;
+    if (getOrderType(assignment) === 'delivery') {
+      const moved = await query(
+        `UPDATE orders SET status = 'out_for_delivery', updated_at = NOW()
+         WHERE id = $1 AND tenant_id = $2 AND status NOT IN ('out_for_delivery', 'delivered', 'cancelled')
+         RETURNING *`,
+        [orderId, tenantId],
+      );
+      order = moved.rows[0] || null;
+      if (order) {
+        fireStatusChangeSideEffects(tenantId, order, 'out_for_delivery', { riderName: assignment.rider_name });
+        emit(`kitchen:${tenantId}`, 'order:status', { orderId, status: 'out_for_delivery' });
+        if (order.branch_id) emit(`token-board:${order.branch_id}`, 'tokens:changed', {});
+      }
+    }
+    return { assignment: updated.rows[0], order };
   }
 
   // delivered — idempotent: a repeat call reports current state without re-firing notifications

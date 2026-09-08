@@ -14,6 +14,7 @@ import { getOrCreateCustomer, calculatePricing, createOrder } from './orders.js'
 import { getBalance } from './loyalty.js';
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder } from './coupons.js';
 import { OrderError } from './orders.js';
+import { getOrderType } from '../utils/order-type.js';
 
 /**
  * Process an incoming WhatsApp message through the order agent pipeline.
@@ -401,13 +402,33 @@ export async function sendReply(phone, text, tenantId) {
 }
 
 // ── Feature 1: Order status change notification (fire-and-forget) ──
-export const STATUS_MESSAGES = {
-  confirmed: "Order confirmed ✅ We're getting started!",
-  preparing: 'Your order is being prepared 🍳',
-  ready: 'Your order is ready! 🎉',
-  delivered: 'Delivered! Enjoy your meal 🍽️',
-  cancelled: 'Your order has been cancelled. Sorry for the inconvenience.',
-};
+// Customer-facing wording for every status change. Single source of truth
+// for WhatsApp (notifyStatusChange) AND push (routes/orders.js). Order type
+// comes from utils/order-type.js — never re-derive it here. Returns null for
+// statuses that should not message the customer (e.g. 'new' — handled by
+// orderPlacedMessage at checkout).
+export function getStatusMessage({ status, orderType = 'delivery', riderName = null }) {
+  switch (status) {
+    case 'confirmed':
+      return "Order confirmed ✅ We're getting started!";
+    case 'preparing':
+      return 'Your order is being prepared 🍳';
+    case 'ready':
+      return 'Your order is ready! 🎉';
+    case 'out_for_delivery':
+      // Delivery only (utils/order-type.js gates the transition). Name the
+      // rider when we have one; never block the message on it.
+      return riderName
+        ? `Your order is on its way! 🛵 ${riderName} is bringing it to you now.`
+        : 'Your order is on its way! 🛵 Our rider is bringing it to you now.';
+    case 'delivered':
+      return 'Delivered! Enjoy your meal 🍽️';
+    case 'cancelled':
+      return 'Your order has been cancelled. Sorry for the inconvenience.';
+    default:
+      return null;
+  }
+}
 
 const PAYMENT_LINES = {
   cash: (total) => `Please keep Rs. ${total} ready in cash for the rider.`,
@@ -436,25 +457,33 @@ export function orderPlacedMessage({ restaurantName, order, items, paymentMethod
 }
 
 export async function notifyStatusChange(orderId, tenantId, newStatus) {
-  let template = STATUS_MESSAGES[newStatus];
-  if (!template) return;
-
   try {
+    // One lookup gives us the phone, the fields order type is derived from,
+    // and the most recent rider (for the out-for-delivery message).
     const res = await query(
-      `SELECT c.phone, o.branch_id FROM orders o
+      `SELECT c.phone, o.branch_id, o.table_session_id, o.delivery_address, o.channel, ra.rider_name
+       FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT r.name AS rider_name FROM rider_assignments x JOIN riders r ON r.id = x.rider_id
+         WHERE x.order_id = o.id ORDER BY x.assigned_at DESC LIMIT 1
+       ) ra ON true
        WHERE o.id = $1 AND o.tenant_id = $2`,
       [orderId, tenantId],
     );
-    const phone = res.rows[0]?.phone;
+    const row = res.rows[0];
+    const phone = row?.phone;
     if (!phone) return;
+
+    let template = getStatusMessage({ status: newStatus, orderType: getOrderType(row), riderName: row.rider_name });
+    if (!template) return;
 
     // impl-17: recomputed at this exact moment, since the queue may have
     // shifted since the order was placed — never reuse a stale estimate.
-    if (newStatus === 'preparing' && res.rows[0].branch_id) {
+    if (newStatus === 'preparing' && row.branch_id) {
       try {
         const { estimateReadyTime } = await import('./eta-agent.js');
-        const eta = await estimateReadyTime(res.rows[0].branch_id, orderId);
+        const eta = await estimateReadyTime(row.branch_id, orderId);
         template += ` Estimated ready in ~${eta.estimated_minutes_max} mins.`;
       } catch (err) {
         console.error('[eta-agent] estimate failed (status message sent without it):', err.message);

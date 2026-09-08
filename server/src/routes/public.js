@@ -11,6 +11,7 @@ import { query } from '../db/pool.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
 import { sendReply, orderPlacedMessage } from '../services/whatsapp.js';
 import { friendlyValidationMessage } from '../utils/validation-messages.js';
+import { orderTypeSql } from '../utils/order-type.js';
 import { generateRecommendation } from '../services/ai-agent.js';
 import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.js';
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder, getOrCreateReferralCode } from '../services/coupons.js';
@@ -277,7 +278,8 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
     const phone = (req.query.phone || '').toString().trim();
     const result = await query(
       `SELECT o.id, o.branch_id, o.order_number, o.status, o.subtotal, o.tax, o.delivery_fee, o.total,
-              o.delivery_address, o.payment_method, o.notes, o.created_at, o.updated_at, c.phone as customer_phone
+              o.delivery_address, o.payment_method, o.notes, o.created_at, o.updated_at, c.phone as customer_phone,
+              ${orderTypeSql('o')} AS order_type
        FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
        WHERE o.tenant_id = $1 AND o.id = $2`,

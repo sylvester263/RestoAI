@@ -370,6 +370,13 @@ async function migrate() {
     await client.query(`ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_channel_check;`);
     await client.query(`ALTER TABLE orders ADD CONSTRAINT orders_channel_check CHECK (channel IN ('whatsapp','in_person','phone','web','pos'));`);
 
+    // 2026-09-09 (audit C2): `out_for_delivery` sits between ready and
+    // delivered for delivery orders only — a rider marking pickup moves the
+    // order here (routes/orders.js applyDeliveryStatus). Pickup, dine-in and
+    // counter orders never enter it; utils/order-type.js is the gatekeeper.
+    await client.query(`ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;`);
+    await client.query(`ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('new','confirmed','preparing','ready','out_for_delivery','delivered','cancelled'));`);
+
     // ── Riders, delivery tracking & cash reconciliation (impl-05) ──
     await client.query(`
       CREATE TABLE IF NOT EXISTS riders (
