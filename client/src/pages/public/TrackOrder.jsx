@@ -17,7 +17,7 @@ function stepsFor(orderType) {
     { key: 'ready', label: 'Ready', icon: PackageCheck },
   ];
   if (orderType === 'delivery') steps.push({ key: 'out_for_delivery', label: 'Out for delivery', icon: Bike });
-  steps.push({ key: 'delivered', label: orderType === 'delivery' ? 'Delivered' : 'Completed', icon: CheckCircle2 });
+  steps.push({ key: 'delivered', label: orderType === 'delivery' ? 'Delivered' : orderType === 'dine_in' ? 'Served' : 'Collected', icon: CheckCircle2 });
   return steps;
 }
 
@@ -133,7 +133,7 @@ export default function TrackOrder() {
             <Clock className="h-5 w-5 shrink-0 text-brand-600" />
             <div className="text-sm text-brand-800">
               <span className="font-semibold">
-                Ready in ~{order.eta.estimated_minutes_min}-{order.eta.estimated_minutes_max} mins
+                {order.order_type === 'delivery' ? 'Leaving the kitchen' : order.order_type === 'dine_in' ? 'At your table' : 'Ready for pickup'} in ~{order.eta.estimated_minutes_min}-{order.eta.estimated_minutes_max} mins
               </span>
               {order.eta.queue_ahead > 0 && (
                 <span className="text-brand-600"> · {order.eta.queue_ahead} order{order.eta.queue_ahead > 1 ? 's' : ''} ahead in the kitchen</span>

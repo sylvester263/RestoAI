@@ -414,7 +414,18 @@ export function getStatusMessage({ status, orderType = 'delivery', riderName = n
     case 'preparing':
       return 'Your order is being prepared 🍳';
     case 'ready':
-      return 'Your order is ready! 🎉';
+      // "Ready" means something different depending on who has to move next.
+      // Only a pickup customer should ever be told to come and collect.
+      switch (orderType) {
+        case 'delivery':
+          return 'Your order is ready and will be heading out for delivery shortly! 🛵';
+        case 'dine_in':
+          return 'Your order is ready and on its way to your table! 🍽️';
+        case 'counter':
+          return 'Your order is ready! 🎉 Please collect it from the counter.';
+        default: // pickup
+          return "Your order is ready for pickup! 🎉 Come and collect it whenever you're ready.";
+      }
     case 'out_for_delivery':
       // Delivery only (utils/order-type.js gates the transition). Name the
       // rider when we have one; never block the message on it.
@@ -422,7 +433,10 @@ export function getStatusMessage({ status, orderType = 'delivery', riderName = n
         ? `Your order is on its way! 🛵 ${riderName} is bringing it to you now.`
         : 'Your order is on its way! 🛵 Our rider is bringing it to you now.';
     case 'delivered':
-      return 'Delivered! Enjoy your meal 🍽️';
+      // For everyone but delivery customers this is "collected / served".
+      return orderType === 'delivery'
+        ? 'Delivered! Enjoy your meal 🍽️'
+        : 'Enjoy your meal! 🍽️ Thank you for ordering with us.';
     case 'cancelled':
       return 'Your order has been cancelled. Sorry for the inconvenience.';
     default:

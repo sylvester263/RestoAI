@@ -4,6 +4,7 @@ import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
+import { orderTypeSql } from '../utils/order-type.js';
 
 const router = Router();
 
@@ -18,10 +19,15 @@ router.get('/:id/token-board', async (req, res, next) => {
     }
     const tenantId = branchRes.rows[0].tenant_id;
 
+    // The board is for people standing in the restaurant (pickup, dine-in,
+    // counter). A delivery customer isn't watching it — their "ready" moment
+    // is a WhatsApp message and the tracking page — so delivery orders are
+    // excluded via the shared order-type rule (utils/order-type.js).
     const result = await query(
       `SELECT o.order_number, o.created_at FROM orders o
        JOIN branches b ON b.id = o.branch_id
        WHERE o.branch_id = $1 AND b.tenant_id = $2 AND o.status = 'ready'
+         AND ${orderTypeSql('o')} <> 'delivery'
        ORDER BY o.created_at`,
       [req.params.id, tenantId],
     );
