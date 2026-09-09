@@ -111,11 +111,16 @@ export async function processWhatsAppMessage(tenantId, message) {
   const isAffirm = AFFIRMATIVE.some((w) => lowerText.includes(w));
   if (pendingDraft && isAffirm) {
     const orderResult = await finalizeOrder(tenantId, customer, pendingDraft);
-    reply = `✅ Your order has been confirmed!\n\n📋 *Order #${orderResult.order_number}*\n`;
+    // Worded as "received", not "confirmed" (audit I3): the order lands in
+    // status 'new' here — the restaurant hasn't actually confirmed it yet.
+    // Staff moving it to 'confirmed' fires its own STATUS_MESSAGES.confirmed
+    // WhatsApp message a moment later; the old "confirmed" wording here made
+    // that read as a duplicate.
+    reply = `📝 We've received your order!\n\n📋 *Order #${orderResult.order_number}*\n`;
     reply += orderResult.items.map((i) => `  • ${i.quantity}x ${i.name} — Rs. ${i.total_price}`).join('\n');
     reply += `\n\n💰 *Total: Rs. ${orderResult.total}*`;
     reply += `\n⏱ Estimated prep time: ~${config.timing.estimatedPrepMax} mins`;
-    reply += `\n\nThank you for ordering with us! 🎉`;
+    reply += `\n\nWe'll message you as soon as the kitchen confirms it. Thank you for ordering with us! 🎉`;
 
     delete conversationContext.pending_draft;
     await query(

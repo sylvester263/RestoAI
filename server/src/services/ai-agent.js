@@ -90,8 +90,18 @@ Always respond in valid JSON with this schema:
  * @returns {Promise<object>} Parsed order data
  */
 export async function parseOrderMessage(message, menuItems, conversationContext = {}) {
+  // Description and tags ride along so the model can answer "what's in X"
+  // or "something spicy" without a customer having to already know the dish
+  // name — audit I3: these columns exist on every menuItems row (mi.*) but
+  // were never actually passed to the model, so WhatsApp answered from less
+  // information than the public web menu shows for the same dish.
   const menuSummary = menuItems
-    .map((item) => `- ${item.name} (${item.name_urdu || ''}): Rs. ${item.price}`)
+    .map((item) => {
+      const bits = [`- ${item.name} (${item.name_urdu || ''}): Rs. ${item.price}`];
+      if (item.description) bits.push(`— ${item.description}`);
+      if (item.tags?.length) bits.push(`[${item.tags.join(', ')}]`);
+      return bits.join(' ');
+    })
     .join('\n');
 
   const systemPrompt = ORDER_SYSTEM_PROMPT.replace(
@@ -385,8 +395,16 @@ Do NOT create an order — just make suggestions and ask if they'd like to order
  * @returns {Promise<string>} Natural-language recommendation reply
  */
 export async function generateRecommendation(message, menuItems, conversationContext = {}) {
+  // Same reasoning as parseOrderMessage above: description and tags are
+  // what let this function actually recommend by content ("something
+  // spicy", "what's the malai boti") instead of by name and price alone.
   const menuSummary = menuItems
-    .map((item) => `- ${item.name} (${item.name_urdu || ''}): Rs. ${item.price} [${item.category_name || 'Uncategorized'}]`)
+    .map((item) => {
+      const bits = [`- ${item.name} (${item.name_urdu || ''}): Rs. ${item.price} [${item.category_name || 'Uncategorized'}]`];
+      if (item.description) bits.push(`— ${item.description}`);
+      if (item.tags?.length) bits.push(`(${item.tags.join(', ')})`);
+      return bits.join(' ');
+    })
     .join('\n');
 
   const messages = [

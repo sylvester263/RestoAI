@@ -95,6 +95,7 @@ export default function TableOrder() {
     (acc[category] = acc[category] || []).push(item);
     return acc;
   }, {});
+  const allCategories = Object.keys(grouped);
   const cartCount = cart.reduce((sum, i) => sum + i.quantity, 0);
   const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const sessionEnded = session.status !== 'open';
@@ -120,6 +121,22 @@ export default function TableOrder() {
         </div>
       )}
 
+      {view === 'menu' && allCategories.length > 1 && (
+        <div className="sticky top-0 z-10 overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-1)] px-4 py-2">
+          <div className="mx-auto flex max-w-2xl gap-2">
+            {allCategories.map((category) => (
+              <a
+                key={category}
+                href={`#dine-category-${category.replace(/\s+/g, '-')}`}
+                className="shrink-0 whitespace-nowrap rounded-full bg-[var(--surface-3)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--border)]"
+              >
+                {category}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       {view === 'menu' && (
         <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
           {sessionEnded && (
@@ -128,15 +145,23 @@ export default function TableOrder() {
             </div>
           )}
           {Object.entries(grouped).map(([category, catItems]) => (
-            <div key={category}>
+            <div key={category} id={`dine-category-${category.replace(/\s+/g, '-')}`} className="scroll-mt-14">
               <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">{category}</h2>
               <div className="space-y-3">
                 {catItems.map((item) => {
                   const qty = quantityOf(item.id);
                   return (
-                    <div key={item.id} className="card flex items-center justify-between gap-4">
+                    <div key={item.id} className="card flex items-center gap-4">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.name} className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+                      ) : (
+                        <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-xl bg-[var(--surface-3)] text-2xl">🍽️</div>
+                      )}
                       <div className="flex-1">
-                        <p className="font-medium text-[var(--text-primary)]">{item.name}</p>
+                        <p className="font-medium text-[var(--text-primary)]">
+                          {item.name}
+                          {item.name_urdu && <span className="ml-2 text-sm font-normal text-[var(--text-tertiary)]" dir="rtl">{item.name_urdu}</span>}
+                        </p>
                         {item.description && <p className="text-sm text-[var(--text-secondary)]">{item.description}</p>}
                         <p className="mt-1 text-sm font-semibold text-brand-600">Rs. {Number(item.price).toLocaleString()}</p>
                       </div>

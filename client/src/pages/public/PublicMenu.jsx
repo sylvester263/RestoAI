@@ -95,6 +95,7 @@ export default function PublicMenu() {
           <div>
             <h1 className="text-2xl font-bold text-[var(--text-primary)]">{restaurant?.name}</h1>
             {restaurant?.address && <p className="text-sm text-[var(--text-secondary)]">{restaurant.address}</p>}
+            <p className="mt-1 text-xs text-[var(--text-tertiary)]">Delivery: Rs. 100 · Tax: 5% — added at checkout</p>
           </div>
           <div className="flex shrink-0 gap-2">
             <button onClick={() => navigate(`/order/${tenantSlug}/loyalty`)} className="btn-secondary text-sm">
@@ -107,9 +108,25 @@ export default function PublicMenu() {
         </div>
       </div>
 
+      {allCategories.length > 1 && (
+        <div className="sticky top-0 z-10 overflow-x-auto border-b border-[var(--border)] bg-[var(--surface-1)] px-4 py-2">
+          <div className="mx-auto flex max-w-2xl gap-2">
+            {allCategories.map((category) => (
+              <a
+                key={category}
+                href={`#category-${category.replace(/\s+/g, '-')}`}
+                className="shrink-0 whitespace-nowrap rounded-full bg-[var(--surface-3)] px-3 py-1 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--border)]"
+              >
+                {category}
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-2xl space-y-8 px-4 py-6">
         {Object.entries(grouped).map(([category, catItems]) => (
-          <div key={category}>
+          <div key={category} id={`category-${category.replace(/\s+/g, '-')}`} className="scroll-mt-14">
             <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">{category}</h2>
             <div className="space-y-3">
               {catItems.map((item) => {
@@ -137,7 +154,10 @@ export default function PublicMenu() {
                     </div>
                     <div className="flex flex-1 items-start justify-between gap-2">
                       <div className="flex-1">
-                        <p className={`font-medium text-[var(--text-primary)] ${!item.is_available ? 'line-through text-[var(--text-tertiary)]' : ''}`}>{item.name}</p>
+                        <p className={`font-medium text-[var(--text-primary)] ${!item.is_available ? 'line-through text-[var(--text-tertiary)]' : ''}`}>
+                          {item.name}
+                          {item.name_urdu && <span className="ml-2 text-sm font-normal text-[var(--text-tertiary)]" dir="rtl">{item.name_urdu}</span>}
+                        </p>
                         {item.description && <p className="text-sm text-[var(--text-secondary)]">{item.description}</p>}
                         <div className="mt-1 flex items-center gap-2">
                           <p className={`text-sm font-semibold ${item.is_available ? 'text-brand-600' : 'text-[var(--text-tertiary)]'}`}>
