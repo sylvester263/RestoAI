@@ -129,7 +129,15 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
         pricing.delivery_fee,
         pricing.discount || 0,
         pricing.total,
-        tableSessionId ? null : (deliveryAddress || customer.address),
+        // A caller passing `deliveryAddress: null` means exactly that — not
+        // "look it up" — otherwise a pickup order (audit I11) or a POS/
+        // counter order for a customer who has a delivery address on file
+        // from a past order would silently get stamped with that address
+        // and be misread as delivery everywhere (utils/order-type.js checks
+        // delivery_address before channel). services/whatsapp.js already
+        // resolves its own "use the address on file" fallback before
+        // calling this function, so no caller actually relies on one here.
+        tableSessionId ? null : (deliveryAddress || null),
         paymentMethod || null,
         notes || null,
         tableSessionId || null,

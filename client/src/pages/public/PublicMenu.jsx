@@ -170,6 +170,19 @@ export default function PublicMenu() {
                             </span>
                           )}
                         </div>
+                        {/* Tags exist on every item (spice level, dietary flags, etc.)
+                            but were never shown to a customer anywhere (audit I1) —
+                            skip a tag that just repeats the category name, which is
+                            what this demo tenant's seed data happens to use tags for. */}
+                        {item.tags?.filter((t) => t.toLowerCase() !== (item.category_name || '').toLowerCase()).length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {item.tags
+                              .filter((t) => t.toLowerCase() !== (item.category_name || '').toLowerCase())
+                              .map((t) => (
+                                <span key={t} className="rounded-full bg-[var(--surface-3)] px-2 py-0.5 text-[11px] font-medium capitalize text-[var(--text-secondary)]">{t}</span>
+                              ))}
+                          </div>
+                        )}
                         {!item.is_available && qty > 0 && (
                           <p className="mt-1 text-xs text-red-600">Sold out since you added it — remove it to continue.</p>
                         )}

@@ -46,10 +46,17 @@ async function resolveTenant(req, res, next) {
 
 router.use('/:tenantSlug', resolveTenant);
 
+// Pickup (audit I11) was previously unreachable from the web app —
+// delivery_address was unconditionally required, so every web order was
+// typed as delivery even for a customer who meant to collect it themselves.
+// fulfillment_type now decides which fields apply and what delivery costs.
+const DELIVERY_FEE_BY_FULFILLMENT = { delivery: 100, pickup: 0 };
+
 const checkoutSchema = z.object({
   customer_name: z.string().min(1).max(255),
   customer_phone: z.string().min(7).max(20),
-  delivery_address: z.string().min(1).max(1000),
+  fulfillment_type: z.enum(['delivery', 'pickup']).default('delivery'),
+  delivery_address: z.string().max(1000).optional(),
   payment_method: z.enum(['cash', 'jazzcash', 'easypaisa', 'card']).default('cash'),
   notes: z.string().max(500).optional(),
   redeem_points: z.number().int().min(0).optional(),
@@ -58,7 +65,10 @@ const checkoutSchema = z.object({
     menu_item_id: z.string().uuid(),
     quantity: z.number().int().min(1).max(50),
   })).min(1),
-});
+}).refine(
+  (data) => data.fulfillment_type !== 'delivery' || (data.delivery_address && data.delivery_address.trim().length > 0),
+  { message: 'Please add a delivery address so the rider can find you.', path: ['delivery_address'] },
+);
 
 // ── GET /api/public/:tenantSlug ──
 // Restaurant header info for the ordering page
@@ -105,11 +115,13 @@ router.get('/:tenantSlug/menu', async (req, res, next) => {
 router.post('/:tenantSlug/orders', async (req, res, next) => {
   try {
     const data = checkoutSchema.parse(req.body);
+    const isPickup = data.fulfillment_type === 'pickup';
+    const deliveryFee = DELIVERY_FEE_BY_FULFILLMENT[data.fulfillment_type];
 
     const resolvedItems = await resolveOrderItems(req.tenant.id, data.items);
     const customer = await getOrCreateCustomer(req.tenant.id, data.customer_phone, {
       name: data.customer_name,
-      address: data.delivery_address,
+      address: isPickup ? undefined : data.delivery_address,
     });
 
     let discount = 0;
@@ -125,20 +137,25 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
       // moment the order is actually created (same principle as payment
       // amounts never being trusted from the client).
       const result = await validateAndApplyCoupon(req.tenant.id, customer.id, data.coupon_code, subtotalForCoupon, {
-        items: resolvedItems, deliveryFee: 100,
+        items: resolvedItems, deliveryFee,
       });
       discount += result.discount;
       couponRedemptionId = result.redemptionId;
     }
 
-    const pricing = calculatePricing(resolvedItems, { discount });
+    const pricing = calculatePricing(resolvedItems, { discount, deliveryFee });
 
+    // A pickup order stores no delivery_address at all — that absence is
+    // exactly what utils/order-type.js reads as "pickup" everywhere else in
+    // the app (Kitchen, tracking, WhatsApp wording, the token board), so
+    // this one field is the whole mechanism; no separate "type" column to
+    // keep in sync.
     const order = await createOrder({
       tenantId: req.tenant.id,
       customer,
       items: resolvedItems,
       pricing,
-      deliveryAddress: data.delivery_address,
+      deliveryAddress: isPickup ? null : data.delivery_address,
       paymentMethod: data.payment_method,
       channel: 'web',
       notes: data.notes,
@@ -189,11 +206,15 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
   }
 });
 
-// Preview's delivery fee always mirrors POST /orders' actual default (100)
-// so a free_delivery coupon previews the real amount it will discount —
-// found live: without this, preview always showed Rs. 0 off for
-// free_delivery since nothing was passed and the default in coupons.js is 0.
-const PREVIEW_DELIVERY_FEE = 100;
+// Preview's delivery fee mirrors POST /orders' actual fee for the same
+// fulfillment type — a pickup order has no delivery fee, so a free_delivery
+// coupon previewed against one must show Rs. 0 off, not the delivery
+// default (audit I11: previously this endpoint had no concept of pickup at
+// all and always assumed delivery's Rs. 100).
+function previewDeliveryFee(req) {
+  const fulfillmentType = req.query.fulfillment_type || req.body?.fulfillment_type;
+  return DELIVERY_FEE_BY_FULFILLMENT[fulfillmentType] ?? DELIVERY_FEE_BY_FULFILLMENT.delivery;
+}
 
 // ── GET /api/public/:tenantSlug/coupons/:code/preview ──
 // Read-only — shows the discount a code would apply before final checkout.
@@ -207,7 +228,7 @@ router.get('/:tenantSlug/coupons/:code/preview', async (req, res, next) => {
       const custRes = await query('SELECT id FROM customers WHERE tenant_id = $1 AND phone = $2', [req.tenant.id, phone]);
       customerId = custRes.rows[0]?.id || null;
     }
-    const result = await previewCoupon(req.tenant.id, req.params.code, customerId, subtotal, { deliveryFee: PREVIEW_DELIVERY_FEE });
+    const result = await previewCoupon(req.tenant.id, req.params.code, customerId, subtotal, { deliveryFee: previewDeliveryFee(req) });
     res.json(result);
   } catch (err) {
     if (err instanceof OrderError) {
@@ -221,6 +242,7 @@ const validateCouponSchema = z.object({
   code: z.string().min(1).max(30),
   phone: z.string().min(1).max(20).optional(),
   subtotal: z.number().min(0),
+  fulfillment_type: z.enum(['delivery', 'pickup']).optional(),
   items: z.array(z.object({
     menu_item_id: z.string().uuid(),
     quantity: z.number().int().min(1).max(50),
@@ -244,7 +266,7 @@ router.post('/:tenantSlug/coupons/validate', async (req, res, next) => {
     }
     const resolvedItems = data.items && data.items.length > 0 ? await resolveOrderItems(req.tenant.id, data.items) : [];
     const result = await previewCoupon(req.tenant.id, data.code, customerId, data.subtotal, {
-      items: resolvedItems, deliveryFee: PREVIEW_DELIVERY_FEE,
+      items: resolvedItems, deliveryFee: previewDeliveryFee(req),
     });
     res.json(result);
   } catch (err) {

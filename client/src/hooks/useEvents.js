@@ -52,6 +52,7 @@ export default function useEvents(channel, callback, fallbackInterval = 10000, o
       es.addEventListener('tab:settled', () => callbackRef.current?.());
       es.addEventListener('tokens:changed', () => callbackRef.current?.());
       es.addEventListener('riders:changed', () => callbackRef.current?.());
+      es.addEventListener('bill:requested', () => callbackRef.current?.());
 
       es.onerror = () => {
         // Connection failed or dropped — close and let polling handle it

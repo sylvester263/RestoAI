@@ -3,14 +3,33 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getCart, clearCart, getIdentity, setIdentity, updateCartQuantity } from '../../lib/publicOrderStore';
 import { toast } from '../../components/ui/toast';
-import { ArrowLeft, Gift, Tag, X, Plus, Minus, Trash2 } from 'lucide-react';
+import { ArrowLeft, Gift, Tag, X, Plus, Minus, Trash2, Truck, Store } from 'lucide-react';
+
+// Same wording pattern the tracking page uses for payment reminders — "on
+// delivery" only makes sense when there's a delivery (audit I11: pickup was
+// previously unreachable from the web app, so every payment option here
+// unconditionally said "on delivery" even when nothing was being delivered).
+const PAYMENT_OPTIONS = {
+  delivery: [
+    { value: 'cash', label: 'Cash on delivery' },
+    { value: 'jazzcash', label: 'JazzCash' },
+    { value: 'easypaisa', label: 'EasyPaisa' },
+    { value: 'card', label: 'Card on delivery' },
+  ],
+  pickup: [
+    { value: 'cash', label: 'Cash on pickup' },
+    { value: 'jazzcash', label: 'JazzCash' },
+    { value: 'easypaisa', label: 'EasyPaisa' },
+    { value: 'card', label: 'Card on pickup' },
+  ],
+};
 
 export default function Checkout() {
   const { tenantSlug } = useParams();
   const navigate = useNavigate();
   const [cart, setCart] = useState([]);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ name: '', phone: '', delivery_address: '', payment_method: 'cash', notes: '' });
+  const [form, setForm] = useState({ name: '', phone: '', fulfillment_type: 'delivery', delivery_address: '', payment_method: 'cash', notes: '' });
   const [loyalty, setLoyalty] = useState(null); // { enabled, balance, redemption_rate }
   const [redeem, setRedeem] = useState(false);
   const [couponInput, setCouponInput] = useState('');
@@ -56,9 +75,10 @@ export default function Checkout() {
     changeQuantity(item, -item.quantity);
   }
 
+  const isPickup = form.fulfillment_type === 'pickup';
   const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const tax = Math.round(subtotal * 0.05);
-  const deliveryFee = 100;
+  const deliveryFee = isPickup ? 0 : 100;
   const canRedeem = loyalty?.enabled && loyalty.balance > 0;
   const redeemDiscount = canRedeem && redeem
     ? Math.round(loyalty.balance * loyalty.redemption_rate * 100) / 100
@@ -75,6 +95,7 @@ export default function Checkout() {
         code: couponInput.trim(),
         phone: form.phone || undefined,
         subtotal,
+        fulfillment_type: form.fulfillment_type,
         items: cart.map((i) => ({ menu_item_id: i.menu_item_id, quantity: i.quantity })),
       });
       setCoupon({ code: couponInput.trim().toUpperCase(), discount: res.discount });
@@ -99,7 +120,8 @@ export default function Checkout() {
       const res = await publicApi.createOrder(tenantSlug, {
         customer_name: form.name,
         customer_phone: form.phone,
-        delivery_address: form.delivery_address,
+        fulfillment_type: form.fulfillment_type,
+        delivery_address: isPickup ? undefined : form.delivery_address,
         payment_method: form.payment_method,
         notes: form.notes || undefined,
         redeem_points: canRedeem && redeem ? loyalty.balance : undefined,
@@ -143,6 +165,26 @@ export default function Checkout() {
 
         <h1 className="mb-4 text-2xl font-bold text-[var(--text-primary)]">Checkout</h1>
 
+        {/* Delivery/pickup toggle — picking this decides the delivery fee, which
+            field is required below, and how the order is typed everywhere else
+            in the app (Kitchen, tracking, WhatsApp wording, the token board). */}
+        <div className="card mb-4 flex gap-2 p-2">
+          <button
+            type="button"
+            onClick={() => { setForm((f) => ({ ...f, fulfillment_type: 'delivery' })); handleRemoveCoupon(); }}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium ${!isPickup ? 'bg-brand-600 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-3)]'}`}
+          >
+            <Truck className="h-4 w-4" /> Delivery
+          </button>
+          <button
+            type="button"
+            onClick={() => { setForm((f) => ({ ...f, fulfillment_type: 'pickup' })); handleRemoveCoupon(); }}
+            className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium ${isPickup ? 'bg-brand-600 text-white' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-3)]'}`}
+          >
+            <Store className="h-4 w-4" /> Pickup
+          </button>
+        </div>
+
         <div className="card mb-4">
           <h2 className="mb-3 text-sm font-semibold text-[var(--text-secondary)]">Your order</h2>
           <div className="space-y-2 text-sm">
@@ -171,7 +213,7 @@ export default function Checkout() {
           <div className="mt-3 space-y-1 border-t border-[var(--border-light)] pt-3 text-sm text-[var(--text-secondary)]">
             <div className="flex justify-between"><span>Subtotal</span><span>Rs. {subtotal.toLocaleString()}</span></div>
             <div className="flex justify-between"><span>Tax</span><span>Rs. {tax.toLocaleString()}</span></div>
-            <div className="flex justify-between"><span>Delivery fee</span><span>Rs. {deliveryFee.toLocaleString()}</span></div>
+            <div className="flex justify-between"><span>Delivery fee</span><span>{isPickup ? 'Free — pickup' : `Rs. ${deliveryFee.toLocaleString()}`}</span></div>
             {redeemDiscount > 0 && (
               <div className="flex justify-between text-green-600"><span>Loyalty discount</span><span>-Rs. {redeemDiscount.toLocaleString()}</span></div>
             )}
@@ -249,15 +291,21 @@ export default function Checkout() {
               onChange={(e) => setForm({ ...form, phone: e.target.value })}
             />
           </div>
-          <div>
-            <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Delivery address</label>
-            <input
-              className="input"
-              required
-              value={form.delivery_address}
-              onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
-            />
-          </div>
+          {isPickup ? (
+            <div className="rounded-lg bg-[var(--surface-1)] p-3 text-sm text-[var(--text-secondary)]">
+              You'll collect this order from the restaurant — no address needed.
+            </div>
+          ) : (
+            <div>
+              <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Delivery address</label>
+              <input
+                className="input"
+                required
+                value={form.delivery_address}
+                onChange={(e) => setForm({ ...form, delivery_address: e.target.value })}
+              />
+            </div>
+          )}
           <div>
             <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Payment method</label>
             <select
@@ -265,10 +313,9 @@ export default function Checkout() {
               value={form.payment_method}
               onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
             >
-              <option value="cash">Cash on delivery</option>
-              <option value="jazzcash">JazzCash</option>
-              <option value="easypaisa">EasyPaisa</option>
-              <option value="card">Card on delivery</option>
+              {PAYMENT_OPTIONS[form.fulfillment_type].map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
             </select>
           </div>
           <div>

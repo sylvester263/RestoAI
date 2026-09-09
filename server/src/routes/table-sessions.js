@@ -11,6 +11,7 @@ import { query } from '../db/pool.js';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
 import { friendlyValidationMessage } from '../utils/validation-messages.js';
+import { emit } from '../services/event-bus.js';
 
 const router = Router();
 
@@ -137,13 +138,24 @@ router.post('/:id/request-bill', async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Session not found' } });
     }
     const updated = await query(
-      `UPDATE table_sessions SET status = 'bill_requested' WHERE id = $1 AND status = 'open' RETURNING *`,
+      `UPDATE table_sessions SET status = 'bill_requested' WHERE id = $1 AND status = 'open' RETURNING id`,
       [session.id],
     );
     if (updated.rows.length === 0) {
       return res.status(400).json({ error: { message: 'Bill already requested or session closed' } });
     }
-    res.json({ session: updated.rows[0] });
+    // `RETURNING *` here would return a bare table_sessions row with no
+    // table_number (that only exists via loadSession's join to
+    // restaurant_tables) — the client replaces its whole session state with
+    // this response, so the table number used to vanish from the header the
+    // moment a customer asked for the bill (audit I5). Re-load the joined
+    // row instead of trusting the UPDATE's own RETURNING.
+    const fresh = await loadSession(session.id);
+    res.json({ session: fresh });
+
+    // Real-time nudge for staff (audit I5: previously only a badge that
+    // needed a manual page reload to appear — no signal at all otherwise).
+    emit(`tables:${session.branch_id}`, 'bill:requested', { tableNumber: fresh.table_number });
   } catch (err) {
     next(err);
   }
@@ -158,8 +170,11 @@ router.get('/:id/bill', async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Session not found' } });
     }
 
+    // `status` rides along so the diner can see whether a round has even
+    // started cooking yet, not just its price (audit I5: "no per-round
+    // status — the diner never learns whether round 1 has started").
     const ordersRes = await query(
-      `SELECT id, order_number, subtotal, tax, total, created_at FROM orders WHERE table_session_id = $1 ORDER BY created_at`,
+      `SELECT id, order_number, status, subtotal, tax, total, created_at FROM orders WHERE table_session_id = $1 ORDER BY created_at`,
       [session.id],
     );
     const itemsRes = await query(

@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { toast, confirmAction } from '../components/ui/toast';
 import { Skeleton } from '../components/ui/Skeleton';
 import Modal from '../components/ui/Modal';
+import useEvents from '../hooks/useEvents';
 import { Plus, QrCode, X } from 'lucide-react';
 
 export default function Tables() {
@@ -15,6 +16,9 @@ export default function Tables() {
   const [loading, setLoading] = useState(true);
   const [newTableNumber, setNewTableNumber] = useState('');
   const [qrTable, setQrTable] = useState(null);
+  // Previously-seen session_status per table, so a background refresh can
+  // toast only on the transition into bill_requested, not on every poll.
+  const prevStatusRef = useRef({});
 
   useEffect(() => {
     api.getBranches().then((res) => {
@@ -25,20 +29,35 @@ export default function Tables() {
 
   useEffect(() => {
     if (!branchId) return;
+    prevStatusRef.current = {};
     loadTables();
   }, [branchId]);
 
-  async function loadTables() {
-    setLoading(true);
+  // `silent` skips the loading skeleton — used for background refreshes so
+  // a bill-request update doesn't flash the whole grid (audit I5: previously
+  // there was no live refresh at all, so this page needed a manual reload
+  // even to see the amber "Bill requested" badge appear).
+  const loadTables = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await api.getTables(branchId);
+      for (const t of res.tables) {
+        if (t.session_status === 'bill_requested' && prevStatusRef.current[t.id] !== 'bill_requested') {
+          toast.success(`Table ${t.table_number} requested the bill`);
+        }
+        prevStatusRef.current[t.id] = t.session_status;
+      }
       setTables(res.tables);
     } catch (err) {
       console.error(err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }
+  }, [branchId]);
+
+  // Real-time nudge (routes/table-sessions.js emits `bill:requested` on the
+  // branch's channel), with polling as a fallback if SSE isn't available.
+  useEvents(`tables:${branchId}`, () => loadTables(true), 15000, { enabled: !!branchId });
 
   async function handleAddTable(e) {
     e.preventDefault();

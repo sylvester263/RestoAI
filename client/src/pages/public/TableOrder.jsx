@@ -3,7 +3,19 @@ import { useParams } from 'react-router-dom';
 import { tableApi } from '../../lib/api';
 import { getCart, addToCart, updateCartQuantity, clearCart } from '../../lib/publicOrderStore';
 import { toast } from '../../components/ui/toast';
+import { statusLabel } from '../../lib/orderType';
 import { Plus, Minus, Receipt, Users } from 'lucide-react';
+
+// Same status colors Orders.jsx uses, so a round on the customer's own bill
+// reads the same as it would to staff.
+const ROUND_STATUS_STYLE = {
+  new: 'bg-blue-100 text-blue-700',
+  confirmed: 'bg-yellow-100 text-yellow-700',
+  preparing: 'bg-orange-100 text-orange-700',
+  ready: 'bg-emerald-100 text-emerald-700',
+  delivered: 'bg-gray-100 text-gray-600',
+  cancelled: 'bg-red-100 text-red-700',
+};
 
 export default function TableOrder() {
   const { qrToken } = useParams();
@@ -90,6 +102,9 @@ export default function TableOrder() {
     );
   }
 
+  const billSubtotal = bill?.rounds?.reduce((sum, r) => sum + Number(r.subtotal), 0) || 0;
+  const billTax = bill?.rounds?.reduce((sum, r) => sum + Number(r.tax), 0) || 0;
+
   const grouped = items.reduce((acc, item) => {
     const category = item.category_name || 'Menu';
     (acc[category] = acc[category] || []).push(item);
@@ -164,6 +179,15 @@ export default function TableOrder() {
                         </p>
                         {item.description && <p className="text-sm text-[var(--text-secondary)]">{item.description}</p>}
                         <p className="mt-1 text-sm font-semibold text-brand-600">Rs. {Number(item.price).toLocaleString()}</p>
+                        {item.tags?.filter((t) => t.toLowerCase() !== (item.category_name || '').toLowerCase()).length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {item.tags
+                              .filter((t) => t.toLowerCase() !== (item.category_name || '').toLowerCase())
+                              .map((t) => (
+                                <span key={t} className="rounded-full bg-[var(--surface-3)] px-2 py-0.5 text-[11px] font-medium capitalize text-[var(--text-secondary)]">{t}</span>
+                              ))}
+                          </div>
+                        )}
                       </div>
                       {sessionEnded ? null : qty === 0 ? (
                         <button onClick={() => handleAdd(item)} className="btn-primary shrink-0">
@@ -198,15 +222,29 @@ export default function TableOrder() {
             ) : (
               bill.rounds.map((round) => (
                 <div key={round.id} className="mb-3 border-b border-[var(--border-light)] pb-3 last:border-0">
-                  <p className="mb-1 text-xs font-medium text-[var(--text-tertiary)]">Round · Rs. {Number(round.total).toLocaleString()}</p>
+                  <p className="mb-1 flex items-center gap-2 text-xs font-medium text-[var(--text-tertiary)]">
+                    <span>Round · Rs. {Number(round.total).toLocaleString()}</span>
+                    <span className={`badge ${ROUND_STATUS_STYLE[round.status] || ROUND_STATUS_STYLE.new}`}>{statusLabel(round.status)}</span>
+                  </p>
                   {round.items.map((i, idx) => (
                     <div key={idx} className="flex justify-between text-sm">
                       <span>{i.quantity}x {i.name}</span>
                       <span>Rs. {Number(i.total_price).toLocaleString()}</span>
                     </div>
                   ))}
+                  {/* Round total = subtotal + tax — shown so it's never a mystery
+                      why the round total doesn't match the sum of item prices. */}
+                  <div className="mt-1 flex justify-between text-xs text-[var(--text-tertiary)]">
+                    <span>Subtotal Rs. {Number(round.subtotal).toLocaleString()} + Tax Rs. {Number(round.tax).toLocaleString()}</span>
+                  </div>
                 </div>
               ))
+            )}
+            {bill.rounds.length > 0 && (
+              <div className="space-y-1 border-t border-[var(--border-light)] pt-3 text-sm text-[var(--text-secondary)]">
+                <div className="flex justify-between"><span>Subtotal</span><span>Rs. {billSubtotal.toLocaleString()}</span></div>
+                <div className="flex justify-between"><span>Tax</span><span>Rs. {billTax.toLocaleString()}</span></div>
+              </div>
             )}
             <div className="flex justify-between border-t border-[var(--border)] pt-3 text-base font-semibold text-[var(--text-primary)]">
               <span>Grand Total</span>

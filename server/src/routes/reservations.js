@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
+import { sendReply } from '../services/whatsapp.js';
 
 const router = Router();
 router.use(authenticate);
@@ -22,7 +23,23 @@ router.put('/:id/status', async (req, res, next) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: { message: 'Reservation not found' } });
     }
-    res.json({ reservation: result.rows[0] });
+    const reservation = result.rows[0];
+    res.json({ reservation });
+
+    // A cancelled booking is the one transition a guest genuinely needs to
+    // hear about unprompted — they may be planning their evening around it
+    // (audit I6). 'seated'/'completed'/'no_show' aren't messaged: the guest
+    // is either already there or the moment has passed either way.
+    if (data.status === 'cancelled') {
+      const when = new Date(reservation.reserved_for).toLocaleString('en-PK', {
+        timeZone: 'Asia/Karachi', dateStyle: 'medium', timeStyle: 'short',
+      });
+      sendReply(
+        reservation.customer_phone,
+        `We're sorry, but your table booking for ${when} has been cancelled by the restaurant. Please contact us if you'd like to rebook.`,
+        req.user.tenant_id,
+      ).catch((err) => console.error('[whatsapp] reservation-cancelled message failed:', err.message));
+    }
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
