@@ -129,8 +129,9 @@ function CouponFormModal({ onClose, onCreated }) {
       if (form.min_order_amount) payload.min_order_amount = Number(form.min_order_amount);
       if (form.max_discount_amount) payload.max_discount_amount = Number(form.max_discount_amount);
       if (form.first_order_only) payload.first_order_only = true;
-      await api.createCoupon(payload);
+      const res = await api.createCoupon(payload);
       onCreated();
+      toast.success(`Coupon ${res.coupon.code} created`);
     } catch (err) {
       setError(err.message);
     } finally {

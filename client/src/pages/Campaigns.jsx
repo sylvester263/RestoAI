@@ -44,6 +44,7 @@ export default function Campaigns() {
       setShowForm(false);
       setForm({ name: '', message_template: '' });
       load();
+      toast.success(`Campaign "${form.name}" created`);
     } catch (err) {
       toast.error(err.message);
     }
@@ -86,6 +87,12 @@ export default function Campaigns() {
         if (res.campaign.status !== 'sending') {
           clearInterval(interval);
           setActionLoading('');
+          if (res.campaign.status === 'completed') {
+            const { sent, failed } = res.stats;
+            toast.success(failed > 0 ? `Campaign sent — ${sent} delivered, ${failed} failed` : `Campaign sent to ${sent} recipient${sent === 1 ? '' : 's'}`);
+          } else if (res.campaign.status === 'failed') {
+            toast.error('Campaign failed to send');
+          }
         }
       } catch {
         clearInterval(interval);

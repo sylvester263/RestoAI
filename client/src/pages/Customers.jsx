@@ -110,11 +110,13 @@ function CustomerProfile({ id, onTagsChanged }) {
 
   async function handleAddTag() {
     if (!newTag.trim()) return;
+    const tag = newTag.trim().toLowerCase();
     try {
-      await api.addCustomerTag(id, newTag.trim().toLowerCase());
+      await api.addCustomerTag(id, tag);
       setNewTag('');
       load();
       onTagsChanged();
+      toast.success(`Tag "${tag}" added`);
     } catch (err) {
       toast.error(err.message);
     }

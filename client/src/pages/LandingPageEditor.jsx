@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../lib/api';
+import { toast } from '../components/ui/toast';
 import { useAuth } from '../contexts/AuthContext';
 import { TEMPLATES, TEMPLATE_CONFIGS } from './public/landing/templates';
 import { Hero, About, MenuHighlights, Gallery, Testimonials, HoursLocation, Contact } from './public/landing/Sections';
@@ -103,7 +104,12 @@ export default function LandingPageEditor() {
     }));
   }
 
-  const handleSave = useCallback(async () => {
+  // Returns whether the save succeeded, rather than throwing, so a plain
+  // `onClick={handleSave}` (the event object lands in the unused arg) never
+  // produces an unhandled rejection, while handlePublishToggle can still
+  // check the result before publishing on top of it.
+  const handleSave = useCallback(async (opts) => {
+    const silent = opts === true || opts?.silent === true;
     setSaving(true);
     setError('');
     try {
@@ -113,8 +119,11 @@ export default function LandingPageEditor() {
         content,
         theme: { accent_color: accentColor },
       });
+      if (!silent) toast.success('Draft saved');
+      return true;
     } catch (err) {
       setError(err.message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -124,9 +133,13 @@ export default function LandingPageEditor() {
     setSaving(true);
     setError('');
     try {
-      await handleSave();
+      // Save silently here — the toast below covers the whole action, so a
+      // separate "Draft saved" right before "Published" would just be noise.
+      const saved = await handleSave(true);
+      if (!saved) return;
       const res = await api.publishLandingPage(!published);
       setPublished(!!res.landing_page.published);
+      toast.success(res.landing_page.published ? 'Your site is live' : 'Site unpublished');
     } catch (err) {
       setError(err.message);
     } finally {

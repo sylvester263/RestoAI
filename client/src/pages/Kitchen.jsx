@@ -4,18 +4,25 @@ import { useAuth } from '../contexts/AuthContext';
 import { Skeleton } from '../components/ui/Skeleton';
 import usePolling from '../hooks/usePolling';
 import useEvents from '../hooks/useEvents';
-import { orderTypeLabel } from '../lib/orderType';
+import { orderTypeLabel, statusLabel } from '../lib/orderType';
 import CancelOrderModal from '../components/CancelOrderModal';
 import { toast } from '../components/ui/toast';
 import { ChefHat, Clock, CheckCircle2, Flame, AlertCircle, XCircle } from 'lucide-react';
 
+// Presentation only (icon/color) — the label text itself comes from
+// statusLabel() so it can never drift from what Orders.jsx shows for the
+// same status (audit I7).
 const STATUS_CONFIG = {
-  new: { icon: AlertCircle, color: 'border-blue-400 bg-blue-50', label: 'New', btnColor: 'bg-blue-600 hover:bg-blue-700' },
-  confirmed: { icon: Clock, color: 'border-yellow-400 bg-yellow-50', label: 'Confirmed', btnColor: 'bg-yellow-600 hover:bg-yellow-700' },
-  preparing: { icon: Flame, color: 'border-orange-400 bg-orange-50', label: 'Preparing', btnColor: 'bg-orange-600 hover:bg-orange-700' },
+  new: { icon: AlertCircle, color: 'border-blue-400 bg-blue-50', btnColor: 'bg-blue-600 hover:bg-blue-700' },
+  confirmed: { icon: Clock, color: 'border-yellow-400 bg-yellow-50', btnColor: 'bg-yellow-600 hover:bg-yellow-700' },
+  preparing: { icon: Flame, color: 'border-orange-400 bg-orange-50', btnColor: 'bg-orange-600 hover:bg-orange-700' },
 };
 
 const NEXT_STATUS = { new: 'confirmed', confirmed: 'preparing', preparing: 'ready' };
+
+// What tapping the button actually does, in the cook's words — not the
+// system's status code (audit I7: "raw codes on badges and buttons").
+const ADVANCE_VERB = { new: 'Confirm order', confirmed: 'Start preparing', preparing: 'Mark ready' };
 
 export default function Kitchen() {
   const { user } = useAuth();
@@ -101,7 +108,7 @@ export default function Kitchen() {
                     {order.table_number && (
                       <span className="badge bg-purple-100 text-purple-700">Table {order.table_number}</span>
                     )}
-                    <span className="badge bg-white/50 text-gray-700">{config.label}</span>
+                    <span className="badge bg-white/50 text-gray-700">{statusLabel(order.status)}</span>
                   </div>
                   <span className="flex items-center gap-2 text-xs text-gray-500">
                     <Clock className="h-3 w-3" />
@@ -149,7 +156,7 @@ export default function Kitchen() {
                       onClick={() => advanceStatus(order)}
                       className={`rounded-lg px-3 py-1.5 text-xs font-medium text-white ${config.btnColor} transition-colors`}
                     >
-                      {order.status === 'preparing' ? 'Mark Ready' : `→ ${NEXT_STATUS[order.status]}`}
+                      {ADVANCE_VERB[order.status]}
                     </button>
                   )}
                 </div>

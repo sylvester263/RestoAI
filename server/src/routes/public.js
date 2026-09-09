@@ -9,7 +9,7 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
-import { sendReply, orderPlacedMessage } from '../services/whatsapp.js';
+import { sendReply, orderPlacedMessage, getStatusMessage } from '../services/whatsapp.js';
 import { friendlyValidationMessage } from '../utils/validation-messages.js';
 import { orderTypeSql } from '../utils/order-type.js';
 import { generateRecommendation } from '../services/ai-agent.js';
@@ -285,12 +285,18 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Order not found' } });
     }
     const phone = (req.query.phone || '').toString().trim();
+    // Rider name rides along for out_for_delivery — the tracking page's
+    // status_message names them, same as the WhatsApp message does.
     const result = await query(
       `SELECT o.id, o.branch_id, o.order_number, o.status, o.subtotal, o.tax, o.delivery_fee, o.total,
-              o.delivery_address, o.payment_method, o.notes, o.created_at, o.updated_at, c.phone as customer_phone,
-              ${orderTypeSql('o')} AS order_type
+              o.delivery_address, o.payment_method, o.notes, o.cancellation_reason, o.created_at, o.updated_at,
+              c.phone as customer_phone, ${orderTypeSql('o')} AS order_type, ra.rider_name
        FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
+       LEFT JOIN LATERAL (
+         SELECT r.name AS rider_name FROM rider_assignments x JOIN riders r ON r.id = x.rider_id
+         WHERE x.order_id = o.id ORDER BY x.assigned_at DESC LIMIT 1
+       ) ra ON true
        WHERE o.tenant_id = $1 AND o.id = $2`,
       [req.tenant.id, req.params.orderId],
     );
@@ -315,8 +321,16 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
       }
     }
 
-    const { customer_phone, branch_id, ...orderFields } = order;
-    res.json({ order: { ...orderFields, items: itemsRes.rows, eta } });
+    // Same sentence the customer already gets on WhatsApp for this exact
+    // status — one wording, shown on two channels, instead of a second copy
+    // that could drift from it (audit I8).
+    const statusMessage = getStatusMessage({
+      status: order.status, orderType: order.order_type, riderName: order.rider_name,
+      orderNumber: order.order_number, reason: order.cancellation_reason,
+    });
+
+    const { customer_phone, branch_id, rider_name, ...orderFields } = order;
+    res.json({ order: { ...orderFields, items: itemsRes.rows, eta, status_message: statusMessage, rider_name: rider_name || null } });
   } catch (err) {
     next(err);
   }

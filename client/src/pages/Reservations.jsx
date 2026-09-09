@@ -55,6 +55,7 @@ export default function Reservations() {
     try {
       await api.updateReservationStatus(id, status);
       load();
+      toast.success(`Reservation marked ${status.replace('_', ' ')}`);
     } catch (err) {
       toast.error(err.message);
     }

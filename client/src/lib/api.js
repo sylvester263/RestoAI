@@ -15,10 +15,18 @@ function apiError(message, status, details) {
 }
 
 async function parseResponse(res) {
+  // A 204 (or any other successful response with no/non-JSON body — several
+  // DELETE routes send exactly this) has nothing to parse. Pre-existing bug
+  // fixed here: res.json() throws on an empty body, and the old catch block
+  // treated that as a failure regardless of res.ok — so removing a customer
+  // tag, deleting a menu item, or removing its photo always looked like it
+  // failed to the user even though the server had already succeeded.
+  if (res.status === 204) return null;
   let data;
   try {
     data = await res.json();
   } catch {
+    if (res.ok) return null;
     if (res.status === 429) throw apiError('Too many requests — please wait a moment and try again.', 429);
     throw apiError(`Request failed (${res.status})`, res.status);
   }

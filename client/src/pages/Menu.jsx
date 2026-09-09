@@ -16,6 +16,7 @@ export default function Menu() {
   const [imgUploading, setImgUploading] = useState(false);
   const [recipe, setRecipe] = useState([]); // [{ ingredient_id, quantity_required, name, unit }]
   const [recipeSaving, setRecipeSaving] = useState(false);
+  const [itemSaving, setItemSaving] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function Menu() {
   }, []);
 
   async function handleSave() {
+    if (itemSaving) return; // guards the modal's Save button against a double-click double-submit
     const payload = {
       ...form,
       price: Number(form.price),
@@ -37,17 +39,22 @@ export default function Menu() {
       category_id: form.category_id || undefined,
     };
 
+    setItemSaving(true);
     try {
       if (editing === 'new') {
         const res = await api.createMenuItem(payload);
         setItems((prev) => [...prev, res.item]);
+        toast.success(`"${res.item.name}" added to the menu`);
       } else {
         const res = await api.updateMenuItem(editing.id, payload);
         setItems((prev) => prev.map((i) => (i.id === editing.id ? res.item : i)));
+        toast.success(`"${res.item.name}" saved`);
       }
       setEditing(null);
     } catch (err) {
       toast.error(err.message);
+    } finally {
+      setItemSaving(false);
     }
   }
 
@@ -293,8 +300,8 @@ export default function Menu() {
               )}
             </div>
             <div className="mt-6 flex justify-end gap-3">
-              <button onClick={() => setEditing(null)} className="btn-secondary">Cancel</button>
-              <button onClick={handleSave} className="btn-primary">Save</button>
+              <button onClick={() => setEditing(null)} className="btn-secondary" disabled={itemSaving}>Cancel</button>
+              <button onClick={handleSave} className="btn-primary" disabled={itemSaving}>{itemSaving ? 'Saving...' : 'Save'}</button>
             </div>
           </div>
         </div>

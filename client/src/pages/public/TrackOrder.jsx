@@ -3,7 +3,7 @@ import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getIdentity } from '../../lib/publicOrderStore';
 import { subscribeToPush, pushSupported } from '../../lib/push';
-import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell, Gift, Copy, Check, Bike } from 'lucide-react';
+import { CheckCircle2, Clock, Flame, PackageCheck, XCircle, AlertCircle, Star, Bell, Gift, Copy, Check, Bike, Phone } from 'lucide-react';
 
 // The stepper follows the order's lifecycle. `order_type` is decided by the
 // server (utils/order-type.js) and sent on the tracking payload — only
@@ -19,6 +19,13 @@ function stepsFor(orderType) {
   if (orderType === 'delivery') steps.push({ key: 'out_for_delivery', label: 'Out for delivery', icon: Bike });
   steps.push({ key: 'delivered', label: orderType === 'delivery' ? 'Delivered' : orderType === 'dine_in' ? 'Served' : 'Collected', icon: CheckCircle2 });
   return steps;
+}
+
+// The word for "this order is fully done" changes with how it was fulfilled.
+const COMPLETION_VERB = { delivery: 'Delivered', dine_in: 'Served', pickup: 'Collected', counter: 'Collected' };
+
+function formatTime(iso) {
+  return new Date(iso).toLocaleTimeString('en-PK', { timeZone: 'Asia/Karachi', hour: 'numeric', minute: '2-digit' });
 }
 
 // What the customer still has to do about money, in their words.
@@ -39,10 +46,17 @@ export default function TrackOrder() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [restaurantPhone, setRestaurantPhone] = useState(null);
   // True while the last refresh failed for a transient reason (rate limit,
   // network blip). The order we already have stays on screen; we keep
   // retrying with a longer gap. Only a real 404 means "not found".
   const [refreshTrouble, setRefreshTrouble] = useState(false);
+
+  // One-time fetch, not part of the 10s poll — a restaurant's phone number
+  // doesn't change mid-order, so this must never repeat on every refresh.
+  useEffect(() => {
+    publicApi.getRestaurant(tenantSlug).then((res) => setRestaurantPhone(res.restaurant?.phone || null)).catch(() => {});
+  }, [tenantSlug]);
 
   useEffect(() => {
     if (!phone) {
@@ -111,7 +125,15 @@ export default function TrackOrder() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
         <XCircle className="h-10 w-10 text-red-500" />
-        <p className="font-medium text-[var(--text-primary)]">This order was cancelled</p>
+        <p className="font-medium text-[var(--text-primary)]">Order #{order.order_number} was cancelled</p>
+        {order.cancellation_reason && (
+          <p className="max-w-xs text-sm text-[var(--text-secondary)]">{order.cancellation_reason}</p>
+        )}
+        {restaurantPhone && (
+          <a href={`tel:${restaurantPhone}`} className="flex items-center gap-1.5 text-sm text-brand-600 hover:underline">
+            <Phone className="h-3.5 w-3.5" /> Call the restaurant: {restaurantPhone}
+          </a>
+        )}
         <Link to={`/order/${tenantSlug}`} className="text-sm text-brand-600 hover:underline">Back to menu</Link>
       </div>
     );
@@ -143,11 +165,19 @@ export default function TrackOrder() {
               </div>
             </div>
           </div>
-        ) : (
+        ) : order.status === 'delivered' ? (
           <>
-            <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Order #{order.order_number}</h1>
-            <p className="mb-6 text-sm text-[var(--text-secondary)]">Tracking your order</p>
+            <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">{COMPLETION_VERB[order.order_type] || 'Delivered'} at {formatTime(order.updated_at)}</h1>
+            <p className="mb-6 text-sm text-[var(--text-secondary)]">Order #{order.order_number} · Thank you for ordering with us!</p>
           </>
+        ) : (
+          <div className="mb-6">
+            <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Order #{order.order_number}</h1>
+            <p className="text-sm text-[var(--text-secondary)]">Tracking your order</p>
+            {order.status_message && (
+              <p className="mt-1 text-sm text-[var(--text-primary)]">{order.status_message}</p>
+            )}
+          </div>
         )}
 
         {refreshTrouble && (
@@ -226,6 +256,13 @@ export default function TrackOrder() {
         )}
 
         <ReferralCard tenantSlug={tenantSlug} phone={phone} />
+
+        {restaurantPhone && order.status !== 'delivered' && (
+          <p className="mt-4 text-center text-xs text-[var(--text-tertiary)]">
+            Question about your order?{' '}
+            <a href={`tel:${restaurantPhone}`} className="text-brand-600 hover:underline">Call the restaurant: {restaurantPhone}</a>
+          </p>
+        )}
       </div>
     </div>
   );
