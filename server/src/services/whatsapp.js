@@ -407,7 +407,7 @@ export async function sendReply(phone, text, tenantId) {
 // comes from utils/order-type.js — never re-derive it here. Returns null for
 // statuses that should not message the customer (e.g. 'new' — handled by
 // orderPlacedMessage at checkout).
-export function getStatusMessage({ status, orderType = 'delivery', riderName = null }) {
+export function getStatusMessage({ status, orderType = 'delivery', riderName = null, orderNumber = null, reason = null }) {
   switch (status) {
     case 'confirmed':
       return "Order confirmed ✅ We're getting started!";
@@ -437,8 +437,13 @@ export function getStatusMessage({ status, orderType = 'delivery', riderName = n
       return orderType === 'delivery'
         ? 'Delivered! Enjoy your meal 🍽️'
         : 'Enjoy your meal! 🍽️ Thank you for ordering with us.';
-    case 'cancelled':
-      return 'Your order has been cancelled. Sorry for the inconvenience.';
+    case 'cancelled': {
+      // Always say which order and, when staff gave one, why.
+      const which = orderNumber ? `Your order #${orderNumber}` : 'Your order';
+      return reason
+        ? `${which} has been cancelled — ${reason}. Sorry for the inconvenience; please contact us if you'd like to reorder.`
+        : `${which} has been cancelled. Sorry for the inconvenience; please contact us if you'd like to reorder.`;
+    }
     default:
       return null;
   }
@@ -475,7 +480,7 @@ export async function notifyStatusChange(orderId, tenantId, newStatus) {
     // One lookup gives us the phone, the fields order type is derived from,
     // and the most recent rider (for the out-for-delivery message).
     const res = await query(
-      `SELECT c.phone, o.branch_id, o.table_session_id, o.delivery_address, o.channel, ra.rider_name
+      `SELECT c.phone, o.branch_id, o.table_session_id, o.delivery_address, o.channel, o.order_number, o.cancellation_reason, ra.rider_name
        FROM orders o
        LEFT JOIN customers c ON o.customer_id = c.id
        LEFT JOIN LATERAL (
@@ -489,7 +494,10 @@ export async function notifyStatusChange(orderId, tenantId, newStatus) {
     const phone = row?.phone;
     if (!phone) return;
 
-    let template = getStatusMessage({ status: newStatus, orderType: getOrderType(row), riderName: row.rider_name });
+    let template = getStatusMessage({
+      status: newStatus, orderType: getOrderType(row), riderName: row.rider_name,
+      orderNumber: row.order_number, reason: row.cancellation_reason,
+    });
     if (!template) return;
 
     // impl-17: recomputed at this exact moment, since the queue may have

@@ -39,6 +39,10 @@ export default function TrackOrder() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  // True while the last refresh failed for a transient reason (rate limit,
+  // network blip). The order we already have stays on screen; we keep
+  // retrying with a longer gap. Only a real 404 means "not found".
+  const [refreshTrouble, setRefreshTrouble] = useState(false);
 
   useEffect(() => {
     if (!phone) {
@@ -49,17 +53,27 @@ export default function TrackOrder() {
 
     let cancelled = false;
     let timeoutId;
+    let haveOrder = false;
 
     async function load() {
       try {
         const res = await publicApi.getOrderStatus(tenantSlug, orderId, phone);
         if (cancelled) return;
+        haveOrder = true;
         setOrder(res.order);
+        setRefreshTrouble(false);
         if (!['delivered', 'cancelled'].includes(res.order.status)) {
           timeoutId = setTimeout(load, 10000);
         }
-      } catch {
-        if (!cancelled) setError(true);
+      } catch (err) {
+        if (cancelled) return;
+        if (err.status === 404 && !haveOrder) {
+          setError(true);
+        } else {
+          // 429, 5xx, offline — never turn a working order into "not found".
+          setRefreshTrouble(true);
+          timeoutId = setTimeout(load, err.status === 429 ? 30000 : 15000);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -74,11 +88,21 @@ export default function TrackOrder() {
 
   if (loading) return <div className="flex items-center justify-center py-20">Loading order...</div>;
 
-  if (error || !order) {
+  if (error) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="text-[var(--text-secondary)]">We couldn't find that order.</p>
         <Link to={`/order/${tenantSlug}`} className="text-sm text-brand-600 hover:underline">Back to menu</Link>
+      </div>
+    );
+  }
+
+  if (!order) {
+    // First load failed for a transient reason — say so, keep retrying.
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="font-medium text-[var(--text-primary)]">Having trouble loading your order right now.</p>
+        <p className="text-sm text-[var(--text-secondary)]">Your order is safe — we're retrying automatically.</p>
       </div>
     );
   }
@@ -124,6 +148,13 @@ export default function TrackOrder() {
             <h1 className="mb-1 text-2xl font-bold text-[var(--text-primary)]">Order #{order.order_number}</h1>
             <p className="mb-6 text-sm text-[var(--text-secondary)]">Tracking your order</p>
           </>
+        )}
+
+        {refreshTrouble && (
+          <div className="mb-4 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <Clock className="h-4 w-4 shrink-0" />
+            Having trouble refreshing — showing the last update we received. Retrying automatically…
+          </div>
         )}
 
         <NotifyBanner tenantSlug={tenantSlug} phone={phone} status={order.status} />

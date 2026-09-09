@@ -17,6 +17,7 @@ export default function Riders() {
   const [riders, setRiders] = useState([]);
   const [unassigned, setUnassigned] = useState([]);
   const [active, setActive] = useState([]); // assignments in progress, across riders
+  const [staleActiveCount, setStaleActiveCount] = useState(0); // undelivered but >24h old, hidden from the list
   const [reconciliations, setReconciliations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showNewRider, setShowNewRider] = useState(false);
@@ -36,11 +37,17 @@ export default function Riders() {
       setReconciliations(reconRes.reconciliations);
 
       const assignmentLists = await Promise.all(ridersRes.riders.map((r) => api.getRiderAssignments(r.id)));
-      const activeAssignments = ridersRes.riders.flatMap((r, i) =>
+      const undelivered = ridersRes.riders.flatMap((r, i) =>
         assignmentLists[i].assignments
           .filter((a) => !a.delivered_at)
           .map((a) => ({ ...a, rider_name: r.name })));
-      setActive(activeAssignments);
+      // "Active" means today's work. An undelivered assignment older than a
+      // day is stale (test data, a forgotten order) and would clutter this
+      // list forever; it stays reachable from the Orders page (audit C9).
+      const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      const fresh = undelivered.filter((a) => new Date(a.assigned_at).getTime() > cutoff);
+      setActive(fresh);
+      setStaleActiveCount(undelivered.length - fresh.length);
     } catch (err) {
       console.error(err);
     } finally {
@@ -214,6 +221,11 @@ export default function Riders() {
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold text-[var(--text-secondary)]"><Truck className="h-4 w-4" /> Active Deliveries</h2>
           <div className="max-h-96 space-y-2 overflow-y-auto">
             {active.length === 0 && <EmptyState icon={Truck} title="No active deliveries" description="Deliveries in progress will show here." />}
+            {staleActiveCount > 0 && (
+              <p className="text-xs text-[var(--text-tertiary)]">
+                {staleActiveCount} older undelivered assignment{staleActiveCount > 1 ? 's' : ''} hidden (over a day old) — find and cancel them on the Orders page.
+              </p>
+            )}
             {active.map((a) => (
               <div key={a.id} className="rounded-lg border border-[var(--border-light)] p-3">
                 <div className="mb-1 flex items-center justify-between">

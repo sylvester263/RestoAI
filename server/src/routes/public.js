@@ -75,11 +75,20 @@ router.get('/:tenantSlug', (req, res) => {
 // real enforcement point, so this list is display-only.
 router.get('/:tenantSlug/menu', async (req, res, next) => {
   try {
+    // Ratings ride along on each item. The menu page used to fetch them with
+    // one request per item, which alone spent ~half of the public rate-limit
+    // budget on a single page view (audit C5) — one query, one response.
     const result = await query(
       `SELECT mi.id, mi.name, mi.name_urdu, mi.description, mi.price, mi.image_url, mi.tags, mi.is_available,
-              mc.name as category_name, mc.sort_order
+              mc.name as category_name, mc.sort_order,
+              COALESCE(rv.rating_count, 0)::int AS rating_count,
+              rv.rating_average
        FROM menu_items mi
        LEFT JOIN menu_categories mc ON mi.category_id = mc.id
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*) AS rating_count, ROUND(AVG(r.rating)::numeric, 1)::float AS rating_average
+         FROM reviews r WHERE r.tenant_id = mi.tenant_id AND r.menu_item_id = mi.id
+       ) rv ON true
        WHERE mi.tenant_id = $1
        ORDER BY mc.sort_order, mi.name`,
       [req.tenant.id],
@@ -174,7 +183,7 @@ router.post('/:tenantSlug/orders', async (req, res, next) => {
       return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     if (err instanceof OrderError) {
-      return res.status(err.status).json({ error: { message: err.message } });
+      return res.status(err.status).json({ error: { message: err.message, ...(err.details || {}) } });
     }
     next(err);
   }
@@ -202,7 +211,7 @@ router.get('/:tenantSlug/coupons/:code/preview', async (req, res, next) => {
     res.json(result);
   } catch (err) {
     if (err instanceof OrderError) {
-      return res.status(err.status).json({ error: { message: err.message } });
+      return res.status(err.status).json({ error: { message: err.message, ...(err.details || {}) } });
     }
     next(err);
   }
@@ -243,7 +252,7 @@ router.post('/:tenantSlug/coupons/validate', async (req, res, next) => {
       return res.status(400).json({ error: { message: friendlyValidationMessage(err) } });
     }
     if (err instanceof OrderError) {
-      return res.status(err.status).json({ error: { message: err.message } });
+      return res.status(err.status).json({ error: { message: err.message, ...(err.details || {}) } });
     }
     next(err);
   }

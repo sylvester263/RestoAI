@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
 import { getCart, addToCart, updateCartQuantity } from '../../lib/publicOrderStore';
-import { ShoppingCart, Plus, Minus, CalendarCheck, Star, Gift } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, CalendarCheck, Star, Gift, Trash2 } from 'lucide-react';
 import AIAssistantWidget from './AIAssistantWidget';
 
 // Distinct muted colors for category placeholders when a photo isn't set yet.
@@ -29,29 +29,24 @@ export default function PublicMenu() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [cart, setCart] = useState([]);
-  const [ratings, setRatings] = useState({});
 
   useEffect(() => {
     setCart(getCart(tenantSlug));
+    // Two requests for the whole page. Ratings come inlined on each menu
+    // item — never one request per item (audit C5: that pattern burned the
+    // shared public rate-limit budget and locked customers out of tracking).
     Promise.all([publicApi.getRestaurant(tenantSlug), publicApi.getMenu(tenantSlug)])
       .then(([r, m]) => {
         setRestaurant(r.restaurant);
         setItems(m.items);
-        Promise.all(
-          m.items.map((item) =>
-            publicApi.getItemReviews(tenantSlug, item.id)
-              .then((res) => [item.id, res])
-              .catch(() => [item.id, null]),
-          ),
-        ).then((pairs) => {
-          const map = {};
-          for (const [id, res] of pairs) if (res && res.count > 0) map[id] = res;
-          setRatings(map);
-        });
       })
       .catch(() => setNotFound(true))
       .finally(() => setLoading(false));
   }, [tenantSlug]);
+
+  function handleRemove(item) {
+    setCart(updateCartQuantity(tenantSlug, item.id, 0));
+  }
 
   function quantityOf(itemId) {
     return cart.find((i) => i.menu_item_id === itemId)?.quantity || 0;
@@ -148,14 +143,24 @@ export default function PublicMenu() {
                           <p className={`text-sm font-semibold ${item.is_available ? 'text-brand-600' : 'text-[var(--text-tertiary)]'}`}>
                             Rs. {Number(item.price).toLocaleString()}
                           </p>
-                          {ratings[item.id] && (
+                          {item.rating_count > 0 && (
                             <span className="flex items-center gap-0.5 text-xs text-[var(--text-secondary)]">
                               <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                              {ratings[item.id].average} ({ratings[item.id].count})
+                              {item.rating_average} ({item.rating_count})
                             </span>
                           )}
                         </div>
+                        {!item.is_available && qty > 0 && (
+                          <p className="mt-1 text-xs text-red-600">Sold out since you added it — remove it to continue.</p>
+                        )}
                       </div>
+                      {/* A sold-out item that is already in the cart must still be removable,
+                          otherwise the customer is stuck with an order that can never be placed. */}
+                      {!item.is_available && qty > 0 && (
+                        <button onClick={() => handleRemove(item)} className="btn-secondary shrink-0 text-xs text-red-600">
+                          <Trash2 className="h-4 w-4" /> Remove
+                        </button>
+                      )}
                       {item.is_available && (
                         qty === 0 ? (
                           <button onClick={() => handleAdd(item)} className="btn-primary shrink-0">

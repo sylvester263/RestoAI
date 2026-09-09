@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { publicApi } from '../../lib/api';
-import { getCart, clearCart, getIdentity, setIdentity } from '../../lib/publicOrderStore';
+import { getCart, clearCart, getIdentity, setIdentity, updateCartQuantity } from '../../lib/publicOrderStore';
 import { toast } from '../../components/ui/toast';
-import { ArrowLeft, Gift, Tag, X } from 'lucide-react';
+import { ArrowLeft, Gift, Tag, X, Plus, Minus, Trash2 } from 'lucide-react';
 
 export default function Checkout() {
   const { tenantSlug } = useParams();
@@ -44,6 +44,17 @@ export default function Checkout() {
     }, 500);
     return () => clearTimeout(timer);
   }, [tenantSlug, form.phone]);
+
+  // Cart edits from checkout itself — the customer must be able to fix the
+  // cart here, not only from the menu (audit C6).
+  function changeQuantity(item, delta) {
+    const updated = updateCartQuantity(tenantSlug, item.menu_item_id, item.quantity + delta);
+    setCart(updated);
+    if (updated.length === 0) navigate(`/order/${tenantSlug}`);
+  }
+  function removeItem(item) {
+    changeQuantity(item, -item.quantity);
+  }
 
   const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const tax = Math.round(subtotal * 0.05);
@@ -107,6 +118,14 @@ export default function Checkout() {
       if (coupon && err.message.toLowerCase().includes('coupon')) {
         setCoupon(null);
         setCouponError(err.message);
+      } else if (err.details?.unavailable_item_ids?.length) {
+        // Sold out between adding and paying: drop those lines so the next
+        // attempt can succeed, and say exactly what happened.
+        let updated = cart;
+        for (const id of err.details.unavailable_item_ids) updated = updateCartQuantity(tenantSlug, id, 0);
+        setCart(updated);
+        toast.error(`${err.message} We've removed it from your cart.`);
+        if (updated.length === 0) navigate(`/order/${tenantSlug}`);
       } else {
         toast.error(err.message);
       }
@@ -132,8 +151,20 @@ export default function Checkout() {
                 {item.image_url && (
                   <img src={item.image_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                 )}
-                <span className="flex-1">{item.quantity}x {item.name}</span>
-                <span>Rs. {(item.price * item.quantity).toLocaleString()}</span>
+                <span className="flex-1">{item.name}</span>
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => changeQuantity(item, -1)} aria-label={`One less ${item.name}`} className="rounded-md border border-[var(--border)] p-1 text-[var(--text-secondary)] hover:bg-[var(--surface-1)]">
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className="w-5 text-center font-medium">{item.quantity}</span>
+                  <button type="button" onClick={() => changeQuantity(item, 1)} aria-label={`One more ${item.name}`} className="rounded-md border border-[var(--border)] p-1 text-[var(--text-secondary)] hover:bg-[var(--surface-1)]">
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+                <span className="w-20 text-right">Rs. {(item.price * item.quantity).toLocaleString()}</span>
+                <button type="button" onClick={() => removeItem(item)} aria-label={`Remove ${item.name}`} className="rounded-md p-1 text-[var(--text-tertiary)] hover:bg-red-50 hover:text-red-600">
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
             ))}
           </div>

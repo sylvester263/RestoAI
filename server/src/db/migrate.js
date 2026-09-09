@@ -376,6 +376,9 @@ async function migrate() {
     // counter orders never enter it; utils/order-type.js is the gatekeeper.
     await client.query(`ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_status_check;`);
     await client.query(`ALTER TABLE orders ADD CONSTRAINT orders_status_check CHECK (status IN ('new','confirmed','preparing','ready','out_for_delivery','delivered','cancelled'));`);
+    // Audit C9: staff cancel with a reason; the reason travels in the
+    // customer's cancellation message and stays on the order for the record.
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;`);
 
     // ── Riders, delivery tracking & cash reconciliation (impl-05) ──
     await client.query(`

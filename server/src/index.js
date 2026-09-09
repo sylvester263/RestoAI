@@ -74,10 +74,21 @@ app.use('/api/staff-invites', authLimiter);
 const webhookLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 300 });
 app.use('/api/whatsapp/webhook', webhookLimiter);
 
-// Public customer ordering endpoints (menu browse + checkout + tracking) are
+// Public customer ordering endpoints (menu browse + checkout) are
 // unauthenticated, so they're rate-limited per-IP like the webhook.
-const publicLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100 });
+//
+// Order tracking is deliberately carved out onto its own, more generous
+// limiter: the tracking page polls every 10 s for the life of an order, and
+// under the shared 100/15-min ceiling a customer who browsed the menu and
+// then watched their order for ~7 minutes was locked out — and shown "we
+// couldn't find that order" (audit C5). Now a browse-heavy session can never
+// starve tracking, and vice versa.
+const TRACKING_PATH = /^\/api\/public\/[^/]+\/orders\/[0-9a-f-]{36}$/i;
+const isTrackingRequest = (req) => req.method === 'GET' && TRACKING_PATH.test(req.originalUrl.split('?')[0]);
+const publicLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, skip: isTrackingRequest });
+const trackingLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 600, skip: (req) => !isTrackingRequest(req) });
 app.use('/api/public', publicLimiter);
+app.use('/api/public', trackingLimiter);
 
 // Dine-in table sessions are unauthenticated for the customer-facing paths too.
 const tableSessionLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 150 });

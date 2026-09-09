@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Skeleton } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
-import { toast, confirmAction } from '../components/ui/toast';
+import { toast } from '../components/ui/toast';
+import CancelOrderModal from '../components/CancelOrderModal';
 import { orderTypeLabel, statusLabel, nextStatusFor } from '../lib/orderType';
 import { Search, Filter, ChevronDown, ChevronUp, ShoppingBag, XCircle, Bike } from 'lucide-react';
 
@@ -58,19 +59,10 @@ export default function Orders() {
     });
   }
 
-  async function cancelOrder(order) {
-    const ok = await confirmAction(
-      `Cancel order #${order.order_number}?`,
-      'The customer will be told their order was cancelled. This cannot be undone.',
-    );
-    if (!ok) return;
-    try {
-      await api.updateOrderStatus(order.id, 'cancelled');
-      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: 'cancelled' } : o)));
-      toast.success(`Order #${order.order_number} cancelled — customer notified`);
-    } catch (err) {
-      toast.error(`Couldn't cancel order #${order.order_number}: ${err.message}`);
-    }
+  // Cancelling goes through CancelOrderModal (reason required, customer messaged).
+  const [cancelTarget, setCancelTarget] = useState(null);
+  function onCancelled(updated) {
+    setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, status: 'cancelled', cancellation_reason: updated.cancellation_reason } : o)));
   }
 
   const filtered = orders.filter((o) =>
@@ -193,6 +185,11 @@ export default function Orders() {
                         <span className="mr-1 font-semibold">Customer note:</span>{order.notes}
                       </div>
                     )}
+                    {order.status === 'cancelled' && order.cancellation_reason && (
+                      <div className="col-span-2 rounded-lg border-l-4 border-red-400 bg-red-50 px-3 py-2 text-red-800">
+                        <span className="mr-1 font-semibold">Cancelled:</span>{order.cancellation_reason}
+                      </div>
+                    )}
                   </div>
                   {!['delivered', 'cancelled'].includes(order.status) && (
                     <div className="mt-4 flex items-center gap-3">
@@ -206,7 +203,7 @@ export default function Orders() {
                       )}
                       {!['delivered', 'cancelled'].includes(order.status) && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); cancelOrder(order); }}
+                          onClick={(e) => { e.stopPropagation(); setCancelTarget(order); }}
                           className="btn-secondary text-sm text-red-600 hover:bg-red-50"
                         >
                           <XCircle className="h-4 w-4" /> Cancel order
@@ -227,6 +224,8 @@ export default function Orders() {
           )}
         </div>
       )}
+
+      <CancelOrderModal order={cancelTarget} onClose={() => setCancelTarget(null)} onCancelled={onCancelled} />
     </div>
   );
 }

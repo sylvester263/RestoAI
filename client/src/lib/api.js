@@ -4,16 +4,26 @@ function getToken() {
   return localStorage.getItem('token');
 }
 
+// Errors carry `status` (HTTP code) and `details` (the server's error object)
+// so callers can react to *what* failed — a 404 vs. a 429 vs. a sold-out
+// item — instead of only showing the message.
+function apiError(message, status, details) {
+  const err = new Error(message);
+  err.status = status;
+  err.details = details || null;
+  return err;
+}
+
 async function parseResponse(res) {
   let data;
   try {
     data = await res.json();
   } catch {
-    if (res.status === 429) throw new Error('Too many requests — please wait a moment and try again.');
-    throw new Error(`Request failed (${res.status})`);
+    if (res.status === 429) throw apiError('Too many requests — please wait a moment and try again.', 429);
+    throw apiError(`Request failed (${res.status})`, res.status);
   }
   if (!res.ok) {
-    throw new Error(data.error?.message || 'Request failed');
+    throw apiError(data.error?.message || 'Request failed', res.status, data.error);
   }
   return data;
 }
@@ -117,8 +127,9 @@ export const api = {
   },
   getKitchenOrders: () => request('/orders/kitchen'),
   getOrder: (id) => request(`/orders/${id}`),
-  updateOrderStatus: (id, status) =>
-    request(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
+  // `extra` carries e.g. { reason } when cancelling.
+  updateOrderStatus: (id, status, extra = {}) =>
+    request(`/orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status, ...extra }) }),
   getUnassignedDeliveries: () => request('/orders/deliveries/unassigned'),
   assignRider: (orderId, riderId) =>
     request(`/orders/${orderId}/assign-rider`, { method: 'POST', body: JSON.stringify({ rider_id: riderId || undefined }) }),

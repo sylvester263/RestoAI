@@ -28,6 +28,7 @@ router.get('/:id/token-board', async (req, res, next) => {
        JOIN branches b ON b.id = o.branch_id
        WHERE o.branch_id = $1 AND b.tenant_id = $2 AND o.status = 'ready'
          AND ${orderTypeSql('o')} <> 'delivery'
+         AND o.updated_at > NOW() - INTERVAL '4 hours'
        ORDER BY o.created_at`,
       [req.params.id, tenantId],
     );

@@ -17,9 +17,9 @@ router.use(checkTenantActive);
 // Side effects fired whenever an order's status changes — shared by the
 // kitchen-flow status PATCH below and the rider delivery-status endpoint
 // (riders.js), so there is exactly one place this logic lives.
-export function fireStatusChangeSideEffects(tenantId, order, status, { riderName = null } = {}) {
+export function fireStatusChangeSideEffects(tenantId, order, status, { riderName = null, reason = null } = {}) {
   notifyStatusChange(order.id, tenantId, status).catch(() => {});
-  const pushBody = getStatusMessage({ status, orderType: getOrderType(order), riderName });
+  const pushBody = getStatusMessage({ status, orderType: getOrderType(order), riderName, orderNumber: order.order_number, reason });
   if (pushBody && order.customer_id) {
     sendPushToCustomer(order.customer_id, { title: 'Order update', body: pushBody }).catch(() => {});
   }
@@ -132,7 +132,10 @@ router.get('/', authorize('orders.view'), async (req, res, next) => {
 });
 
 // ── GET /api/orders/kitchen ──
-// Active orders for kitchen display (new, confirmed, preparing)
+// Active orders for kitchen display (new, confirmed, preparing). Anything
+// older than a day that never left these states is stale — a test order, a
+// forgotten one — and would sit on the screen forever; the Orders page still
+// lists it for staff to cancel (audit C9).
 router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
@@ -145,6 +148,7 @@ router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
        LEFT JOIN table_sessions ts ON o.table_session_id = ts.id
        LEFT JOIN restaurant_tables rt ON ts.table_id = rt.id
        WHERE o.tenant_id = $1 AND o.status IN ('new', 'confirmed', 'preparing')
+         AND o.created_at > NOW() - INTERVAL '24 hours'
        GROUP BY o.id, rt.table_number
        ORDER BY o.created_at ASC`,
       [req.user.tenant_id],
@@ -170,6 +174,7 @@ router.get('/deliveries/unassigned', authorize('orders.view'), async (req, res, 
        LEFT JOIN rider_assignments ra ON ra.order_id = o.id
        WHERE o.tenant_id = $1 AND ${orderTypeSql('o')} = 'delivery'
          AND ra.id IS NULL AND o.status IN ('confirmed', 'preparing', 'ready')
+         AND o.created_at > NOW() - INTERVAL '24 hours'
        ORDER BY o.created_at ASC`,
       [req.user.tenant_id],
     );
@@ -214,6 +219,12 @@ router.patch('/:id/status', authorize('orders.status_update'), async (req, res, 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ error: { message: `Invalid status. Must be one of: ${validStatuses.join(', ')}` } });
     }
+    // Cancelling needs a reason: it is stored on the order and goes to the
+    // customer in the cancellation message (audit C9).
+    const reason = typeof req.body.reason === 'string' ? req.body.reason.trim().slice(0, 200) : '';
+    if (status === 'cancelled' && !reason) {
+      return res.status(400).json({ error: { message: 'Please give a reason for cancelling — the customer will see it.' } });
+    }
 
     // out_for_delivery is a delivery-only state: check the order's type
     // before touching it, so a pickup or dine-in order can never be pushed
@@ -229,17 +240,27 @@ router.patch('/:id/status', authorize('orders.status_update'), async (req, res, 
       return res.status(400).json({ error: { message: `Only delivery orders can be marked out for delivery — this is a ${getOrderType(existing.rows[0]).replace('_', '-')} order.` } });
     }
 
-    const result = await query(
-      'UPDATE orders SET status = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2 RETURNING *',
-      [req.user.tenant_id, req.params.id, status],
-    );
+    // Only touch cancellation_reason when actually cancelling — status is
+    // known here in JS, so branch the SQL rather than a $3-typed CASE (which
+    // Postgres can't type-infer when the same param is compared to a text
+    // literal and assigned to a column in the same statement).
+    const result = status === 'cancelled'
+      ? await query(
+          `UPDATE orders SET status = $3, cancellation_reason = $4, updated_at = NOW()
+           WHERE tenant_id = $1 AND id = $2 RETURNING *`,
+          [req.user.tenant_id, req.params.id, status, reason || null],
+        )
+      : await query(
+          'UPDATE orders SET status = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2 RETURNING *',
+          [req.user.tenant_id, req.params.id, status],
+        );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: { message: 'Order not found' } });
     }
     res.json({ order: result.rows[0] });
 
     // Fire-and-forget: WhatsApp/push notification, loyalty, COD payment mark-paid
-    fireStatusChangeSideEffects(req.user.tenant_id, result.rows[0], status);
+    fireStatusChangeSideEffects(req.user.tenant_id, result.rows[0], status, { reason: reason || null });
 
     // Real-time: notify kitchen display and other connected clients
     emit(`kitchen:${req.user.tenant_id}`, 'order:status', { orderId: req.params.id, status });

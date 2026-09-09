@@ -5,7 +5,9 @@ import { Skeleton } from '../components/ui/Skeleton';
 import usePolling from '../hooks/usePolling';
 import useEvents from '../hooks/useEvents';
 import { orderTypeLabel } from '../lib/orderType';
-import { ChefHat, Clock, CheckCircle2, Flame, AlertCircle } from 'lucide-react';
+import CancelOrderModal from '../components/CancelOrderModal';
+import { toast } from '../components/ui/toast';
+import { ChefHat, Clock, CheckCircle2, Flame, AlertCircle, XCircle } from 'lucide-react';
 
 const STATUS_CONFIG = {
   new: { icon: AlertCircle, color: 'border-blue-400 bg-blue-50', label: 'New', btnColor: 'bg-blue-600 hover:bg-blue-700' },
@@ -19,6 +21,7 @@ export default function Kitchen() {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [cancelTarget, setCancelTarget] = useState(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -48,8 +51,9 @@ export default function Kitchen() {
     }
 
     // Reconcile in background — roll back on failure
-    api.updateOrderStatus(order.id, next).catch(() => {
+    api.updateOrderStatus(order.id, next).catch((err) => {
       setOrders(prevOrders);
+      toast.error(`Couldn't update order #${order.order_number}: ${err.message}`);
     });
   }
 
@@ -99,9 +103,17 @@ export default function Kitchen() {
                     )}
                     <span className="badge bg-white/50 text-gray-700">{config.label}</span>
                   </div>
-                  <span className="flex items-center gap-1 text-xs text-gray-500">
+                  <span className="flex items-center gap-2 text-xs text-gray-500">
                     <Clock className="h-3 w-3" />
                     {getElapsedTime(order.created_at)}
+                    <button
+                      onClick={() => setCancelTarget(order)}
+                      title="Cancel this order"
+                      aria-label={`Cancel order #${order.order_number}`}
+                      className="rounded p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <XCircle className="h-4 w-4" />
+                    </button>
                   </span>
                 </div>
 
@@ -146,6 +158,12 @@ export default function Kitchen() {
           })}
         </div>
       )}
+
+      <CancelOrderModal
+        order={cancelTarget}
+        onClose={() => setCancelTarget(null)}
+        onCancelled={(updated) => setOrders((prev) => prev.filter((o) => o.id !== updated.id))}
+      />
     </div>
   );
 }

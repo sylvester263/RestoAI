@@ -8,10 +8,13 @@ import { createPaymentForOrder } from './payments.js';
 import { depleteIngredientsForOrder, autoDisableUnmakeableItems, alertIfCrossedThreshold } from './inventory.js';
 
 export class OrderError extends Error {
-  constructor(status, message) {
+  constructor(status, message, details = null) {
     super(message);
     this.status = status;
     this.expose = true;
+    // Optional machine-readable extras (e.g. which cart items are sold out)
+    // so a client can fix the cart rather than just show the sentence.
+    this.details = details;
   }
 }
 
@@ -48,17 +51,30 @@ export async function resolveOrderItems(tenantId, cartItems) {
 
   const ids = cartItems.map((i) => i.menu_item_id);
   const res = await query(
-    `SELECT id, name, price FROM menu_items WHERE tenant_id = $1 AND id = ANY($2::uuid[]) AND is_available = true`,
+    `SELECT id, name, price, is_available FROM menu_items WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
     [tenantId, ids],
   );
   const byId = new Map(res.rows.map((row) => [row.id, row]));
 
+  // Tell the customer *which* items can't be ordered, and hand the ids back
+  // so the client can drop them from the cart (audit C6: a sold-out item
+  // stuck in the cart used to make checkout impossible).
+  const blocked = cartItems
+    .map((c) => ({ id: c.menu_item_id, row: byId.get(c.menu_item_id) }))
+    .filter(({ row }) => !row || !row.is_available);
+  if (blocked.length > 0) {
+    const names = blocked.map(({ row }) => row?.name).filter(Boolean);
+    const message = names.length === 0
+      ? 'One of the items in your cart is no longer on the menu. Please remove it and try again.'
+      : names.length === 1
+        ? `"${names[0]}" is sold out right now — please remove it from your cart to continue.`
+        : `${names.map((n) => `"${n}"`).join(', ')} are sold out right now — please remove them from your cart to continue.`;
+    throw new OrderError(400, message, { unavailable_item_ids: blocked.map(({ id }) => id) });
+  }
+
   const orderItems = [];
   for (const cartItem of cartItems) {
     const menuItem = byId.get(cartItem.menu_item_id);
-    if (!menuItem) {
-      throw new OrderError(400, `One or more items are no longer available`);
-    }
     const quantity = Math.max(1, Math.min(50, Math.trunc(cartItem.quantity) || 1));
     const unitPrice = parseFloat(menuItem.price);
     orderItems.push({
