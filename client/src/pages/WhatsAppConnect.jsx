@@ -14,7 +14,24 @@ function loadFacebookSdk(appId) {
       return;
     }
     window.fbAsyncInit = function fbAsyncInit() {
-      window.FB.init({ appId, xfbml: false, version: FB_SDK_VERSION });
+      window.FB.init({
+        appId,
+        xfbml: false,
+        version: FB_SDK_VERSION,
+        // Opt out of Chrome's FedCM login path. When FedCM is on (Meta's SDK
+        // defaults it per app from a server-side config when this is unset),
+        // FB.login() hands the request to the browser's FedCM API forwarding
+        // ONLY `scope` — config_id, response_type and extras are dropped, so
+        // Embedded Signup degrades into a generic openid login and Facebook
+        // answers "This app needs at least one supported permission".
+        // Embedded Signup needs the classic popup + WA_EMBEDDED_SIGNUP
+        // postMessage events anyway. `fedCM: false` is read by the SDK's own
+        // init code (connect.facebook.net/en_US/bundle/sdk.js, rev
+        // 1048049033: fedCM === false -> setUseFedCM(false) +
+        // setFedCMExplicitlySet(true)); it is NOT in Meta's FB.init reference
+        // page, so re-check this if the SDK's behavior ever changes.
+        fedCM: false,
+      });
       resolve(window.FB);
     };
     if (document.getElementById('facebook-jssdk')) return; // script tag already inserted, fbAsyncInit will fire
