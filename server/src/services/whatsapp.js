@@ -7,6 +7,7 @@
  */
 import config from '../config.js';
 import { query } from '../db/pool.js';
+import { decrypt } from './encryption.js';
 import { parseOrderMessage, generateRecommendation } from './ai-agent.js';
 import { handleSupportMessage } from './customer-support-agent.js';
 import { handleOwnerMessage } from './business-assistant-agent.js';
@@ -350,21 +351,49 @@ async function finalizeOrder(tenantId, customer, draft) {
   return order;
 }
 
-// ── Helper: resolve which Meta phone_number_id a tenant's messages should
-// send from. impl-30 (Embedded Signup) lets each tenant connect their own
-// number — prefer that; fall back to the single platform-wide env-configured
-// number for tenants that haven't connected one yet (unchanged legacy
-// behavior, e.g. demo/single-tenant deployments before impl-30 is used). ──
-async function resolveSendingPhoneNumberId(tenantId) {
+// ── Helper: resolve which number AND which credential a tenant's messages
+// send with. impl-30 (Embedded Signup) lets each tenant connect their own
+// number, and Meta requires that customer's own business token for it
+// (Tech Providers "use business tokens exclusively") — so a connected tenant
+// gets its own phone_number_id + decrypted token as a pair. Tenants that
+// haven't connected one fall back to the single platform-wide env-configured
+// number and WHATSAPP_TOKEN (unchanged legacy behavior, e.g. demo/single-
+// tenant deployments).
+//
+// A tenant marked connected whose token is missing or undecryptable fails
+// closed (returns null) rather than falling back to the platform number:
+// sending a restaurant's customer messages from a different business's
+// number would be worse than not sending. ──
+async function resolveSendingCredentials(tenantId) {
   if (tenantId) {
     const res = await query(
-      `SELECT whatsapp_phone_number_id FROM tenants WHERE id = $1 AND whatsapp_connection_status = 'connected'`,
+      `SELECT whatsapp_phone_number_id, whatsapp_business_token_encrypted
+       FROM tenants WHERE id = $1 AND whatsapp_connection_status = 'connected'`,
       [tenantId],
     );
-    const id = res.rows[0]?.whatsapp_phone_number_id;
-    if (id) return id;
+    const row = res.rows[0];
+    if (row?.whatsapp_phone_number_id) {
+      if (!row.whatsapp_business_token_encrypted) {
+        console.error(`[whatsapp] tenant ${tenantId} is connected but has no stored business token — cannot send (needs reconnect)`);
+        return null;
+      }
+      try {
+        return {
+          phoneNumberId: row.whatsapp_phone_number_id,
+          token: decrypt(row.whatsapp_business_token_encrypted),
+          isPlatformDefault: false,
+        };
+      } catch (err) {
+        console.error(`[whatsapp] tenant ${tenantId} business token could not be decrypted — cannot send: ${err.message}`);
+        return null;
+      }
+    }
   }
-  return config.whatsapp.phoneNumberId || null;
+  return {
+    phoneNumberId: config.whatsapp.phoneNumberId || null,
+    token: config.whatsapp.token,
+    isPlatformDefault: true,
+  };
 }
 
 // ── Helper: Send reply via WhatsApp Cloud API ──
@@ -372,25 +401,27 @@ async function resolveSendingPhoneNumberId(tenantId) {
 // it's what makes a per-tenant connected number (impl-30) actually used
 // instead of silently falling back to the platform default for every tenant.
 export async function sendReply(phone, text, tenantId) {
-  // In demo mode (no token or placeholder), log to console instead of sending
-  const token = config.whatsapp.token;
-  if (!token || token.startsWith('your-')) {
+  const creds = await resolveSendingCredentials(tenantId);
+  if (!creds) return; // reason already logged
+
+  // In demo mode (platform fallback with no token or placeholder), log to
+  // console instead of sending. A tenant's own connected number is never demo.
+  if (creds.isPlatformDefault && (!creds.token || creds.token.startsWith('your-'))) {
     console.log(`[whatsapp:demo] → ${phone}: ${text.slice(0, 200)}…`);
     return;
   }
 
-  const phoneNumberId = await resolveSendingPhoneNumberId(tenantId);
-  if (!phoneNumberId) {
+  if (!creds.phoneNumberId) {
     console.error(`[whatsapp] no phone_number_id available (tenant ${tenantId || 'unknown'}) — cannot send`);
     return;
   }
 
-  const url = `https://graph.facebook.com/${config.whatsapp.apiVersion}/${phoneNumberId}/messages`;
+  const url = `https://graph.facebook.com/${config.whatsapp.apiVersion}/${creds.phoneNumberId}/messages`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.whatsapp.token}`,
+      Authorization: `Bearer ${creds.token}`,
     },
     body: JSON.stringify({
       messaging_product: 'whatsapp',

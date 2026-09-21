@@ -1056,6 +1056,19 @@ async function migrate() {
     // console.error alone would be lost by the time an owner reports it.
     // Never returned raw to the frontend; status endpoint returns a generic message.
     await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_connection_error TEXT;`);
+    // Per-customer business token from the Embedded Signup code exchange —
+    // Meta requires it for every call on the tenant's WABA (Tech Provider
+    // model). Encrypted at rest like the PIN; never returned to the client.
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS whatsapp_business_token_encrypted TEXT;`);
+    // Any tenant marked connected before this column existed has no stored
+    // token and would silently fail to send — flip it to the error state so
+    // the owner sees "Retry connection" instead of a false "Connected".
+    await client.query(
+      `UPDATE tenants
+       SET whatsapp_connection_status = 'error',
+           whatsapp_connection_error = 'Reconnect required: connection predates per-customer token storage.'
+       WHERE whatsapp_connection_status = 'connected' AND whatsapp_business_token_encrypted IS NULL;`,
+    );
 
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);

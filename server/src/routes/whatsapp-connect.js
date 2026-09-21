@@ -100,18 +100,22 @@ router.post('/callback', requireOwner, async (req, res, next) => {
     // Step 1: complete/confirm the authorization on Meta's side. Time-boxed
     // to ~30s per Meta's docs — this must run before anything else, not
     // queued or retried later.
-    await exchangeSignupCode(data.code);
+    // The result is this customer's business token — Meta requires it (not a
+    // platform System User token) for every call on this WABA/number.
+    const { access_token: businessToken } = await exchangeSignupCode(data.code);
 
     // Step 2: register the number for Cloud API messaging with a
     // programmatically-generated PIN — the owner never has to invent or
     // manage this themselves.
     const pin = generateWhatsAppPin();
-    await registerPhoneNumber(data.phone_number_id, pin);
+    await registerPhoneNumber(data.phone_number_id, pin, businessToken);
 
     // Step 3: confirm (don't assume) the WABA is subscribed to this app's webhook.
-    await subscribeToWabaWebhooks(data.waba_id);
+    await subscribeToWabaWebhooks(data.waba_id, businessToken);
 
-    // Step 4: persist. Only reached if every step above succeeded.
+    // Step 4: persist. Only reached if every step above succeeded. The token
+    // is stored encrypted (same AES-256-GCM helper as the PIN) because
+    // sendReply() needs it for every outbound message.
     await query(
       `UPDATE tenants
        SET whatsapp_waba_id = $2,
@@ -119,9 +123,10 @@ router.post('/callback', requireOwner, async (req, res, next) => {
            whatsapp_connection_status = 'connected',
            whatsapp_connected_at = NOW(),
            whatsapp_pin_encrypted = $4,
+           whatsapp_business_token_encrypted = $5,
            whatsapp_connection_error = NULL
        WHERE id = $1`,
-      [tenantId, data.waba_id, data.phone_number_id, encrypt(pin)],
+      [tenantId, data.waba_id, data.phone_number_id, encrypt(pin), encrypt(businessToken)],
     );
 
     res.json({ status: 'connected', phone_number_id_masked: maskId(data.phone_number_id) });
@@ -157,6 +162,7 @@ router.post('/disconnect', requireOwner, async (req, res, next) => {
            whatsapp_connection_status = 'not_connected',
            whatsapp_connected_at = NULL,
            whatsapp_pin_encrypted = NULL,
+           whatsapp_business_token_encrypted = NULL,
            whatsapp_connection_error = NULL
        WHERE id = $1`,
       [req.user.tenant_id],

@@ -3,23 +3,25 @@
  * completed frontend Facebook Login for Business flow into a working,
  * message-capable connection for one tenant.
  *
- * Key architectural point (per the spec — do not relitigate this): under
- * the Tech Provider delegated-access model, WHATSAPP_TOKEN
- * (config.whatsapp.token) is a single platform-level System User token that
- * every tenant's Embedded Signup implicitly grants access to. It is NOT
- * exchanged per tenant and nothing here stores a per-tenant token — only
- * per-tenant IDs (waba_id, phone_number_id) vary. See services/whatsapp.js's
- * sendReply() for the other half of this: outbound sends now resolve
- * phone_number_id per tenant instead of assuming one global number.
+ * Token model (corrected 2026-09-21 — the original design used a shared
+ * platform System User token here, which contradicts Meta's docs): a Tech
+ * Provider uses per-customer *business tokens* (Business Integration System
+ * User access tokens) exclusively. Meta's Embedded Signup overview: "If you
+ * are a Tech Provider, you will use business tokens exclusively." The code
+ * exchange below returns that token; the callback route stores it encrypted
+ * per tenant (tenants.whatsapp_business_token_encrypted) and it is used for
+ * register, subscribed_apps, and every outbound send (services/whatsapp.js
+ * sendReply()). WHATSAPP_TOKEN (config.whatsapp.token) is now only the
+ * legacy fallback for tenants that have not connected their own number.
+ * Sources: developers.facebook.com/documentation/business-messaging/whatsapp/
+ * embedded-signup/overview and .../embedded-signup/onboarding-customers-as-a-tech-provider
+ * (Steps 2-4 there all show `Authorization: Bearer <BUSINESS_TOKEN>`).
  *
- * Meta API surface note: the register and subscribed_apps endpoints below
- * are implemented against the documented Cloud API shape as of
- * implementation time. The exact code-exchange endpoint and the
- * subscribed_apps write behavior are the two details most likely to have
- * drifted by the time this runs against a real Live app — re-confirm both
- * against https://developers.facebook.com/docs/whatsapp/embedded-signup/
- * before relying on this against production traffic, per the spec's own
- * caution on this exact point.
+ * Meta API surface note: the code-exchange endpoint (GET /oauth/access_token
+ * with client_id, client_secret, code — no redirect_uri) matches Meta's
+ * current Tech Provider docs. The docs page does not document GET
+ * subscribed_apps, so the read-back below is still verified only by the
+ * live end-to-end test.
  */
 import crypto from 'crypto';
 import config from '../config.js';
@@ -47,12 +49,9 @@ export function generateWhatsAppPin() {
  * frontend receives it, so this must run immediately in the callback
  * handler, not queued/retried later.
  *
- * The resulting token is intentionally NOT returned to the caller for
- * storage — per the architectural note above, ongoing API calls use the
- * durable platform System User token (config.whatsapp.token), not this
- * short-lived exchange result. This call still matters: it's the step that
- * completes/confirms the authorization on Meta's side for this specific
- * signup session.
+ * Returns the customer's business token. The caller must use it for the
+ * register and subscribed_apps calls and persist it (encrypted) for ongoing
+ * sends — it is the only credential that works for this customer's WABA.
  */
 export async function exchangeSignupCode(code) {
   if (!config.meta.appId || !config.meta.appSecret) {
@@ -72,21 +71,27 @@ export async function exchangeSignupCode(code) {
       detail: `code exchange failed (${res.status}): ${JSON.stringify(body)}`,
     });
   }
-  return body; // { access_token, token_type, expires_in } — not persisted, see docstring
+  if (typeof body.access_token !== 'string' || !body.access_token) {
+    throw new WhatsAppConnectError('Could not complete the WhatsApp connection — Meta did not return an access token.', {
+      status: 502,
+      detail: `code exchange returned no access_token (keys: ${Object.keys(body).join(', ') || 'none'})`,
+    });
+  }
+  return body; // { access_token, token_type, ... } — caller persists access_token encrypted
 }
 
 /**
  * Register the connected phone number for Cloud API use with a two-step
  * verification PIN. Required before the number can send/receive via the
  * Cloud API at all — Embedded Signup does not do this step automatically.
- * Uses the platform System User token, not a per-tenant token (see module docstring).
+ * Authenticates with the customer's business token (see module docstring).
  */
-export async function registerPhoneNumber(phoneNumberId, pin) {
+export async function registerPhoneNumber(phoneNumberId, pin, businessToken) {
   const res = await fetch(`${GRAPH_BASE}/${phoneNumberId}/register`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.whatsapp.token}`,
+      Authorization: `Bearer ${businessToken}`,
     },
     body: JSON.stringify({ messaging_product: 'whatsapp', pin }),
   });
@@ -106,10 +111,10 @@ export async function registerPhoneNumber(phoneNumberId, pin) {
  * spec, don't assume it silently worked. Subscribes, then reads the
  * subscription list back to confirm this app is actually on it.
  */
-export async function subscribeToWabaWebhooks(wabaId) {
+export async function subscribeToWabaWebhooks(wabaId, businessToken) {
   const subscribeRes = await fetch(`${GRAPH_BASE}/${wabaId}/subscribed_apps`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${config.whatsapp.token}` },
+    headers: { Authorization: `Bearer ${businessToken}` },
   });
   const subscribeBody = await subscribeRes.json().catch(() => ({}));
   if (!subscribeRes.ok) {
@@ -123,7 +128,7 @@ export async function subscribeToWabaWebhooks(wabaId) {
   // rather than trusting the POST's 200 alone (per the spec's explicit
   // "do not assume it silently worked").
   const checkRes = await fetch(`${GRAPH_BASE}/${wabaId}/subscribed_apps`, {
-    headers: { Authorization: `Bearer ${config.whatsapp.token}` },
+    headers: { Authorization: `Bearer ${businessToken}` },
   });
   const checkBody = await checkRes.json().catch(() => ({}));
   const subscribed = checkRes.ok && Array.isArray(checkBody.data) &&
