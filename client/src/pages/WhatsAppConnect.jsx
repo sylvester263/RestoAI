@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
-import { MessageCircle, CheckCircle2, XCircle, Loader2, RefreshCw, Unlink } from 'lucide-react';
+import { MessageCircle, CheckCircle2, XCircle, Loader2, RefreshCw, Unlink, ArrowLeft, AlertTriangle, Mail } from 'lucide-react';
 
 const FB_SDK_SRC = 'https://connect.facebook.net/en_US/sdk.js';
 const FB_SDK_VERSION = 'v21.0';
@@ -45,6 +45,20 @@ function loadFacebookSdk(appId) {
   });
 }
 
+const SUPPORT_EMAIL = 'support@restoai.app';
+
+// Pre-check answers (impl-31). Embedded Signup only registers a number that
+// has no active WhatsApp account, so owners with an existing account are told
+// what Meta will require BEFORE the popup, not mid-flow.
+//   new           -> A1: straight into Embedded Signup
+//   whatsapp_app  -> A2: on personal WhatsApp / WhatsApp Business app
+//   other_provider-> B:  already on Cloud API via another provider (assisted migration)
+const PRECHECK_OPTIONS = [
+  { value: 'new', label: "No, it's a new number", hint: 'Not used on any WhatsApp app yet' },
+  { value: 'whatsapp_app', label: 'Yes, on regular WhatsApp or WhatsApp Business app', hint: 'The number has a WhatsApp account on a phone' },
+  { value: 'other_provider', label: 'Yes, through another business messaging platform', hint: 'e.g. Wati, Gupshup, 360dialog, Twilio' },
+];
+
 const STATUS_LABEL = {
   not_connected: 'Not connected',
   connected: 'Connected',
@@ -61,6 +75,8 @@ export default function WhatsAppConnect() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [confirmingDisconnect, setConfirmingDisconnect] = useState(false);
   const [message, setMessage] = useState(null); // { type: 'error' | 'info', text }
+  // null (closed) | 'ask' | 'whatsapp_app' | 'other_provider'
+  const [precheck, setPrecheck] = useState(null);
 
   // Holds the signup-session pieces that arrive across two separate async
   // events (FB.login()'s callback gives `code`; a window postMessage gives
@@ -127,7 +143,16 @@ export default function WhatsAppConnect() {
     }
   }
 
+  function handlePrecheckAnswer(value) {
+    if (value === 'new') {
+      handleConnect();
+    } else {
+      setPrecheck(value);
+    }
+  }
+
   async function handleConnect() {
+    setPrecheck(null);
     setMessage(null);
     setConnecting(true);
     sessionRef.current = {};
@@ -224,8 +249,8 @@ export default function WhatsAppConnect() {
 
         {isOwner && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
-            {status?.status !== 'connected' && (
-              <button onClick={handleConnect} disabled={connecting} className="btn-primary text-sm">
+            {status?.status !== 'connected' && !precheck && (
+              <button onClick={() => { setMessage(null); setPrecheck('ask'); }} disabled={connecting} className="btn-primary text-sm">
                 {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
                 {connecting ? 'Connecting…' : status?.status === 'error' ? 'Retry connection' : 'Connect WhatsApp'}
               </button>
@@ -253,6 +278,88 @@ export default function WhatsAppConnect() {
               <RefreshCw className="h-3 w-3" />
               Refresh
             </button>
+          </div>
+        )}
+
+        {isOwner && precheck === 'ask' && (
+          <div className="space-y-2 border-t border-gray-100 pt-4 dark:border-gray-800">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Do you already use this number on WhatsApp?</p>
+            {PRECHECK_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => handlePrecheckAnswer(opt.value)}
+                className="block w-full rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-green-500 hover:bg-green-50 dark:border-gray-700 dark:hover:bg-green-900/10"
+              >
+                <span className="block text-sm font-medium text-gray-900 dark:text-gray-100">{opt.label}</span>
+                <span className="block text-xs text-gray-500 dark:text-gray-400">{opt.hint}</span>
+              </button>
+            ))}
+            <button onClick={() => setPrecheck(null)} className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {isOwner && precheck === 'whatsapp_app' && (
+          <div className="space-y-3 border-t border-gray-100 pt-4 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
+            <div className="flex gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Meta only lets a number be connected here once it no longer has a WhatsApp account on a phone.
+                If you continue without doing this, Meta's signup window will stop with
+                “This number is registered to an existing WhatsApp account…”.
+              </span>
+            </div>
+            <p className="font-medium text-gray-900 dark:text-gray-100">Before you connect, on the phone that uses this number:</p>
+            <ol className="list-decimal space-y-1 pl-5 text-xs">
+              <li><strong>Optional — save your chats:</strong> Settings → Chats → Chat backup, or export important chats. Chat history is not moved over.</li>
+              <li><strong>Delete the WhatsApp account:</strong> open WhatsApp (or WhatsApp Business) → Settings → Account → Delete my account, then confirm with this number.</li>
+              <li>Keep the SIM active. You'll need it to receive Meta's verification code by SMS or call.</li>
+            </ol>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Deleting the account removes chat history, groups and the app profile from that phone. The number itself and your
+              customers' saved contacts stay the same, so customers keep messaging the same number.
+              After connecting, you'll answer customers from RestoAI instead of the WhatsApp app.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={handleConnect} disabled={connecting} className="btn-primary text-sm">
+                {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                I've deleted it, continue
+              </button>
+              <button onClick={() => setPrecheck('ask')} className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                <ArrowLeft className="h-3 w-3" />
+                Back
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isOwner && precheck === 'other_provider' && (
+          <div className="space-y-3 border-t border-gray-100 pt-4 text-sm text-gray-700 dark:border-gray-800 dark:text-gray-300">
+            <p className="font-medium text-gray-900 dark:text-gray-100">This needs an assisted migration</p>
+            <p className="text-xs">
+              Numbers already running on another provider (Wati, Gupshup, 360dialog, etc.) can't be connected with the
+              Connect button. Meta has to move them from that provider's account to ours. Done this way, you keep
+              your approved message templates, quality rating and messaging limits.
+            </p>
+            <p className="text-xs">
+              Email us and we'll plan the switch with you. Please don't cancel your current provider until the move is finished,
+              so customer messages keep working.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <a
+                href={`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent('WhatsApp number migration')}&body=${encodeURIComponent(`Restaurant account ID: ${user?.tenant_id || ''}\nRestaurant name: \nCurrent provider: \nWhatsApp number: \n`)}`}
+                className="btn-primary text-sm"
+              >
+                <Mail className="h-4 w-4" />
+                Contact support
+              </a>
+              <button onClick={() => setPrecheck('ask')} className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                <ArrowLeft className="h-3 w-3" />
+                Back
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{SUPPORT_EMAIL}</p>
           </div>
         )}
       </div>
