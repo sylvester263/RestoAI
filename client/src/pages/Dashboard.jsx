@@ -13,6 +13,7 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   // Agent-flag data for the "Needs Attention" section — fetched in parallel
   // with the main dashboard but rendered progressively so a slow or failing
@@ -25,7 +26,7 @@ export default function Dashboard() {
   useEffect(() => {
     api.getDashboard()
       .then(setData)
-      .catch(console.error)
+      .catch((err) => { console.error(err); setLoadError(err); })
       .finally(() => setLoading(false));
 
     // Attention items — each is independent; a failure just leaves that
@@ -46,7 +47,12 @@ export default function Dashboard() {
       </div>
     </div>
   );
-  if (!data) return <EmptyState icon={AlertTriangle} title="Failed to load dashboard" description="Check your connection and try again." action={{ label: 'Retry', onClick: () => window.location.reload() }} />;
+  if (!data) {
+    if (loadError?.status === 403) {
+      return <EmptyState icon={AlertTriangle} title="The dashboard isn't part of your role" description="Ask the restaurant owner if you need access to it." />;
+    }
+    return <EmptyState icon={AlertTriangle} title="Failed to load dashboard" description="Check your connection and try again." action={{ label: 'Retry', onClick: () => window.location.reload() }} />;
+  }
 
   // Build the attention items from whatever agent data has arrived so far.
   // Each item carries a count, severity, label, short detail line, and the
@@ -120,6 +126,10 @@ export default function Dashboard() {
     cancelled: 'bg-red-100 text-red-700',
   };
 
+  if (data.scope === 'operations') {
+    return <OperationsDashboard data={data} attentionItems={attentionItems} statusColors={statusColors} navigate={navigate} />;
+  }
+
   return (
     <div>
       {/* ── Header ── */}
@@ -154,9 +164,9 @@ export default function Dashboard() {
       {/* ── KPI Summary (deprioritized — flat, compact) ── */}
       <div className="mb-8 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KpiCard icon={ShoppingBag} label="Today's Orders" value={data.today.orders} accent="text-blue-600 dark:text-blue-400" />
-        <KpiCard icon={DollarSign} label="Revenue" value={`Rs. ${data.today.revenue.toLocaleString()}`} accent="text-green-600 dark:text-green-400" />
+        <KpiCard icon={DollarSign} label="Today's Revenue" value={`Rs. ${data.today.revenue.toLocaleString()}`} accent="text-green-600 dark:text-green-400" />
         <KpiCard icon={Users} label="Customers" value={data.recent_customers.length} accent="text-purple-600 dark:text-purple-400" />
-        <KpiCard icon={TrendingUp} label="Top Item" value={data.top_items[0]?.name || 'N/A'} accent="text-orange-600 dark:text-orange-400" />
+        <KpiCard icon={TrendingUp} label="Top Item (30 days)" value={data.top_items[0]?.name || 'N/A'} accent="text-orange-600 dark:text-orange-400" />
         <KpiCard
           icon={Star}
           label="Avg Rating"
@@ -262,6 +272,46 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Operations dashboard ─────────────────────────────────────────────────────
+// What a role without reports.view (e.g. staff) sees: today's orders and
+// their status, and stock alerts. No sales or customer figures.
+
+function OperationsDashboard({ data, attentionItems, statusColors, navigate }) {
+  return (
+    <div>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Dashboard</h1>
+        <p className="text-sm text-[var(--text-secondary)]">Today's orders for your branch</p>
+      </div>
+
+      {attentionItems.length > 0 && (
+        <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {attentionItems.map((item) => <AttentionCard key={item.label} item={item} />)}
+        </div>
+      )}
+
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <KpiCard icon={ShoppingBag} label="Today's Orders" value={data.today.orders} accent="text-blue-600 dark:text-blue-400" />
+      </div>
+
+      <div className="card">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">Today's Order Status</h2>
+          <button type="button" onClick={() => navigate('/orders')} className="text-sm font-medium text-brand-600 hover:underline">View orders</button>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {data.status_breakdown.map((s) => (
+            <div key={s.status} className={`badge ${statusColors[s.status] || 'bg-[var(--surface-3)] text-[var(--text-secondary)]'}`}>
+              {s.status}: {s.count}
+            </div>
+          ))}
+          {data.status_breakdown.length === 0 && <p className="text-sm text-[var(--text-tertiary)]">No orders today yet</p>}
         </div>
       </div>
     </div>

@@ -21,6 +21,8 @@ export default function PublicSite() {
   const [site, setSite] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  // Must run before the early returns below — hooks can't be conditional.
+  const { isDark: userDark } = useDarkMode();
 
   useEffect(() => {
     sitesApi.getSite(subdomain)
@@ -43,7 +45,6 @@ export default function PublicSite() {
   }
 
   const config = TEMPLATE_CONFIGS[site.template_id] || TEMPLATE_CONFIGS['classic-warm'];
-  const { isDark: userDark } = useDarkMode();
   const dark = !!config.dark || userDark;
 
   return (

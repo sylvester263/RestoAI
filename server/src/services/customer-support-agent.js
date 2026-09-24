@@ -124,9 +124,8 @@ export async function handleSupportMessage(tenantId, customer, phone, text, conv
     reply = await handleOpenTicket(newTicket, tenantId, customer, phone, text);
   }
 
-  // 4. Send the reply via WhatsApp
-  await sendReply(phone, reply, tenantId);
-
+  // The caller (whatsapp.js) sends the reply — sending here as well made
+  // every support reply reach the customer twice.
   return { reply };
 }
 

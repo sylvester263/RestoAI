@@ -27,13 +27,13 @@ const ALL_ITEMS = [
   { to: '/reservations', icon: CalendarCheck, label: 'Reservations', group: 'Customers' },
   { to: '/campaigns', icon: Megaphone, label: 'Campaigns', group: 'Customers' },
   { to: '/riders', icon: Bike, label: 'Riders', group: 'Settings' },
-  { to: '/staff', icon: UserPlus, label: 'Staff', group: 'Settings' },
-  { to: '/coupons', icon: Tag, label: 'Coupons', group: 'Settings' },
-  { to: '/permissions', icon: ShieldCheck, label: 'Permissions', group: 'Settings' },
+  { to: '/staff', icon: UserPlus, label: 'Staff', group: 'Settings', roles: ['owner', 'manager'] },
+  { to: '/coupons', icon: Tag, label: 'Coupons', group: 'Settings', roles: ['owner', 'manager'] },
+  { to: '/permissions', icon: ShieldCheck, label: 'Permissions', group: 'Settings', roles: ['owner'] },
   { to: '/website', icon: Globe, label: 'Website', group: 'Settings' },
   { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp Demo', group: 'Settings' },
   { to: '/insights', icon: BarChart3, label: 'Insights', group: 'Intelligence' },
-  { to: '/agents', icon: Sparkles, label: 'AI Agents', group: 'Intelligence' },
+  { to: '/agents', icon: Sparkles, label: 'AI Agents', group: 'Intelligence', roles: ['owner', 'manager'] },
 ];
 
 function fuzzyMatch(query, text) {
@@ -47,7 +47,9 @@ function fuzzyMatch(query, text) {
   return qi === q.length;
 }
 
-export default function CommandPalette({ open, onClose }) {
+// `roles` mirrors the sidebar's role-gated items (Layout.jsx) — the palette
+// must not offer pages the sidebar hides from this role.
+export default function CommandPalette({ open, onClose, role }) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const navigate = useNavigate();
@@ -55,9 +57,10 @@ export default function CommandPalette({ open, onClose }) {
   const listRef = useRef(null);
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return ALL_ITEMS;
-    return ALL_ITEMS.filter((item) => fuzzyMatch(query, item.label));
-  }, [query]);
+    const allowed = ALL_ITEMS.filter((item) => !item.roles || item.roles.includes(role));
+    if (!query.trim()) return allowed;
+    return allowed.filter((item) => fuzzyMatch(query, item.label));
+  }, [query, role]);
 
   // Reset state when opening
   useEffect(() => {

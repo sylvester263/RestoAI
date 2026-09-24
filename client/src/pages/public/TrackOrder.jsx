@@ -252,7 +252,7 @@ export default function TrackOrder() {
         </div>
 
         {order.status === 'delivered' && (
-          <ReviewPrompt tenantSlug={tenantSlug} orderId={order.id} phone={phone} />
+          <ReviewPrompt tenantSlug={tenantSlug} orderId={order.id} phone={phone} existingReview={order.review} />
         )}
 
         <ReferralCard tenantSlug={tenantSlug} phone={phone} />
@@ -335,7 +335,7 @@ function NotifyBanner({ tenantSlug, phone, status }) {
   );
 }
 
-function ReviewPrompt({ tenantSlug, orderId, phone }) {
+function ReviewPrompt({ tenantSlug, orderId, phone, existingReview }) {
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
   const [comment, setComment] = useState('');
@@ -349,7 +349,7 @@ function ReviewPrompt({ tenantSlug, orderId, phone }) {
     setErr('');
     try {
       await publicApi.submitReview(tenantSlug, { order_id: orderId, phone, rating, comment: comment || undefined });
-      setSubmitted(true);
+      setSubmitted({ rating, comment });
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -357,10 +357,19 @@ function ReviewPrompt({ tenantSlug, orderId, phone }) {
     }
   }
 
-  if (submitted) {
+  const review = existingReview || submitted;
+  if (review) {
     return (
-      <div className="card mt-4 text-center text-sm text-[var(--text-secondary)]">
-        Thanks for your feedback! 🎉
+      <div className="card mt-4 text-center">
+        <p className="mb-2 text-sm text-[var(--text-secondary)]">
+          {submitted ? 'Thanks for your feedback! 🎉' : 'You reviewed this order — thank you!'}
+        </p>
+        <div className="flex justify-center gap-1" aria-label={`${review.rating} out of 5 stars`}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <Star key={n} className={`h-5 w-5 ${review.rating >= n ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} />
+          ))}
+        </div>
+        {review.comment && <p className="mt-2 text-sm italic text-[var(--text-secondary)]">"{review.comment}"</p>}
       </div>
     );
   }

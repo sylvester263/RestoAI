@@ -58,7 +58,7 @@ router.get('/branches/:id', async (req, res, next) => {
     const [kpis, revenueTrend, topItems, peakHours] = await Promise.all([
       computeBranchKpis(req.user.tenant_id, req.params.id, period),
       branchRevenueTrend(req.user.tenant_id, req.params.id),
-      branchTopItems(req.user.tenant_id, req.params.id),
+      branchTopItems(req.user.tenant_id, req.params.id, period),
       branchPeakHours(req.user.tenant_id, req.params.id, period),
     ]);
     res.json({ branch: branchRes.rows[0], period, ...kpis, revenue_trend: revenueTrend, top_items: topItems, peak_hours: peakHours });

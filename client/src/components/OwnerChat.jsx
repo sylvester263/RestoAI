@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../lib/api';
 import { MessageCircle, X, Send, Sparkles, Loader2, Trash2 } from 'lucide-react';
+import MarkdownText from './MarkdownText';
 
 // Quick-action prompts — these surface as clickable chips so the owner can
 // get answers without typing a full question. Kept short for mobile.
@@ -183,13 +184,13 @@ export default function OwnerChat() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${
+                  className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                     msg.role === 'user'
-                      ? 'rounded-tr-sm bg-brand-600 text-white'
+                      ? 'rounded-tr-sm bg-brand-600 text-white whitespace-pre-wrap'
                       : 'rounded-tl-sm bg-[var(--surface-3)] text-[var(--text-primary)]'
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user' ? msg.content : <MarkdownText text={msg.content} />}
                 </div>
               </div>
             ))}

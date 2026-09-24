@@ -9,13 +9,16 @@
  * (branch + tenant-wide) — same query shape, one implementation.
  */
 import { query } from '../db/pool.js';
+import { periodStartSql, localDateSql, isSaleSql } from '../utils/business-time.js';
 
 const PERIODS = ['today', 'week', 'month'];
 
-function periodClause(period) {
-  if (period === 'week') return "created_at >= NOW() - INTERVAL '7 days'";
-  if (period === 'month') return "created_at >= NOW() - INTERVAL '30 days'";
-  return 'created_at >= CURRENT_DATE';
+// Calendar periods in Pakistan time — "This week" starts Monday, "This month"
+// on the 1st — matching the toggle's wording and how AI Insights reads the
+// same phrases. Cancelled orders are never sales.
+function periodClause(period, alias = '') {
+  const col = alias ? `${alias}.created_at` : 'created_at';
+  return `${col} >= ${periodStartSql(period)} AND ${isSaleSql(alias)}`;
 }
 
 export function normalizePeriod(raw) {
@@ -71,27 +74,28 @@ export async function computeBranchKpis(tenantId, branchId, period) {
 /** Daily revenue trend for one branch — same shape as insights.js's tenant-wide weekly_trend, just branch-filtered. */
 export async function branchRevenueTrend(tenantId, branchId, days = 7) {
   const res = await query(
-    `SELECT DATE(created_at) as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue
+    `SELECT ${localDateSql('created_at')} as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue
      FROM orders
-     WHERE tenant_id = $1 AND branch_id = $2 AND created_at >= NOW() - ($3 || ' days')::interval
-     GROUP BY DATE(created_at)
+     WHERE tenant_id = $1 AND branch_id = $2 AND created_at >= ${periodStartSql('today')} - (($3::int - 1) || ' days')::interval
+       AND ${isSaleSql()}
+     GROUP BY 1
      ORDER BY date`,
     [tenantId, branchId, days],
   );
   return res.rows.map((r) => ({ date: r.date, orders: parseInt(r.orders, 10), revenue: parseFloat(r.revenue) }));
 }
 
-/** Top-selling items for one branch — same join shape as insights.js's tenant-wide top_items. */
-export async function branchTopItems(tenantId, branchId, days = 30, limit = 5) {
+/** Top-selling items for one branch over the selected period — same join shape as insights.js's tenant-wide top_items. */
+export async function branchTopItems(tenantId, branchId, period, limit = 5) {
   const res = await query(
     `SELECT oi.name, SUM(oi.quantity) as total_qty, SUM(oi.total_price) as total_revenue
      FROM order_items oi
      JOIN orders o ON oi.order_id = o.id
-     WHERE o.tenant_id = $1 AND o.branch_id = $2 AND o.created_at >= NOW() - ($3 || ' days')::interval
+     WHERE o.tenant_id = $1 AND o.branch_id = $2 AND ${periodClause(period, 'o')}
      GROUP BY oi.name
      ORDER BY total_qty DESC
-     LIMIT $4`,
-    [tenantId, branchId, days, limit],
+     LIMIT $3`,
+    [tenantId, branchId, limit],
   );
   return res.rows.map((r) => ({ name: r.name, total_qty: parseInt(r.total_qty, 10), total_revenue: parseFloat(r.total_revenue) }));
 }
@@ -117,7 +121,7 @@ export async function branchPeakHours(tenantId, branchId, period) {
  * surface a clear "no data" state instead of a confusing empty table.
  */
 export async function branchStaffPerformance(tenantId, branchId, period) {
-  const clause = periodClause(period).replace(/created_at/g, 'pt.settled_at');
+  const clause = `pt.settled_at >= ${periodStartSql(period)} AND ${isSaleSql('o')}`;
   const res = await query(
     `SELECT u.id as user_id, u.name,
             COUNT(*) as tab_count,

@@ -3,19 +3,23 @@ import { api } from '../lib/api';
 import { toast } from '../components/ui/toast';
 import { Skeleton } from '../components/ui/Skeleton';
 import Modal from '../components/ui/Modal';
-import { Tag, Plus, X, ToggleLeft, ToggleRight, Sparkles } from 'lucide-react';
+import EmptyState from '../components/ui/EmptyState';
+import { Tag, Plus, X, ToggleLeft, ToggleRight, Sparkles, Lock, AlertTriangle } from 'lucide-react';
 
 export default function Coupons() {
   const [coupons, setCoupons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
     try {
       const res = await api.getCoupons();
       setCoupons(res.coupons);
+      setLoadError(null);
     } catch (err) {
       console.error(err);
+      setLoadError(err);
     } finally {
       setLoading(false);
     }
@@ -33,6 +37,14 @@ export default function Coupons() {
   }
 
   if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-32" /><Skeleton.Table rows={5} cols={6} /></div>;
+  // A failed load must never fall through to "No coupons yet" — that tells
+  // someone without access that the restaurant has no coupons.
+  if (loadError?.status === 403) {
+    return <EmptyState icon={Lock} title="You don't have permission to view coupons" description="Coupons are managed by the owner or a manager. Ask them if you need access." />;
+  }
+  if (loadError) {
+    return <EmptyState icon={AlertTriangle} title="Couldn't load coupons" description={loadError.message} action={{ label: 'Retry', onClick: () => { setLoading(true); load(); } }} />;
+  }
 
   return (
     <div>

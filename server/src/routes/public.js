@@ -351,8 +351,21 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
       orderNumber: order.order_number, reason: order.cancellation_reason,
     });
 
+    // The order-level review, if one was already left — the tracking page
+    // shows it instead of offering the form a second time.
+    let review = null;
+    if (order.status === 'delivered') {
+      const reviewRes = await query(
+        `SELECT rating, comment, created_at FROM reviews
+         WHERE tenant_id = $1 AND order_id = $2 AND menu_item_id IS NULL
+         ORDER BY created_at ASC LIMIT 1`,
+        [req.tenant.id, order.id],
+      );
+      review = reviewRes.rows[0] || null;
+    }
+
     const { customer_phone, branch_id, rider_name, ...orderFields } = order;
-    res.json({ order: { ...orderFields, items: itemsRes.rows, eta, status_message: statusMessage, rider_name: rider_name || null } });
+    res.json({ order: { ...orderFields, items: itemsRes.rows, eta, status_message: statusMessage, rider_name: rider_name || null, review } });
   } catch (err) {
     next(err);
   }
@@ -453,11 +466,20 @@ router.post('/:tenantSlug/reviews', async (req, res, next) => {
       return res.status(400).json({ error: { message: 'You can review an order once it has been delivered' } });
     }
 
+    // One review per order (or per order + item). Single-statement insert so
+    // a double-submit can't slip a second row in between check and write.
     const result = await query(
       `INSERT INTO reviews (tenant_id, order_id, menu_item_id, customer_id, rating, comment)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+       SELECT $1, $2, $3::uuid, $4, $5, $6
+       WHERE NOT EXISTS (
+         SELECT 1 FROM reviews WHERE tenant_id = $1 AND order_id = $2 AND menu_item_id IS NOT DISTINCT FROM $3::uuid
+       )
+       RETURNING *`,
       [req.tenant.id, order.id, data.menu_item_id || null, order.customer_id, data.rating, data.comment || null],
     );
+    if (result.rows.length === 0) {
+      return res.status(409).json({ error: { message: "You've already reviewed this order — thank you!" } });
+    }
     res.status(201).json({ review: result.rows[0] });
   } catch (err) {
     if (err instanceof z.ZodError) {

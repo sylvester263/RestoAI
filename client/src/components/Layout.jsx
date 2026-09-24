@@ -263,7 +263,7 @@ export default function Layout({ children }) {
         </div>
       </main>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} role={user?.role || 'staff'} />
       <InstallBanner />
       <OwnerChat />
     </div>

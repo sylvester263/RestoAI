@@ -73,37 +73,51 @@ export async function processWhatsAppMessage(tenantId, message) {
   let reply;
   let parsed = null;
 
-  // 5-pre. Support mode: if the conversation is already in a support flow,
-  // route ALL messages through the support handler until the ticket is
-  // resolved. This prevents a customer mid-support from accidentally
-  // triggering a new order flow, and ensures resolution confirmations
-  // are handled correctly (no silent closure).
+  // 5-pre. Support mode. A customer with an unresolved ticket can still place
+  // orders, book tables, etc. — only messages that actually continue the
+  // support conversation go to the support handler. Everything else falls
+  // through to the normal pipeline with the ticket left open.
+  let preParsed = null;
   if (conversationContext.in_support) {
-    const supportResult = await handleSupportMessage(tenantId, customer, phone, text, conversation);
-    reply = supportResult.reply;
-    parsed = { intent: 'support' };
-
-    // Update conversation context
-    if (!conversationContext.messages) conversationContext.messages = [];
-    conversationContext.messages.push({ role: 'customer', message: text, timestamp: new Date().toISOString() });
-    conversationContext.messages.push({ role: 'bot', message: reply, timestamp: new Date().toISOString() });
-    conversationContext.messages = conversationContext.messages.slice(-20);
-
-    // Check if the support ticket is now resolved — clear in_support flag
-    const ticketCheck = await query(
-      `SELECT status FROM support_tickets WHERE tenant_id = $1 AND customer_id = $2 AND status IN ('open','escalated','ai_handled') ORDER BY created_at DESC LIMIT 1`,
-      [tenantId, customer.id],
-    );
-    if (ticketCheck.rows.length === 0) {
+    const activeTicket = await getUnresolvedSupportTicket(tenantId, customer.id);
+    if (!activeTicket) {
+      // Ticket was resolved (by staff, or the customer confirmed it) — leave
+      // support mode BEFORE handling this message so it isn't turned into a
+      // fresh ticket.
       delete conversationContext.in_support;
-    }
+    } else if (!pendingDraft) {
+      // A pending draft means the bot's last question was "confirm your
+      // order?" — that reply belongs to the order flow, not the ticket.
+      if (activeTicket.pending_confirmation && isShortSupportReply(text)) {
+        preParsed = { intent: 'support' };
+      } else {
+        preParsed = await parseOrderMessage(text, menuItems, conversationContext);
+      }
 
-    await query(
-      `UPDATE conversations SET context = $2, updated_at = NOW() WHERE id = $1`,
-      [conversation.id, JSON.stringify(conversationContext)],
-    );
-    await sendReply(phone, reply, tenantId);
-    return { reply, parsed };
+      if (!isNewRequestIntent(preParsed)) {
+        const supportResult = await handleSupportMessage(tenantId, customer, phone, text, conversation);
+        reply = supportResult.reply;
+        parsed = { intent: 'support' };
+
+        // Update conversation context
+        if (!conversationContext.messages) conversationContext.messages = [];
+        conversationContext.messages.push({ role: 'customer', message: text, timestamp: new Date().toISOString() });
+        conversationContext.messages.push({ role: 'bot', message: reply, timestamp: new Date().toISOString() });
+        conversationContext.messages = conversationContext.messages.slice(-20);
+
+        // Clear in_support once the ticket no longer needs the customer
+        if (!(await getUnresolvedSupportTicket(tenantId, customer.id))) {
+          delete conversationContext.in_support;
+        }
+
+        await query(
+          `UPDATE conversations SET context = $2, updated_at = NOW() WHERE id = $1`,
+          [conversation.id, JSON.stringify(conversationContext)],
+        );
+        await sendReply(phone, reply, tenantId);
+        return { reply, parsed };
+      }
+    }
   }
 
   // 5a. Handle confirmation of a pending draft order
@@ -157,7 +171,7 @@ export async function processWhatsAppMessage(tenantId, message) {
   }
   // 5c. No pending draft — classify and handle normally
   else {
-    parsed = await parseOrderMessage(text, menuItems, conversationContext);
+    parsed = preParsed || await parseOrderMessage(text, menuItems, conversationContext);
     reply = parsed.reply_message;
 
     if (parsed.intent === 'order' && parsed.items.length > 0 && parsed.confidence >= 0.7) {
@@ -199,6 +213,38 @@ export async function processWhatsAppMessage(tenantId, message) {
   await sendReply(phone, reply, tenantId);
 
   return { reply, parsed };
+}
+
+// ── Helpers: support-mode routing ──
+
+// A ticket still needs the customer while it's open/escalated, or while the
+// AI is waiting on "did that help?". An ai_handled ticket the customer
+// already confirmed is effectively resolved.
+async function getUnresolvedSupportTicket(tenantId, customerId) {
+  const res = await query(
+    `SELECT id, status, pending_confirmation FROM support_tickets
+     WHERE tenant_id = $1 AND customer_id = $2
+       AND (status IN ('open', 'escalated') OR (status = 'ai_handled' AND pending_confirmation = true))
+     ORDER BY created_at DESC LIMIT 1`,
+    [tenantId, customerId],
+  );
+  return res.rows[0] || null;
+}
+
+// "yes", "no still wrong", "thanks" — answers to "did that help?" that
+// shouldn't cost a classifier call.
+const SUPPORT_REPLY_WORDS = ['yes', 'yeah', 'yep', 'yup', 'haan', 'ji', 'ok', 'okay', 'no', 'nope', 'nahi', 'not', 'still',
+  'resolved', 'fixed', 'done', 'thanks', 'thank', 'shukriya'];
+function isShortSupportReply(text) {
+  const words = text.toLowerCase().replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(Boolean);
+  return words.length > 0 && words.length <= 5 && words.some((w) => SUPPORT_REPLY_WORDS.includes(w));
+}
+
+// Intents that start something new rather than continuing a support thread.
+function isNewRequestIntent(parsed) {
+  if (!parsed) return false;
+  if (parsed.intent === 'order') return parsed.items?.length > 0 && parsed.confidence >= 0.7;
+  return ['reservation', 'loyalty_balance', 'recommendation', 'menu_request'].includes(parsed.intent);
 }
 
 // ── Helper: Get or create a conversation record ──
@@ -400,7 +446,9 @@ async function resolveSendingCredentials(tenantId) {
 // tenantId is optional but should be passed whenever the caller has one —
 // it's what makes a per-tenant connected number (impl-30) actually used
 // instead of silently falling back to the platform default for every tenant.
-export async function sendReply(phone, text, tenantId) {
+export async function sendReply(phone, rawText, tenantId) {
+  // AI replies come back in Markdown (**bold**); WhatsApp bolds with *single*.
+  const text = rawText.replace(/\*\*(.+?)\*\*/g, '*$1*');
   const creds = await resolveSendingCredentials(tenantId);
   if (!creds) return; // reason already logged
 

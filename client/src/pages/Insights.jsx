@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { toast } from '../components/ui/toast';
 import { Send, Sparkles, Loader2, TrendingUp } from 'lucide-react';
+import MarkdownText from '../components/MarkdownText';
 
 const INSIGHT_STYLES = {
   feature_candidate: { label: 'Feature this', className: 'bg-green-100 text-green-700' },
@@ -133,7 +134,7 @@ export default function Insights() {
             <Sparkles className="mt-0.5 h-5 w-5 text-brand-600" />
             <div>
               <p className="mb-1 text-xs font-medium text-brand-600">AI Answer</p>
-              <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap">{answer}</p>
+              <MarkdownText text={answer} className="text-sm text-[var(--text-primary)]" />
             </div>
           </div>
         </div>
@@ -154,7 +155,7 @@ export default function Insights() {
             {history.map((h, i) => (
               <div key={i} className="card p-4">
                 <p className="mb-1 text-sm font-medium text-[var(--text-secondary)]">Q: {h.question}</p>
-                <p className="text-sm text-[var(--text-secondary)]">{h.answer}</p>
+                <MarkdownText text={h.answer} className="text-sm text-[var(--text-secondary)]" />
               </div>
             ))}
           </div>

@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { authenticate, checkTenantActive, authorize, attachBranchAccess, hasPermission } from '../middleware/auth.js';
 import { query } from '../db/pool.js';
+import { periodStartSql, localDateSql, isSaleSql } from '../utils/business-time.js';
 
 const router = Router();
 router.use(authenticate);
@@ -16,7 +17,7 @@ const insightsLimiter = rateLimit({
 
 // ── POST /api/insights/query ──
 // Natural-language query over the restaurant's order data, powered by Qwen
-router.post('/query', authorize('reports.view'), insightsLimiter, async (req, res, next) => {
+router.post('/query', authorize('reports.view'), insightsLimiter, attachBranchAccess, async (req, res, next) => {
   try {
     const { question, history } = req.body;
     if (!question || typeof question !== 'string') {
@@ -31,7 +32,10 @@ router.post('/query', authorize('reports.view'), insightsLimiter, async (req, re
       : [];
 
     const { generateInsights } = await import('../services/ai-agent.js');
-    const answer = await generateInsights(req.user.tenant_id, question, validHistory);
+    // Branch-locked users only see their branches' orders — same rule as the
+    // branch analytics routes (null = owner, every branch).
+    const branchIds = req.user.branchAccess === null ? null : Array.from(req.user.branchAccess);
+    const answer = await generateInsights(req.user.tenant_id, question, { history: validHistory, branchIds });
     res.json({ answer });
   } catch (err) {
     next(err);
@@ -39,46 +43,75 @@ router.post('/query', authorize('reports.view'), insightsLimiter, async (req, re
 });
 
 // ── GET /api/insights/dashboard ──
-// Pre-computed KPIs for the admin dashboard
-router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
+// Pre-computed KPIs for the admin dashboard. Two scopes:
+//  - 'full' (reports.view): sales, revenue, customers, margins.
+//  - 'operations' (orders.view only, e.g. staff): today's order count and
+//    status, low stock — the parts of the page their job needs, no financials.
+// Order-based figures are limited to the user's branches for non-owners, the
+// same rule the branch analytics routes apply.
+router.get('/dashboard', authorize('reports.view', 'orders.view'), attachBranchAccess, async (req, res, next) => {
   try {
     const tenantId = req.user.tenant_id;
+    const branchIds = req.user.branchAccess === null ? null : Array.from(req.user.branchAccess);
+    const orderParams = branchIds ? [tenantId, branchIds] : [tenantId];
+    const branchSql = (alias = '') => (branchIds ? ` AND ${alias ? `${alias}.` : ''}branch_id = ANY($2::uuid[])` : '');
+
+    const lowStockQuery = () => query(`
+        SELECT COUNT(*) as count
+        FROM ingredients
+        WHERE tenant_id = $1 AND current_stock <= low_stock_threshold
+      `, [tenantId]);
+    const statusQuery = () => query(`
+        SELECT status, COUNT(*) as count
+        FROM orders
+        WHERE tenant_id = $1 AND created_at >= ${periodStartSql('today')}${branchSql()}
+        GROUP BY status
+      `, orderParams);
+
+    if (!(await hasPermission(req.user, 'reports.view'))) {
+      const [statusBreakdown, lowStockCount] = await Promise.all([statusQuery(), lowStockQuery()]);
+      const todayCount = statusBreakdown.rows
+        .filter((r) => r.status !== 'cancelled')
+        .reduce((sum, r) => sum + parseInt(r.count, 10), 0);
+      return res.json({
+        scope: 'operations',
+        today: { orders: todayCount },
+        status_breakdown: statusBreakdown.rows,
+        low_stock_count: parseInt(lowStockCount.rows[0].count, 10),
+      });
+    }
 
     const [todayOrders, weekRevenue, topItems, statusBreakdown, recentCustomers, reviewStats, lowStockCount, foodCostMargins] = await Promise.all([
-      // Today's order count and revenue
+      // Today's order count and revenue (Pakistan day, cancelled excluded —
+      // same definition AI Insights is given, see utils/business-time.js)
       query(`
         SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as revenue
         FROM orders
-        WHERE tenant_id = $1 AND created_at >= CURRENT_DATE
-      `, [tenantId]),
+        WHERE tenant_id = $1 AND created_at >= ${periodStartSql('today')} AND ${isSaleSql()}${branchSql()}
+      `, orderParams),
 
-      // Last 7 days revenue trend
+      // Last 7 local days revenue trend (today + 6 previous days)
       query(`
-        SELECT DATE(created_at) as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue
+        SELECT ${localDateSql('created_at')} as date, COUNT(*) as orders, COALESCE(SUM(total), 0) as revenue
         FROM orders
-        WHERE tenant_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
-        GROUP BY DATE(created_at)
+        WHERE tenant_id = $1 AND created_at >= ${periodStartSql('today')} - INTERVAL '6 days' AND ${isSaleSql()}${branchSql()}
+        GROUP BY 1
         ORDER BY date
-      `, [tenantId]),
+      `, orderParams),
 
-      // Top 5 selling items
+      // Top 5 selling items (last 30 days)
       query(`
         SELECT oi.name, SUM(oi.quantity) as total_qty, SUM(oi.total_price) as total_revenue
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
-        WHERE o.tenant_id = $1 AND o.created_at >= NOW() - INTERVAL '30 days'
+        WHERE o.tenant_id = $1 AND o.created_at >= NOW() - INTERVAL '30 days' AND ${isSaleSql('o')}${branchSql('o')}
         GROUP BY oi.name
         ORDER BY total_qty DESC
         LIMIT 5
-      `, [tenantId]),
+      `, orderParams),
 
       // Order status breakdown
-      query(`
-        SELECT status, COUNT(*) as count
-        FROM orders
-        WHERE tenant_id = $1 AND created_at >= CURRENT_DATE
-        GROUP BY status
-      `, [tenantId]),
+      statusQuery(),
 
       // Recent customers
       query(`
@@ -97,11 +130,7 @@ router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
       `, [tenantId]),
 
       // Low-stock ingredients count (impl-08)
-      query(`
-        SELECT COUNT(*) as count
-        FROM ingredients
-        WHERE tenant_id = $1 AND current_stock <= low_stock_threshold
-      `, [tenantId]),
+      lowStockQuery(),
 
       // Food-cost margin per menu item (impl-08) — only items with a recipe
       // defined have real cost data; items without one are omitted rather
@@ -119,6 +148,7 @@ router.get('/dashboard', authorize('reports.view'), async (req, res, next) => {
     ]);
 
     res.json({
+      scope: 'full',
       today: {
         orders: parseInt(todayOrders.rows[0].count, 10),
         revenue: parseFloat(todayOrders.rows[0].revenue),

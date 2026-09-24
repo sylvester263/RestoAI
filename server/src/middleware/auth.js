@@ -69,6 +69,13 @@ async function getRolePermissions(tenantId) {
   return map;
 }
 
+/** true if the user's role holds this permission (owner always does). */
+export async function hasPermission(user, permissionKey) {
+  if (user.role === 'owner') return true;
+  const rolePerms = await getRolePermissions(user.tenant_id);
+  return !!rolePerms[user.role]?.has(permissionKey);
+}
+
 export function invalidatePermissionsCache(tenantId) {
   cache.delete(tenantId);
 }

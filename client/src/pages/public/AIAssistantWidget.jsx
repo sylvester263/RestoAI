@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { publicApi } from '../../lib/api';
 import { Sparkles, X, Send, Loader2 } from 'lucide-react';
+import MarkdownText from '../../components/MarkdownText';
 
 export default function AIAssistantWidget({ tenantSlug }) {
   const [open, setOpen] = useState(false);
@@ -58,11 +59,11 @@ export default function AIAssistantWidget({ tenantSlug }) {
         {messages.map((m, i) => (
           <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
-              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap ${
-                m.role === 'user' ? 'bg-brand-600 text-white' : 'bg-gray-100 text-gray-800'
+              className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                m.role === 'user' ? 'bg-brand-600 text-white whitespace-pre-wrap' : 'bg-gray-100 text-gray-800'
               }`}
             >
-              {m.text}
+              {m.role === 'user' ? m.text : <MarkdownText text={m.text} />}
             </div>
           </div>
         ))}

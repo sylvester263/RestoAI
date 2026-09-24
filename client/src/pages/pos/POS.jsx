@@ -270,7 +270,7 @@ export default function POS() {
             onHold={handleHold}
             onDiscounted={() => loadDetail(selectedId)}
             onChanged={() => loadDetail(selectedId)}
-            onSettled={(orderId) => { setSelectedId(null); loadTabs(branchId); setReceiptOrderId(orderId); }}
+            onSettled={(orderId) => { setSelectedId(null); setDetail(null); loadTabs(branchId); setReceiptOrderId(orderId); }}
             onShowVoidModal={setVoidItemTarget}
           />
         )}
@@ -674,7 +674,7 @@ function TabDetail({ detail, branchId, cart, grouped, cartTotal, sending, error,
       )}
 
       {showSettle && (
-        <SettleModal tabId={tab.id} estimatedTotal={netTotal} onClose={() => setShowSettle(false)} onSettled={onSettled} />
+        <SettleModal tabId={tab.id} estimatedTotal={netTotal} onClose={() => setShowSettle(false)} onSettled={(orderId) => { setShowSettle(false); onSettled(orderId); }} />
       )}
       {showTransfer && (
         <TransferModal tabId={tab.id} branchId={branchId} onClose={() => setShowTransfer(false)} onTransferred={() => { setShowTransfer(false); onChanged(); }} />
