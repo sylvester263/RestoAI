@@ -2,24 +2,56 @@ import jwt from 'jsonwebtoken';
 import config from '../config.js';
 import { query } from '../db/pool.js';
 
+// A removed staff member's JWT stays cryptographically valid until it
+// expires (days), so authenticate() also checks the account is still
+// active. Cached per user for a short TTL; invalidateUserStatus() clears it
+// on the instance that made the change, other instances catch up within it.
+const userStatusCache = new Map(); // userId -> { active, at }
+const USER_STATUS_TTL_MS = 30_000;
+
+async function isUserActive(userId, tenantId) {
+  const cached = userStatusCache.get(userId);
+  if (cached && Date.now() - cached.at < USER_STATUS_TTL_MS) return cached.active;
+  const res = await query(
+    'SELECT 1 FROM users WHERE id = $1 AND tenant_id = $2 AND deactivated_at IS NULL',
+    [userId, tenantId],
+  );
+  const active = res.rows.length > 0;
+  userStatusCache.set(userId, { active, at: Date.now() });
+  return active;
+}
+
+export function invalidateUserStatus(userId) {
+  userStatusCache.delete(userId);
+}
+
 /**
  * JWT authentication middleware.
- * Extracts token from Authorization header, verifies it, and attaches
- * the decoded user payload (including tenant_id) to req.user.
+ * Extracts token from Authorization header, verifies it, confirms the
+ * account is still active, and attaches the decoded user payload
+ * (including tenant_id) to req.user.
  */
-export function authenticate(req, res, next) {
+export async function authenticate(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: { message: 'Authentication required' } });
   }
 
+  let decoded;
   try {
-    const token = header.slice(7);
-    req.user = jwt.verify(token, config.jwt.secret);
-    next();
+    decoded = jwt.verify(header.slice(7), config.jwt.secret);
   } catch {
     return res.status(401).json({ error: { message: 'Invalid or expired token' } });
   }
+  try {
+    if (!(await isUserActive(decoded.id, decoded.tenant_id))) {
+      return res.status(401).json({ error: { message: 'This account no longer has access. Please contact the restaurant owner.' } });
+    }
+  } catch (err) {
+    return next(err);
+  }
+  req.user = decoded;
+  next();
 }
 
 /**

@@ -3,10 +3,11 @@ import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from '../components/ui/toast';
 import { Skeleton } from '../components/ui/Skeleton';
+import MarkdownText from '../components/MarkdownText';
 import {
   Sparkles, UserX, ShieldAlert, Wallet, Bike, ToggleLeft, ToggleRight,
   ClipboardList, Brain, Clock, Send, BarChart3, Package, AlertTriangle,
-  CheckCircle2, XCircle, ChevronRight, Zap, Lock,
+  CheckCircle2, XCircle, ChevronRight, Zap, Lock, Play, Loader2, X,
 } from 'lucide-react';
 
 // ── Severity badge styles ──────────────────────────────────────────
@@ -17,19 +18,29 @@ const SEVERITY_STYLES = {
 };
 
 // ── Agent registry — defines all 8 agents and their UI metadata ────
+// `run` is the /api/agents/:agent/run-now key for agents that can be run on
+// demand; the rest are event-driven (dispatch, ETA) or message customers in
+// bulk (win-back), so they stay on their own triggers.
 const AGENTS = [
-  { id: 'briefing',      name: 'Daily Briefing',     icon: Send,          color: 'text-emerald-600', status: 'active' },
+  { id: 'briefing',      name: 'Daily Briefing',     icon: Send,          color: 'text-emerald-600', status: 'active', run: 'daily-briefing' },
   { id: 'winback',       name: 'Win-Back',           icon: UserX,         color: 'text-amber-600',   status: 'active' },
   { id: 'dispatch',      name: 'Rider Dispatch',     icon: Bike,          color: 'text-blue-600',    status: 'active' },
   { id: 'eta',           name: 'ETA Tracking',       icon: Clock,         color: 'text-purple-600',  status: 'active' },
-  { id: 'reconciliation',name: 'Reconciliation',     icon: Wallet,        color: 'text-red-600',     status: 'active' },
-  { id: 'replenishment', name: 'Replenishment',      icon: Package,       color: 'text-teal-600',    status: 'active' },
-  { id: 'menu_insight',  name: 'Menu Insights',      icon: Brain,         color: 'text-indigo-600',  status: 'active' },
-  { id: 'abuse',         name: 'Abuse Detection',    icon: ShieldAlert,   color: 'text-rose-600',    status: 'active' },
+  { id: 'reconciliation',name: 'Reconciliation',     icon: Wallet,        color: 'text-red-600',     status: 'active', run: 'reconciliation' },
+  { id: 'replenishment', name: 'Replenishment',      icon: Package,       color: 'text-teal-600',    status: 'active', run: 'replenishment' },
+  { id: 'menu_insight',  name: 'Menu Insights',      icon: Brain,         color: 'text-indigo-600',  status: 'active', run: 'menu-insights' },
+  { id: 'abuse',         name: 'Abuse Detection',    icon: ShieldAlert,   color: 'text-rose-600',    status: 'active', run: 'abuse-detection' },
 ];
 
+const RUN_RESULT_TEXT = {
+  reconciliation: (r) => `Reconciliation checked the last 48 hours — ${r.flags_created} new flag${r.flags_created === 1 ? '' : 's'}.`,
+  'abuse-detection': (r) => `Abuse detection finished — ${r.flags_created} new flag${r.flags_created === 1 ? '' : 's'}.`,
+  replenishment: (r) => `Replenishment finished — ${r.suggestions_created} new suggestion${r.suggestions_created === 1 ? '' : 's'}.`,
+  'menu-insights': (r) => `Menu insights finished — ${r.insights_created} new insight${r.insights_created === 1 ? '' : 's'}.`,
+};
+
 // ── Sub-component: Agent overview card ──────────────────────────────
-function AgentCard({ agent, count, label, accent }) {
+function AgentCard({ agent, count, label, accent, onRun, running }) {
   const Icon = agent.icon;
   return (
     <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-3 py-2.5">
@@ -46,7 +57,20 @@ function AgentCard({ agent, count, label, accent }) {
           <p className="text-xs text-[var(--text-tertiary)]">{label}</p>
         )}
       </div>
-      <div className={`h-2 w-2 shrink-0 rounded-full ${agent.status === 'active' ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+      {onRun ? (
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={running}
+          title={`Run ${agent.name} now`}
+          className="flex shrink-0 items-center gap-1 rounded-lg border border-[var(--border)] px-2 py-1 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--surface-3)] hover:text-[var(--text-primary)] disabled:opacity-60"
+        >
+          {running ? <Loader2 className="h-3 w-3 animate-spin" /> : <Play className="h-3 w-3" />}
+          {running ? 'Running' : 'Run now'}
+        </button>
+      ) : (
+        <div className={`h-2 w-2 shrink-0 rounded-full ${agent.status === 'active' ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
+      )}
     </div>
   );
 }
@@ -105,6 +129,8 @@ export default function Agents() {
   const [menuInsights, setMenuInsights] = useState([]);
   const [loading, setLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
+  const [runningAgent, setRunningAgent] = useState(null);
+  const [briefing, setBriefing] = useState(null); // { text, at }
 
   const load = useCallback(async () => {
     try {
@@ -132,6 +158,24 @@ export default function Agents() {
   }, [isOwner]);
 
   useEffect(() => { load(); }, [load]);
+
+  async function runNow(agent) {
+    setRunningAgent(agent.run);
+    try {
+      const res = await api.runAgentNow(agent.run);
+      if (agent.run === 'daily-briefing') {
+        setBriefing({ text: res.briefing, at: res.ran_at });
+      } else {
+        toast.success(RUN_RESULT_TEXT[agent.run](res));
+        await load();
+      }
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setRunningAgent(null);
+    }
+  }
+  const runProps = (agent) => (agent.run ? { onRun: () => runNow(agent), running: runningAgent === agent.run } : {});
 
   // ── Settings handlers ──
   async function toggleWinback() {
@@ -247,15 +291,28 @@ export default function Agents() {
 
       {/* ── Agent overview strip ── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <AgentCard agent={AGENTS[0]} label="Daily briefing" />
+        <AgentCard agent={AGENTS[0]} label="Daily briefing" {...runProps(AGENTS[0])} />
         <AgentCard agent={AGENTS[1]} count={lapsed.length} label="lapsed customers" accent={lapsed.length > 0 ? 'text-amber-600' : undefined} />
         <AgentCard agent={AGENTS[2]} label={settings?.dispatch_mode === 'auto' ? 'Full auto-assign' : 'Suggest only'} />
         <AgentCard agent={AGENTS[3]} label="ETA tracking" />
-        <AgentCard agent={AGENTS[4]} count={reconFlags.length} label={highRecon > 0 ? `${highRecon} high severity` : 'open flags'} accent={highRecon > 0 ? 'text-red-600' : reconFlags.length > 0 ? 'text-amber-600' : undefined} />
-        <AgentCard agent={AGENTS[5]} count={replenishment.length} label="pending suggestions" accent={replenishment.length > 0 ? 'text-teal-600' : undefined} />
-        <AgentCard agent={AGENTS[6]} count={menuInsights.length} label="new insights" accent={menuInsights.length > 0 ? 'text-indigo-600' : undefined} />
-        <AgentCard agent={AGENTS[7]} count={abuseFlags.length} label={highAbuse > 0 ? `${highAbuse} high severity` : 'open flags'} accent={highAbuse > 0 ? 'text-red-600' : abuseFlags.length > 0 ? 'text-amber-600' : undefined} />
+        <AgentCard agent={AGENTS[4]} {...runProps(AGENTS[4])} count={reconFlags.length} label={highRecon > 0 ? `${highRecon} high severity` : 'open flags'} accent={highRecon > 0 ? 'text-red-600' : reconFlags.length > 0 ? 'text-amber-600' : undefined} />
+        <AgentCard agent={AGENTS[5]} {...runProps(AGENTS[5])} count={replenishment.length} label="pending suggestions" accent={replenishment.length > 0 ? 'text-teal-600' : undefined} />
+        <AgentCard agent={AGENTS[6]} {...runProps(AGENTS[6])} count={menuInsights.length} label="new insights" accent={menuInsights.length > 0 ? 'text-indigo-600' : undefined} />
+        <AgentCard agent={AGENTS[7]} {...runProps(AGENTS[7])} count={abuseFlags.length} label={highAbuse > 0 ? `${highAbuse} high severity` : 'open flags'} accent={highAbuse > 0 ? 'text-red-600' : abuseFlags.length > 0 ? 'text-amber-600' : undefined} />
       </div>
+
+      {briefing && (
+        <div className="rounded-xl border border-emerald-200 bg-[var(--surface-2)] p-4 shadow-sm dark:border-emerald-900/50">
+          <div className="mb-2 flex items-center justify-between">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+              <Send className="h-4 w-4 text-emerald-600" /> Daily Briefing — generated {new Date(briefing.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </h2>
+            <button type="button" onClick={() => setBriefing(null)} className="p-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]" aria-label="Close briefing"><X className="h-4 w-4" /></button>
+          </div>
+          <MarkdownText text={briefing.text} className="text-sm text-[var(--text-primary)]" />
+          <p className="mt-2 text-xs text-[var(--text-tertiary)]">Preview only — your scheduled WhatsApp briefing still goes out as usual.</p>
+        </div>
+      )}
 
       {/* ── Automation controls (owner-only) ── */}
       {isOwner && settings && (

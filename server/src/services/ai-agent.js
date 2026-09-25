@@ -158,12 +158,45 @@ export async function parseOrderMessage(message, menuItems, conversationContext 
 // Uses Qwen vision to extract menu items from a photograph.
 // ═══════════════════════════════════════════════════════════════════
 
+const DIGITIZE_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+// The vision model usually wraps its JSON in a ```json fence and sometimes
+// adds a sentence around it — take the outermost array and parse that.
+function parseDigitizedItems(raw) {
+  const start = raw.indexOf('[');
+  const end = raw.lastIndexOf(']');
+  if (start === -1 || end <= start) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+  const text = (v, max) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
+  return parsed
+    .map((it) => {
+      const price = typeof it?.price === 'number' ? it.price : parseFloat(String(it?.price ?? '').replace(/[^\d.]/g, ''));
+      return {
+        name: text(it?.name, 255),
+        name_urdu: text(it?.name_urdu, 255),
+        description: text(it?.description, 500),
+        price: Number.isFinite(price) && price > 0 ? price : null,
+        category: text(it?.category, 100),
+      };
+    })
+    .filter((it) => it.name);
+}
+
 /**
  * Extract structured menu items from a base64-encoded image.
  * @param {string} imageBase64 - Base64-encoded image of a physical menu
- * @returns {Promise<object[]>} Array of extracted menu items
+ * @param {string} [mimeType] - image/jpeg (default), image/png or image/webp
+ * @returns {Promise<object[]|null>} Extracted items, or null if the model's
+ *   reply couldn't be read as a menu
  */
-export async function digitizeMenuFromImage(imageBase64) {
+export async function digitizeMenuFromImage(imageBase64, mimeType = 'image/jpeg') {
+  const mime = DIGITIZE_MIME_TYPES.includes(mimeType) ? mimeType : 'image/jpeg';
   const messages = [
     {
       role: 'system',
@@ -178,7 +211,7 @@ Respond ONLY with a valid JSON array.`,
         { type: 'text', text: 'Extract all menu items from this image:' },
         {
           type: 'image_url',
-          image_url: { url: `data:image/jpeg;base64,${imageBase64}` },
+          image_url: { url: `data:${mime};base64,${imageBase64}` },
         },
       ],
     },
@@ -205,13 +238,10 @@ Respond ONLY with a valid JSON array.`,
   }
 
   const data = await res.json();
-  const raw = data.choices[0]?.message?.content || '[]';
-
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return [{ error: 'Failed to parse menu image', raw }];
-  }
+  const raw = data.choices[0]?.message?.content || '';
+  const items = parseDigitizedItems(raw);
+  if (!items) console.error('[ai] digitize: unreadable model reply:', raw.slice(0, 300));
+  return items;
 }
 
 // ═══════════════════════════════════════════════════════════════════

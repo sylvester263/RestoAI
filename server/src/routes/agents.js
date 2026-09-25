@@ -14,7 +14,7 @@ import { authenticate, checkTenantActive, authorize } from '../middleware/auth.j
 import { requireCronSecret } from '../middleware/cron-auth.js';
 import { query } from '../db/pool.js';
 
-import { sendBriefingForTenant } from '../services/daily-briefing-agent.js';
+import { sendBriefingForTenant, generateBriefingForTenant } from '../services/daily-briefing-agent.js';
 import { findLapsedCustomers, sendWinbackToCustomer } from '../services/winback-agent.js';
 import { previewSuggestion, autoAssign, DispatchError } from '../services/dispatch-agent.js';
 import { runReconciliation } from '../services/reconciliation-agent.js';
@@ -31,6 +31,43 @@ const router = Router();
 // real side effects" gap as defense in depth alongside requireCronSecret,
 // not a replacement for it.
 const agentRunLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10 });
+
+// ── Manual "Run now" (owner / reports.view) ──
+// Same per-tenant function the scheduled run calls, for the caller's own
+// tenant only — the cron endpoints above loop every tenant. Win-Back is
+// deliberately not here: a manual run would message real customers in bulk.
+// Daily Briefing returns the text instead of sending it, so it doesn't use
+// up today's scheduled WhatsApp briefing.
+const manualRunLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 12,
+  keyGenerator: (req) => req.user?.id || req.ip,
+  message: { error: { message: 'Too many manual runs — please wait a bit before running agents again.' } },
+});
+
+const MANUAL_RUNS = {
+  'daily-briefing': async (tenantId) => ({ briefing: await generateBriefingForTenant(tenantId) }),
+  reconciliation: async (tenantId) => ({
+    flags_created: await runReconciliation(tenantId, new Date(Date.now() - 48 * 3600 * 1000).toISOString()),
+  }),
+  'abuse-detection': async (tenantId) => ({ flags_created: await runAbuseScan(tenantId) }),
+  replenishment: async (tenantId) => ({ suggestions_created: await runReplenishmentScan(tenantId) }),
+  'menu-insights': async (tenantId) => ({ insights_created: await runMenuInsightScan(tenantId) }),
+};
+
+router.post('/:agent/run-now', authenticate, checkTenantActive, authorize('reports.view'), manualRunLimiter, async (req, res, next) => {
+  const run = Object.hasOwn(MANUAL_RUNS, req.params.agent) ? MANUAL_RUNS[req.params.agent] : null;
+  if (!run) {
+    return res.status(404).json({ error: { message: 'This agent can only run on its schedule' } });
+  }
+  try {
+    const result = await run(req.user.tenant_id);
+    res.json({ agent: req.params.agent, ran_at: new Date().toISOString(), ...result });
+  } catch (err) {
+    console.error(`[agents:${req.params.agent}] manual run failed:`, err.message);
+    res.status(502).json({ error: { message: 'The agent run failed — please try again in a moment.' } });
+  }
+});
 
 function requireOwner(req, res, next) {
   if (req.user.role !== 'owner') {

@@ -12,6 +12,7 @@
  *   </Modal>
  */
 import { useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 const SIZES = {
@@ -98,7 +99,9 @@ export default function Modal({
       ? 'btn-danger'
       : 'btn-primary';
 
-  return (
+  // Portalled to <body>: inside an animated (transformed) page, `fixed` is
+  // relative to the page, not the viewport, and tall dialogs ran off-screen.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -109,16 +112,16 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${SIZES[size] || SIZES.md} max-h-[85vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl`}
+        className={`${SIZES[size] || SIZES.md} max-w-full max-h-[85vh] overflow-y-auto rounded-xl bg-[var(--surface-2)] p-6 text-[var(--text-primary)] shadow-xl`}
       >
         {/* Header */}
         {title && (
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+            <h2 className="text-lg font-semibold text-[var(--text-primary)]">{title}</h2>
             {!hideCloseButton && (
               <button
                 onClick={onClose}
-                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                className="rounded-lg p-1.5 text-[var(--text-tertiary)] hover:bg-[var(--surface-3)] hover:text-[var(--text-secondary)]"
                 aria-label="Close dialog"
               >
                 <X className="h-5 w-5" />
@@ -150,6 +153,7 @@ export default function Modal({
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

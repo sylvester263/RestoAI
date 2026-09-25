@@ -111,7 +111,7 @@ export const api = {
   createMenuItem: (body) => request('/menu', { method: 'POST', body: JSON.stringify(body) }),
   updateMenuItem: (id, body) => request(`/menu/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
   deleteMenuItem: (id) => request(`/menu/${id}`, { method: 'DELETE' }),
-  digitizeMenu: (image_base64) => request('/menu/digitize', { method: 'POST', body: JSON.stringify({ image_base64 }) }),
+  digitizeMenu: (image_base64, mime_type) => request('/menu/digitize', { method: 'POST', body: JSON.stringify({ image_base64, mime_type }) }),
   uploadMenuItemImage: (id, file) => {
     const form = new FormData();
     form.append('photo', file);
@@ -121,8 +121,8 @@ export const api = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
       body: form,
     }).then(async (res) => {
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error?.message || 'Upload failed');
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error?.message || `Upload failed (${res.status}). The photo wasn't saved.`);
       return data;
     });
   },
@@ -159,6 +159,10 @@ export const api = {
 
   // Staff invites (owner/manager)
   getStaffInvites: () => request('/staff-invites'),
+  getStaff: () => request('/staff'),
+  runAgentNow: (agent) => request(`/agents/${agent}/run-now`, { method: 'POST' }),
+  deactivateStaff: (id) => request(`/staff/${id}/deactivate`, { method: 'POST' }),
+  reactivateStaff: (id) => request(`/staff/${id}/reactivate`, { method: 'POST' }),
   createStaffInvite: (body) => request('/staff-invites', { method: 'POST', body: JSON.stringify(body) }),
 
   // Customers (CRM)

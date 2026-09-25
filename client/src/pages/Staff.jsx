@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { Skeleton } from '../components/ui/Skeleton';
 import Modal from '../components/ui/Modal';
-import { UserPlus, Plus, X, Loader2, Copy, Check, Clock, CheckCircle2, XCircle } from 'lucide-react';
+import { toast, confirmAction } from '../components/ui/toast';
+import { UserPlus, Plus, X, Loader2, Copy, Check, Clock, CheckCircle2, XCircle, Users } from 'lucide-react';
 
 const STATUS_STYLE = {
   pending: 'bg-amber-100 text-amber-700',
@@ -13,14 +14,17 @@ const STATUS_ICON = { pending: Clock, accepted: CheckCircle2, expired: XCircle }
 
 export default function Staff() {
   const [invites, setInvites] = useState([]);
+  const [staff, setStaff] = useState([]);
+  const [busyId, setBusyId] = useState(null);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [error, setError] = useState('');
 
   function load() {
-    Promise.all([api.getStaffInvites(), api.getBranches()])
-      .then(([invitesRes, branchesRes]) => {
+    Promise.all([api.getStaff(), api.getStaffInvites(), api.getBranches()])
+      .then(([staffRes, invitesRes, branchesRes]) => {
+        setStaff(staffRes.staff);
         setInvites(invitesRes.invites);
         setBranches(branchesRes.branches);
       })
@@ -29,6 +33,26 @@ export default function Staff() {
   }
 
   useEffect(load, []);
+
+  async function setAccess(member, active) {
+    if (!active) {
+      const ok = await confirmAction(
+        `Remove ${member.name}?`,
+        "They'll be signed out and won't be able to log in. Their past orders and actions stay on record, and you can restore access later.",
+      );
+      if (!ok) return;
+    }
+    setBusyId(member.id);
+    try {
+      const res = active ? await api.reactivateStaff(member.id) : await api.deactivateStaff(member.id);
+      setStaff((list) => list.map((m) => (m.id === member.id ? { ...m, deactivated_at: res.user.deactivated_at } : m)));
+      toast.success(active ? `${member.name} can sign in again` : `${member.name} has been removed`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   if (loading) return <div className="space-y-6"><Skeleton className="h-8 w-24" /><Skeleton.Table rows={4} cols={5} /></div>;
 
@@ -44,6 +68,54 @@ export default function Staff() {
 
       {error && <div className="mb-4 rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700">{error}</div>}
 
+      <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-[var(--text-primary)]"><Users className="h-5 w-5" /> Team</h2>
+      <div className="card mb-8 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-[var(--border-light)] text-left text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+              <th className="py-3 pr-4">Name</th>
+              <th className="py-3 pr-4">Role</th>
+              <th className="py-3 pr-4">Branches</th>
+              <th className="py-3 pr-4">Status</th>
+              <th className="py-3 pr-4 text-right">Access</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--border-light)]">
+            {staff.map((m) => {
+              const removed = !!m.deactivated_at;
+              return (
+                <tr key={m.id} className={removed ? 'opacity-60' : ''}>
+                  <td className="py-3 pr-4">
+                    <p className="font-medium text-[var(--text-primary)]">{m.name}{m.is_you && <span className="ml-1 text-xs text-[var(--text-tertiary)]">(you)</span>}</p>
+                    <p className="text-xs text-[var(--text-secondary)]">{m.email}</p>
+                  </td>
+                  <td className="py-3 pr-4 capitalize text-[var(--text-secondary)]">{m.role}</td>
+                  <td className="py-3 pr-4 text-[var(--text-secondary)]">{m.role === 'owner' ? 'All branches' : (m.branches.length ? m.branches.join(', ') : 'None assigned')}</td>
+                  <td className="py-3 pr-4">
+                    {removed
+                      ? <span className="badge bg-[var(--surface-3)] text-[var(--text-secondary)]">Removed {new Date(m.deactivated_at).toLocaleDateString()}</span>
+                      : <span className="badge bg-green-100 text-green-700">Active</span>}
+                  </td>
+                  <td className="py-3 pr-4 text-right">
+                    {m.role !== 'owner' && !m.is_you && (
+                      <button
+                        type="button"
+                        onClick={() => setAccess(m, removed)}
+                        disabled={busyId === m.id}
+                        className={removed ? 'btn-secondary !py-1 text-xs' : 'rounded-lg px-3 py-1 text-xs font-medium text-red-600 hover:bg-red-50'}
+                      >
+                        {busyId === m.id ? 'Saving…' : removed ? 'Restore access' : 'Remove'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">Invites</h2>
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

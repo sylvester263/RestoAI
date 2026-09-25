@@ -1007,6 +1007,9 @@ async function migrate() {
     await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(20);`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_tenant_phone ON users(tenant_id, phone) WHERE phone IS NOT NULL;`);
 
+    // ── Staff removal — soft deactivation keeps their history attached ──
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS deactivated_at TIMESTAMPTZ;`);
+
     // ── Super Admin Panel (impl-29) — platform operator tenant management ──
     // Completely separate from tenant-scoped users — never joined or conflated.
     await client.query(`

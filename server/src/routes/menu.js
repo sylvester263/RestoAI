@@ -201,8 +201,27 @@ const upload = multer({
   },
 });
 
-router.post('/:id/image', authorize('menu.edit'), upload.single('photo'), async (req, res, next) => {
+// Multer rejects bad files inside its own middleware, before the route's
+// try/catch — translate those into the same clear 400s here.
+function receivePhoto(req, res, next) {
+  upload.single('photo')(req, res, (err) => {
+    if (!err) return next();
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(400).json({ error: { message: 'Image must be under 5 MB' } });
+    }
+    if (err.message?.includes('Only JPEG')) {
+      return res.status(400).json({ error: { message: err.message } });
+    }
+    return next(err);
+  });
+}
+
+router.post('/:id/image', authorize('menu.edit'), receivePhoto, async (req, res, next) => {
   try {
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error('[menu] photo upload refused: BLOB_READ_WRITE_TOKEN is not set');
+      return res.status(503).json({ error: { message: "Photo storage isn't set up yet, so the photo wasn't saved. Please contact RestoAI support." } });
+    }
     if (!req.file) {
       return res.status(400).json({ error: { message: 'photo file is required' } });
     }
@@ -226,11 +245,18 @@ router.post('/:id/image', authorize('menu.edit'), upload.single('photo'), async 
       : req.file.mimetype === 'image/webp' ? 'webp' : 'jpg';
     const pathname = `menu-images/${req.user.tenant_id}/${req.params.id}.${ext}`;
 
-    const blob = await put(pathname, req.file.buffer, {
-      access: 'public',
-      contentType: req.file.mimetype,
-      addRandomSuffix: false, // deterministic URL so re-upload replaces the same path
-    });
+    let blob;
+    try {
+      blob = await put(pathname, req.file.buffer, {
+        access: 'public',
+        contentType: req.file.mimetype,
+        addRandomSuffix: false, // deterministic URL so re-upload replaces the same path
+        allowOverwrite: true,
+      });
+    } catch (err) {
+      console.error('[menu] blob upload failed:', err.message);
+      return res.status(502).json({ error: { message: "The photo couldn't be saved. Please try again." } });
+    }
 
     const result = await query(
       'UPDATE menu_items SET image_url = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3 RETURNING *',
@@ -238,12 +264,6 @@ router.post('/:id/image', authorize('menu.edit'), upload.single('photo'), async 
     );
     res.json({ item: result.rows[0] });
   } catch (err) {
-    if (err.message && err.message.includes('Only JPEG')) {
-      return res.status(400).json({ error: { message: err.message } });
-    }
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ error: { message: 'Image must be under 5 MB' } });
-    }
     next(err);
   }
 });
@@ -291,15 +311,30 @@ router.delete('/:id', authorize('menu.edit'), async (req, res, next) => {
 
 // ── POST /api/menu/digitize ──
 // Accepts a base64 image of a physical menu and uses Qwen vision to extract items
+// Returns the extracted items for the owner to review — nothing is saved here;
+// the Menu page creates the items the owner keeps through POST /api/menu.
 router.post('/digitize', authorize('menu.edit'), digitizeLimiter, async (req, res, next) => {
   try {
-    const { image_base64 } = req.body;
-    if (!image_base64) {
+    const { image_base64, mime_type } = req.body;
+    if (!image_base64 || typeof image_base64 !== 'string') {
       return res.status(400).json({ error: { message: 'image_base64 is required' } });
+    }
+    // ~3 MB of image; the client downscales photos well below this.
+    if (image_base64.length > 4_000_000) {
+      return res.status(413).json({ error: { message: 'That image is too large — please use a smaller photo.' } });
     }
 
     const { digitizeMenuFromImage } = await import('../services/ai-agent.js');
-    const items = await digitizeMenuFromImage(image_base64);
+    let items;
+    try {
+      items = await digitizeMenuFromImage(image_base64, mime_type);
+    } catch (err) {
+      console.error('[menu] digitize failed:', err.message);
+      return res.status(502).json({ error: { message: "Couldn't read the menu right now. Please try again in a moment." } });
+    }
+    if (!items || items.length === 0) {
+      return res.status(422).json({ error: { message: "No menu items could be read from that photo. Try a clearer, well-lit photo of the printed menu." } });
+    }
     res.json({ extracted_items: items });
   } catch (err) {
     next(err);

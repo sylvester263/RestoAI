@@ -39,7 +39,7 @@ export async function processWhatsAppMessage(tenantId, message) {
   // assistant — never let the two paths blend.
   const ownerRes = await query(
     `SELECT id, name, role, phone FROM users
-     WHERE tenant_id = $1 AND phone = $2 AND role IN ('owner', 'manager')`,
+     WHERE tenant_id = $1 AND phone = $2 AND role IN ('owner', 'manager') AND deactivated_at IS NULL`,
     [tenantId, phone],
   );
   if (ownerRes.rows.length > 0) {

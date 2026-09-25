@@ -52,7 +52,7 @@ export default function CancelOrderModal({ order, onClose, onCancelled }) {
       variant="danger"
       loading={saving}
     >
-      <p className="mb-3 text-sm text-gray-600">
+      <p className="mb-3 text-sm text-[var(--text-secondary)]">
         {order.customer_name ? `${order.customer_name} will` : 'The customer will'} get a message with this reason. This cannot be undone.
       </p>
       <div className="mb-2 flex flex-wrap gap-1.5">
@@ -61,7 +61,7 @@ export default function CancelOrderModal({ order, onClose, onCancelled }) {
             key={r}
             type="button"
             onClick={() => setReason(r)}
-            className={`rounded-full border px-2.5 py-1 text-xs ${reason === r ? 'border-red-400 bg-red-50 text-red-700' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+            className={`rounded-full border px-2.5 py-1 text-xs ${reason === r ? 'border-red-400 bg-red-50 text-red-700' : 'border-[var(--border)] text-[var(--text-secondary)] hover:bg-[var(--surface-3)]'}`}
           >
             {r}
           </button>

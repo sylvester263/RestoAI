@@ -3,7 +3,8 @@ import { api } from '../lib/api';
 import { toast, confirmAction } from '../components/ui/toast';
 import { Skeleton } from '../components/ui/Skeleton';
 import Modal from '../components/ui/Modal';
-import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Image, X, Beaker } from 'lucide-react';
+import MenuImportModal from '../components/MenuImportModal';
+import { Plus, Pencil, Trash2, Search, ToggleLeft, ToggleRight, Image, X, Beaker, Camera } from 'lucide-react';
 
 export default function Menu() {
   const [items, setItems] = useState([]);
@@ -14,10 +15,12 @@ export default function Menu() {
   const [editing, setEditing] = useState(null); // null | 'new' | item object
   const [form, setForm] = useState({ name: '', name_urdu: '', description: '', price: '', category_id: '', is_available: true, tags: '' });
   const [imgUploading, setImgUploading] = useState(false);
+  const [imgError, setImgError] = useState('');
   const [recipe, setRecipe] = useState([]); // [{ ingredient_id, quantity_required, name, unit }]
   const [recipeSaving, setRecipeSaving] = useState(false);
   const [itemSaving, setItemSaving] = useState(false);
   const fileInputRef = useRef(null);
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     Promise.all([api.getMenu(), api.getCategories(), api.getIngredients()])
@@ -77,6 +80,7 @@ export default function Menu() {
 
   function startEdit(item) {
     setEditing(item);
+    setImgError('');
     setForm({
       name: item.name,
       name_urdu: item.name_urdu || '',
@@ -129,11 +133,15 @@ export default function Menu() {
     const file = e.target.files?.[0];
     if (!file || editing === 'new') return;
     setImgUploading(true);
+    setImgError('');
     try {
       const res = await api.uploadMenuItemImage(editing.id, file);
       setItems((prev) => prev.map((i) => (i.id === editing.id ? res.item : i)));
       setForm((f) => ({ ...f, image_url: res.item.image_url }));
+      toast.success('Photo saved');
     } catch (err) {
+      // Shown inline too — a toast alone is easy to miss behind the editor.
+      setImgError(err.message);
       toast.error(err.message);
     } finally {
       setImgUploading(false);
@@ -169,10 +177,23 @@ export default function Menu() {
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">Menu</h1>
           <p className="text-sm text-[var(--text-secondary)]">{items.length} items</p>
         </div>
-        <button onClick={startNew} className="btn-primary">
-          <Plus className="h-4 w-4" /> Add Item
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          <button onClick={() => setShowImport(true)} className="btn-secondary">
+            <Camera className="h-4 w-4" /> Import from photo
+          </button>
+          <button onClick={startNew} className="btn-primary">
+            <Plus className="h-4 w-4" /> Add Item
+          </button>
+        </div>
       </div>
+
+      <MenuImportModal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        categories={categories}
+        existingNames={items.map((i) => i.name)}
+        onImported={() => api.getMenu().then((res) => setItems(res.items)).catch(console.error)}
+      />
 
       {/* Search */}
       <div className="relative mb-6">
@@ -254,6 +275,7 @@ export default function Menu() {
                     className="hidden"
                     onChange={handleImageUpload}
                   />
+                  {imgError && <p role="alert" className="mt-1 text-xs text-red-600">{imgError}</p>}
                   {editing === 'new' && <p className="mt-1 text-xs text-[var(--text-tertiary)]">Save the item first, then add a photo.</p>}
                 </div>
               )}

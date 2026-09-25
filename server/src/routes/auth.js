@@ -110,6 +110,11 @@ router.post('/login', async (req, res, next) => {
     if (!valid) {
       return res.status(401).json({ error: { message: 'Invalid credentials' } });
     }
+    // Checked after the password so this can't be used to probe which
+    // emails belong to removed staff.
+    if (user.deactivated_at) {
+      return res.status(403).json({ error: { message: 'This account has been removed by the restaurant owner. Please contact them if you need access again.' } });
+    }
 
     // ── impl-29: Block login for suspended tenants ──
     const tenantRes = await query('SELECT * FROM tenants WHERE id = $1', [user.tenant_id]);
