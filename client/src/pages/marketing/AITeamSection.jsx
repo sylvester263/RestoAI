@@ -18,7 +18,7 @@ const TABS = [
     label: 'Ask Anything',
     icon: Sparkles,
     description: 'Ask about sales, orders, or customers in plain English or Urdu — Roman script included — and get a straight answer instead of a dashboard to dig through.',
-    content: <ScreenshotFrame src={askAnything} alt="AI Insights answering a Roman Urdu sales question" />,
+    content: <ScreenshotFrame src={askAnything} alt="AI Insights answering an owner's question about their top dishes this month" />,
   },
   {
     id: 'agents',

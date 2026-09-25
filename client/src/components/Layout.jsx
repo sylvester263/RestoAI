@@ -94,7 +94,8 @@ export default function Layout({ children }) {
     { key: 'g', callback: () => navigate('/dashboard') },
     { key: 'o', callback: () => navigate('/orders') },
     { key: 'p', callback: () => navigate('/pos') },
-    { key: '?', callback: () => setPaletteOpen(true), when: 'input' },
+    // Not in text fields — people type question marks there.
+    { key: '?', callback: () => setPaletteOpen(true) },
   ]);
 
   function toggleGroup(label) {
