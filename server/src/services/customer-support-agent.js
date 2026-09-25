@@ -15,6 +15,7 @@
 import { query } from '../db/pool.js';
 import { generateAgentText } from './ai-agent.js';
 import { sendReply } from './whatsapp.js';
+import { hasAgentPack } from './billing.js';
 
 // ── Deterministic classification patterns ──
 // Spec: "deterministic keyword/pattern rules where possible, Qwen only for
@@ -96,6 +97,12 @@ function isConfirmation(text) {
  * @returns {Promise<{reply: string}>}
  */
 export async function handleSupportMessage(tenantId, customer, phone, text, conversation) {
+  // impl-32: without the AI Agent Pack there's no AI support agent — the
+  // message still reaches staff as a ticket, a human just answers it.
+  if (!(await hasAgentPack(tenantId))) {
+    return handleSupportWithoutAgent(tenantId, customer, text);
+  }
+
   // 1. Find or create a support ticket for this customer
   let ticket = await getActiveTicket(tenantId, customer.id);
 
@@ -126,6 +133,27 @@ export async function handleSupportMessage(tenantId, customer, phone, text, conv
 
   // The caller (whatsapp.js) sends the reply — sending here as well made
   // every support reply reach the customer twice.
+  return { reply };
+}
+
+/**
+ * Human-only support (no AI Agent Pack): open or continue a ticket marked
+ * escalated so it shows as needing a person, and acknowledge honestly.
+ */
+async function handleSupportWithoutAgent(tenantId, customer, text) {
+  let ticket = await getActiveTicket(tenantId, customer.id);
+  if (!ticket || (ticket.status === 'ai_handled' && !ticket.pending_confirmation)) {
+    ticket = await createTicket(tenantId, customer.id, classifyCategory(text));
+  }
+  await logMessage(ticket.id, 'customer', text);
+  if (ticket.status !== 'escalated') {
+    await query(
+      `UPDATE support_tickets SET status = 'escalated', pending_confirmation = false, updated_at = NOW() WHERE id = $1`,
+      [ticket.id],
+    );
+  }
+  const reply = "Thanks for your message — a member of our team will reply to you here shortly.";
+  await logMessage(ticket.id, 'ai', reply);
   return { reply };
 }
 

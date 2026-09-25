@@ -1073,6 +1073,37 @@ async function migrate() {
        WHERE whatsapp_connection_status = 'connected' AND whatsapp_business_token_encrypted IS NULL;`,
     );
 
+    // ── Bank-transfer payments + AI Agent Pack (impl-32) ──
+    // Added with DEFAULT true so every tenant that existed before the Agent
+    // Pack keeps its agents (owner decision 2026-09-25), then the default is
+    // switched to false so new signups start without it until a payment is
+    // approved or a super admin comps it. Both statements are idempotent.
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS ai_agent_pack_enabled BOOLEAN NOT NULL DEFAULT true;`);
+    await client.query(`ALTER TABLE tenants ALTER COLUMN ai_agent_pack_enabled SET DEFAULT false;`);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS payment_submissions (
+        id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id             UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        claimed_plan          VARCHAR(50) NOT NULL CHECK (claimed_plan IN ('starter','growth','enterprise')),
+        claimed_branch_count  INTEGER,
+        claimed_agent_pack    BOOLEAN NOT NULL DEFAULT false,
+        claimed_amount        NUMERIC(10,2) NOT NULL,
+        bank_reference_number VARCHAR(100) NOT NULL,
+        receipt_image_url     TEXT,
+        status                VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+        reviewed_by           UUID REFERENCES super_admins(id),
+        reviewed_at           TIMESTAMPTZ,
+        rejection_reason      TEXT,
+        submitted_at          TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payment_submissions_status ON payment_submissions(status);`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_payment_submissions_tenant ON payment_submissions(tenant_id);`);
+    // One pending submission per tenant, and a bank reference can't be
+    // claimed twice (pending or approved) — enforced by the DB, not just the route.
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_submissions_one_pending ON payment_submissions(tenant_id) WHERE status = 'pending';`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_submissions_reference ON payment_submissions(lower(bank_reference_number)) WHERE status IN ('pending','approved');`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

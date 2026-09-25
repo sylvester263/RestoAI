@@ -102,8 +102,9 @@ export async function autoAssign(orderId, tenantId) {
  * and the order doesn't already have a rider.
  */
 export async function maybeAutoAssign(tenantId, order) {
-  const tenantRes = await query('SELECT agent_dispatch_mode FROM tenants WHERE id = $1', [tenantId]);
-  if (tenantRes.rows[0]?.agent_dispatch_mode !== 'auto') return;
+  // impl-32: auto-dispatch is an AI Agent Pack agent
+  const tenantRes = await query('SELECT agent_dispatch_mode, ai_agent_pack_enabled FROM tenants WHERE id = $1', [tenantId]);
+  if (tenantRes.rows[0]?.agent_dispatch_mode !== 'auto' || !tenantRes.rows[0]?.ai_agent_pack_enabled) return;
 
   const existing = await query('SELECT id FROM rider_assignments WHERE order_id = $1', [order.id]);
   if (existing.rows.length > 0) return;

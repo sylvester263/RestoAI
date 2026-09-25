@@ -24,6 +24,7 @@ import POS from './pages/pos/POS';
 import Riders from './pages/Riders';
 import Customers from './pages/Customers';
 import Permissions from './pages/Permissions';
+import Billing from './pages/Billing';
 import Staff from './pages/Staff';
 import Agents from './pages/Agents';
 import Coupons from './pages/Coupons';
@@ -118,6 +119,7 @@ export default function App() {
                 <Route path="/customers" element={<Customers />} />
                 <Route path="/staff" element={<Staff />} />
                 <Route path="/permissions" element={<OwnerRoute><Permissions /></OwnerRoute>} />
+                <Route path="/billing" element={<OwnerRoute><Billing /></OwnerRoute>} />
                 <Route path="/agents" element={<Agents />} />
                 <Route path="/coupons" element={<Coupons />} />
                 <Route path="/tables" element={<Tables />} />

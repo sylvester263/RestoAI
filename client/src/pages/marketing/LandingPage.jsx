@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { marketingApi } from '../../lib/api';
+import { api, marketingApi } from '../../lib/api';
+import { monthlyAmount, formatRs } from '../../lib/pricing';
 import {
   ChefHat, ArrowRight, CheckCircle2, Loader2, Menu as MenuIcon, X, ChevronDown,
   ShieldCheck, Users, Bike, TrendingDown, Scale, Flame,
@@ -313,27 +314,121 @@ function WhyThisExists() {
   );
 }
 
+// impl-32 / impl-22 v2 pricing: three branch tiers, with the AI Agent Pack as
+// an add-on at Starter and included at Growth and Enterprise. Prices come
+// from the server (GET /api/billing/plans), the same numbers Plan & Billing
+// charges. The chosen tier, branch count and Agent Pack carry through signup
+// into Plan & Billing.
+const TIER_FEATURES = {
+  starter: ['WhatsApp AI ordering', 'Your own ordering website', 'Dine-in QR, reservations, loyalty & reviews', 'POS billing, basic inventory'],
+  growth: ['Everything in Starter', 'Branch analytics & benchmarking', 'CRM, coupons, referrals & campaigns', 'Multi-branch staff permissions'],
+  enterprise: ['Everything in Growth', 'Dedicated onboarding', 'Priority support', 'Volume pricing beyond Growth'],
+};
+
 function Pricing() {
+  const [pricing, setPricing] = useState(null);
+  const [starterPack, setStarterPack] = useState(false);
+  const [growthBranches, setGrowthBranches] = useState(3);
+
+  useEffect(() => {
+    api.getBillingPlans().then(setPricing).catch(() => setPricing(false));
+  }, []);
+
   return (
     <section id="pricing" className="border-t border-[var(--border)] bg-[var(--surface-3)]">
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center sm:px-6 sm:py-24">
-        <ScrollReveal as="div">
-          <h2 className="text-2xl font-bold sm:text-3xl">Flat pricing, tailored to your restaurant. Never a commission.</h2>
+      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+        <ScrollReveal as="div" className="text-center">
+          <h2 className="text-2xl font-bold sm:text-3xl">Flat monthly pricing. Never a commission.</h2>
           <p className="mx-auto mt-3 max-w-xl text-[var(--text-secondary)]">
-            Your plan depends on your restaurant's size and branches, so we quote it directly — one thing never changes: 0% commission, on every order, always.
+            Pick the plan that fits your restaurant. 0% commission on every order, always — and WhatsApp AI ordering is included on every plan.
           </p>
         </ScrollReveal>
-        <ScrollReveal as="div" delay={0.1} className="mx-auto mt-10 max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface-2)] p-8">
-          <p className="text-sm font-medium uppercase tracking-wide text-brand-700">Flat monthly plan</p>
-          <p className="mt-2 text-4xl font-bold text-[var(--text-primary)]">Contact for pricing</p>
-          <p className="mt-1 text-sm text-[var(--text-secondary)]">Final numbers not yet set — a plan sized to your restaurant, quoted directly</p>
-          <ul className="mt-6 space-y-2 text-left text-sm text-[var(--text-secondary)]">
-            {['0% commission on every order, always', 'Every feature above included', 'Cancel anytime'].map((li) => (
-              <li key={li} className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 shrink-0 text-brand-600" /> {li}</li>
-            ))}
-          </ul>
-          <a href="#contact" className="btn-primary mt-6 w-full justify-center">Get in touch</a>
-        </ScrollReveal>
+
+        {pricing === false && (
+          <p className="mt-10 text-center text-sm text-[var(--text-secondary)]">
+            Pricing couldn't load right now — <a href="#contact" className="font-medium text-brand-600 underline">get in touch</a> and we'll send it over.
+          </p>
+        )}
+
+        {pricing && (
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            {pricing.plans.map((p) => {
+              const featured = p.id === 'growth';
+              let priceLine;
+              let total = null;
+              let cta;
+              if (p.id === 'starter') {
+                priceLine = <><span className="text-4xl font-bold text-[var(--text-primary)]">{formatRs(p.monthly)}</span><span className="text-sm text-[var(--text-secondary)]">/month</span></>;
+                total = monthlyAmount(pricing, { plan: 'starter', branches: 1, pack: starterPack });
+                cta = { to: `/login?mode=register&plan=starter&pack=${starterPack ? 1 : 0}`, label: 'Start with Starter' };
+              } else if (p.id === 'growth') {
+                priceLine = <><span className="text-4xl font-bold text-[var(--text-primary)]">{formatRs(p.per_branch)}</span><span className="text-sm text-[var(--text-secondary)]">/branch/month</span></>;
+                total = monthlyAmount(pricing, { plan: 'growth', branches: growthBranches, pack: true });
+                cta = { to: `/login?mode=register&plan=growth&branches=${growthBranches}&pack=1`, label: 'Start with Growth' };
+              } else {
+                priceLine = <span className="text-4xl font-bold text-[var(--text-primary)]">Custom</span>;
+                cta = { href: '#contact', label: "Let's talk" };
+              }
+              return (
+                <ScrollReveal
+                  as="div"
+                  key={p.id}
+                  className={`flex flex-col rounded-2xl border bg-[var(--surface-2)] p-6 text-left ${featured ? 'border-brand-500 shadow-lg' : 'border-[var(--border)]'}`}
+                >
+                  <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">{p.name}</p>
+                  <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                    {p.id === 'starter' ? 'Solo restaurant, one branch' : p.id === 'growth' ? `${p.min_branches}–${p.max_branches} branches` : `${p.min_branches}+ branches and chains`}
+                  </p>
+                  <p className="mt-4 flex items-baseline gap-1">{priceLine}</p>
+
+                  <div className="mt-4 rounded-lg bg-[var(--surface-3)] px-3 py-2 text-sm">
+                    {p.agent_pack_included ? (
+                      <p className="flex items-center justify-between gap-2">
+                        <span className="text-[var(--text-secondary)]">AI Agent Pack</span>
+                        <span className="font-semibold text-emerald-600">Included</span>
+                      </p>
+                    ) : (
+                      <label className="flex cursor-pointer items-start gap-2">
+                        <input type="checkbox" className="mt-1 h-4 w-4" checked={starterPack} onChange={(e) => setStarterPack(e.target.checked)} />
+                        <span>
+                          <span className="font-medium text-[var(--text-primary)]">+ {formatRs(pricing.agent_pack_monthly)}/month AI Agent Pack</span>
+                          <span className="block text-xs text-[var(--text-secondary)]">Unlock the full 10-agent automation system</span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
+
+                  {p.id === 'growth' && (
+                    <label className="mt-3 flex items-center justify-between gap-2 text-sm text-[var(--text-secondary)]">
+                      Branches
+                      <select className="input w-20" value={growthBranches} onChange={(e) => setGrowthBranches(Number(e.target.value))}>
+                        {Array.from({ length: p.max_branches - p.min_branches + 1 }, (_, i) => p.min_branches + i).map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {total != null && (
+                    <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                      Total: <span className="font-semibold text-[var(--text-primary)]">{formatRs(total)}/month</span>
+                    </p>
+                  )}
+
+                  <ul className="mt-5 flex-1 space-y-2 text-sm text-[var(--text-secondary)]">
+                    {TIER_FEATURES[p.id].map((li) => (
+                      <li key={li} className="flex items-start gap-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> {li}</li>
+                    ))}
+                  </ul>
+
+                  {cta.to ? (
+                    <Link to={cta.to} className={`${featured ? 'btn-primary' : 'btn-secondary'} mt-6 w-full justify-center`}>{cta.label}</Link>
+                  ) : (
+                    <a href={cta.href} className="btn-secondary mt-6 w-full justify-center">{cta.label}</a>
+                  )}
+                </ScrollReveal>
+              );
+            })}
+          </div>
+        )}
+        <p className="mt-8 text-center text-xs text-[var(--text-tertiary)]">Prices in PKR, billed monthly by bank transfer. Cancel anytime.</p>
       </div>
     </section>
   );

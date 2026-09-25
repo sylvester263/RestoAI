@@ -23,6 +23,7 @@
 import { query } from '../db/pool.js';
 import { generateInsights, generateAgentText } from './ai-agent.js';
 import { sendReply } from './whatsapp.js';
+import { hasAgentPack } from './billing.js';
 
 // ── Rate limiting (in-memory, per-owner) ──
 // Generous cap: 60/hour. Normal owner usage (a few messages per day) will
@@ -112,6 +113,13 @@ async function getUserBranchAccess(userId, role) {
  * @returns {Promise<{reply: string}>}
  */
 export async function handleOwnerMessage(tenantId, user, text) {
+  // impl-32: the owner's assistant is one of the AI Agent Pack agents
+  if (!(await hasAgentPack(tenantId))) {
+    const reply = "Your WhatsApp business assistant is part of the AI Agent Pack. You can add it from Plan & Billing in your RestoAI dashboard.";
+    await sendReply(user.phone, reply, tenantId);
+    return { reply };
+  }
+
   // Rate limit check
   if (!checkRateLimit(user.id)) {
     return {

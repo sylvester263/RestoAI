@@ -21,9 +21,24 @@ import { runReconciliation } from '../services/reconciliation-agent.js';
 import { runAbuseScan } from '../services/abuse-detection-agent.js';
 import { runReplenishmentScan } from '../services/replenishment-agent.js';
 import { createDraftPurchaseOrder } from '../services/purchase-orders.js';
+import { hasAgentPack, AGENT_PACK_REQUIRED_MESSAGE } from '../services/billing.js';
 import { runMenuInsightScan } from '../services/menu-insight-agent.js';
 
 const router = Router();
+
+// impl-32: every agent here except the core WhatsApp ordering agent (which
+// isn't in this file) needs the AI Agent Pack. The scheduled loops filter on
+// ai_agent_pack_enabled in SQL; user-triggered agent routes use this guard.
+async function requireAgentPack(req, res, next) {
+  try {
+    if (!(await hasAgentPack(req.user.tenant_id))) {
+      return res.status(403).json({ error: { message: AGENT_PACK_REQUIRED_MESSAGE, code: 'agent_pack_required' } });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+}
 
 // Every /run endpoint is meant to be triggered by a scheduler roughly
 // daily/weekly per agent (per their own specs), not by normal traffic — this
@@ -55,7 +70,7 @@ const MANUAL_RUNS = {
   'menu-insights': async (tenantId) => ({ insights_created: await runMenuInsightScan(tenantId) }),
 };
 
-router.post('/:agent/run-now', authenticate, checkTenantActive, authorize('reports.view'), manualRunLimiter, async (req, res, next) => {
+router.post('/:agent/run-now', authenticate, checkTenantActive, authorize('reports.view'), manualRunLimiter, requireAgentPack, async (req, res, next) => {
   const run = Object.hasOwn(MANUAL_RUNS, req.params.agent) ? MANUAL_RUNS[req.params.agent] : null;
   if (!run) {
     return res.status(404).json({ error: { message: 'This agent can only run on its schedule' } });
@@ -80,12 +95,13 @@ function requireOwner(req, res, next) {
 router.get('/settings', authenticate, checkTenantActive, requireOwner, async (req, res, next) => {
   try {
     const result = await query(
-      'SELECT agent_winback_enabled, agent_dispatch_mode FROM tenants WHERE id = $1',
+      'SELECT agent_winback_enabled, agent_dispatch_mode, ai_agent_pack_enabled FROM tenants WHERE id = $1',
       [req.user.tenant_id],
     );
     res.json({
       winback_enabled: result.rows[0].agent_winback_enabled,
       dispatch_mode: result.rows[0].agent_dispatch_mode,
+      agent_pack_enabled: result.rows[0].ai_agent_pack_enabled,
     });
   } catch (err) {
     next(err);
@@ -114,12 +130,13 @@ router.put('/settings', authenticate, checkTenantActive, requireOwner, async (re
       return res.status(400).json({ error: { message: 'No fields to update' } });
     }
     const result = await query(
-      `UPDATE tenants SET ${sets.join(', ')} WHERE id = $1 RETURNING agent_winback_enabled, agent_dispatch_mode`,
+      `UPDATE tenants SET ${sets.join(', ')} WHERE id = $1 RETURNING agent_winback_enabled, agent_dispatch_mode, ai_agent_pack_enabled`,
       params,
     );
     res.json({
       winback_enabled: result.rows[0].agent_winback_enabled,
       dispatch_mode: result.rows[0].agent_dispatch_mode,
+      agent_pack_enabled: result.rows[0].ai_agent_pack_enabled,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -133,7 +150,7 @@ router.put('/settings', authenticate, checkTenantActive, requireOwner, async (re
 
 async function runDailyBriefing(req, res, next) {
   try {
-    const tenantsRes = await query('SELECT id FROM tenants');
+    const tenantsRes = await query('SELECT id FROM tenants WHERE ai_agent_pack_enabled = true');
     let sent = 0;
     let skipped = 0;
     let failed = 0;
@@ -161,7 +178,7 @@ router.post('/daily-briefing/run', agentRunLimiter, requireCronSecret, runDailyB
 
 async function runWinback(req, res, next) {
   try {
-    const tenantsRes = await query('SELECT id FROM tenants WHERE agent_winback_enabled = true');
+    const tenantsRes = await query('SELECT id FROM tenants WHERE agent_winback_enabled = true AND ai_agent_pack_enabled = true');
     let sent = 0;
     let failed = 0;
     for (const tenant of tenantsRes.rows) {
@@ -199,7 +216,7 @@ router.get('/winback/preview', authenticate, checkTenantActive, authorize('repor
 
 // ═══ impl-16 — Dispatch ═══
 
-router.get('/dispatch/suggest/:orderId', authenticate, checkTenantActive, authorize('orders.status_update'), async (req, res, next) => {
+router.get('/dispatch/suggest/:orderId', authenticate, checkTenantActive, authorize('orders.status_update'), requireAgentPack, async (req, res, next) => {
   try {
     const suggestion = await previewSuggestion(req.params.orderId, req.user.tenant_id);
     if (!suggestion) {
@@ -214,7 +231,7 @@ router.get('/dispatch/suggest/:orderId', authenticate, checkTenantActive, author
   }
 });
 
-router.post('/dispatch/auto-assign', authenticate, checkTenantActive, authorize('orders.status_update'), async (req, res, next) => {
+router.post('/dispatch/auto-assign', authenticate, checkTenantActive, authorize('orders.status_update'), requireAgentPack, async (req, res, next) => {
   try {
     const { order_id } = req.body;
     if (!order_id) {
@@ -241,7 +258,7 @@ router.post('/dispatch/auto-assign', authenticate, checkTenantActive, authorize(
 
 async function runReconciliationScan(req, res, next) {
   try {
-    const tenantsRes = await query('SELECT id FROM tenants');
+    const tenantsRes = await query('SELECT id FROM tenants WHERE ai_agent_pack_enabled = true');
     const since = new Date(Date.now() - 48 * 3600 * 1000).toISOString();
     let flagsCreated = 0;
     let failed = 0;
@@ -303,7 +320,7 @@ router.put('/reconciliation/flags/:id/status', authenticate, checkTenantActive, 
 
 async function runAbuseDetection(req, res, next) {
   try {
-    const tenantsRes = await query('SELECT id FROM tenants');
+    const tenantsRes = await query('SELECT id FROM tenants WHERE ai_agent_pack_enabled = true');
     let flagsCreated = 0;
     let failed = 0;
     for (const tenant of tenantsRes.rows) {
@@ -362,7 +379,7 @@ router.put('/abuse-detection/flags/:id/status', authenticate, checkTenantActive,
 
 async function runReplenishment(req, res, next) {
   try {
-    const tenantsRes = await query('SELECT id FROM tenants');
+    const tenantsRes = await query('SELECT id FROM tenants WHERE ai_agent_pack_enabled = true');
     let suggestionsCreated = 0;
     let failed = 0;
     for (const tenant of tenantsRes.rows) {
@@ -455,7 +472,7 @@ router.put('/replenishment/suggestions/:id/status', authenticate, checkTenantAct
 
 async function runMenuInsights(req, res, next) {
   try {
-    const tenantsRes = await query('SELECT id FROM tenants');
+    const tenantsRes = await query('SELECT id FROM tenants WHERE ai_agent_pack_enabled = true');
     let insightsCreated = 0;
     let failed = 0;
     for (const tenant of tenantsRes.rows) {

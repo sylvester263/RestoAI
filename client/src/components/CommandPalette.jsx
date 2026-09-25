@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Receipt, ShoppingBag, UtensilsCrossed, Package,
   Users, QrCode, CalendarCheck, Megaphone, Bike, Globe, MessageCircle,
-  BarChart3, Sparkles, UserPlus, Tag, ShieldCheck, ChefHat,
+  BarChart3, Sparkles, UserPlus, Tag, ShieldCheck, ChefHat, CreditCard,
   Search,
 } from 'lucide-react';
 
@@ -30,6 +30,7 @@ const ALL_ITEMS = [
   { to: '/staff', icon: UserPlus, label: 'Staff', group: 'Settings', roles: ['owner', 'manager'] },
   { to: '/coupons', icon: Tag, label: 'Coupons', group: 'Settings', roles: ['owner', 'manager'] },
   { to: '/permissions', icon: ShieldCheck, label: 'Permissions', group: 'Settings', roles: ['owner'] },
+  { to: '/billing', icon: CreditCard, label: 'Plan & Billing', group: 'Settings', roles: ['owner'] },
   { to: '/website', icon: Globe, label: 'Website', group: 'Settings' },
   { to: '/whatsapp', icon: MessageCircle, label: 'WhatsApp Demo', group: 'Settings' },
   { to: '/insights', icon: BarChart3, label: 'Insights', group: 'Intelligence' },

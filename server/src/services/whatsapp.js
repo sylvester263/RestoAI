@@ -16,6 +16,7 @@ import { getBalance } from './loyalty.js';
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder } from './coupons.js';
 import { OrderError } from './orders.js';
 import { getOrderType } from '../utils/order-type.js';
+import { hasAgentPack } from './billing.js';
 
 /**
  * Process an incoming WhatsApp message through the order agent pipeline.
@@ -586,7 +587,8 @@ export async function notifyStatusChange(orderId, tenantId, newStatus) {
 
     // impl-17: recomputed at this exact moment, since the queue may have
     // shifted since the order was placed — never reuse a stale estimate.
-    if (newStatus === 'preparing' && row.branch_id) {
+    // ETA is an AI Agent Pack agent (impl-32); without it the message just omits the estimate.
+    if (newStatus === 'preparing' && row.branch_id && await hasAgentPack(tenantId)) {
       try {
         const { estimateReadyTime } = await import('./eta-agent.js');
         const eta = await estimateReadyTime(row.branch_id, orderId);

@@ -98,6 +98,15 @@ export const superAdminApi = {
     }),
 
   // Audit log (authenticated)
+  // impl-32 — payments, revenue, AI Agent Pack
+  getNeedsAction: () => request('/super-admin/needs-action'),
+  getPayments: (status = 'pending') => request(`/super-admin/payments?status=${encodeURIComponent(status)}`),
+  approvePayment: (id) => request(`/super-admin/payments/${id}/approve`, { method: 'POST', body: '{}' }),
+  rejectPayment: (id, reason) =>
+    request(`/super-admin/payments/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  getRevenue: () => request('/super-admin/revenue'),
+  setAgentPack: (id, enabled, reason) =>
+    request(`/super-admin/tenants/${id}/agent-pack`, { method: 'POST', body: JSON.stringify({ enabled, reason }) }),
   getAuditLog: (params = {}) => {
     const qs = new URLSearchParams(params).toString();
     return request(`/super-admin/audit-log${qs ? `?${qs}` : ''}`);

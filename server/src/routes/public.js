@@ -16,6 +16,7 @@ import { generateRecommendation } from '../services/ai-agent.js';
 import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.js';
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder, getOrCreateReferralCode } from '../services/coupons.js';
 import { estimateReadyTime } from '../services/eta-agent.js';
+import { hasAgentPack } from '../services/billing.js';
 import config from '../config.js';
 
 const router = Router({ mergeParams: true });
@@ -335,7 +336,8 @@ router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
 
     // impl-17: recomputed fresh on every poll — never cached at order-creation time
     let eta = null;
-    if (['new', 'confirmed', 'preparing'].includes(order.status) && order.branch_id) {
+    // ETA is an AI Agent Pack agent (impl-32) — without it the page just omits the estimate
+    if (['new', 'confirmed', 'preparing'].includes(order.status) && order.branch_id && await hasAgentPack(req.tenant.id)) {
       try {
         eta = await estimateReadyTime(order.branch_id, order.id);
       } catch (err) {

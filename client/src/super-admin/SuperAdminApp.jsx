@@ -2,7 +2,9 @@
  * Super Admin App (impl-29) — main application after authentication.
  *
  * Views:
- * - tenants: List of all tenants (default: sorted by expiration)
+ * - payments: Payment Verification Queue (default landing — impl-32)
+ * - revenue: Revenue Overview (impl-32)
+ * - tenants: List of all tenants (sorted by expiration)
  * - tenant-detail: Single tenant with subscription management
  * - audit-log: Filterable audit trail
  *
@@ -11,13 +13,15 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { superAdminApi } from './superAdminApi';
+import { NeedsActionStrip, PaymentsView, RevenueView, TenantPlanPanel } from './BillingViews';
 import {
   Building2, FileText, LogOut, Search, AlertTriangle, CheckCircle,
-  XCircle, Clock, ChevronLeft, RefreshCw, Shield, Calendar,
+  XCircle, Clock, ChevronLeft, RefreshCw, Shield, Calendar, Wallet, TrendingUp, Sparkles,
 } from 'lucide-react';
 
 export default function SuperAdminApp({ admin, onLogout }) {
-  const [view, setView] = useState('tenants'); // 'tenants' | 'tenant-detail' | 'audit-log'
+  const [view, setView] = useState('payments'); // 'payments' | 'revenue' | 'tenants' | 'tenant-detail' | 'audit-log'
+  const [needsActionKey, setNeedsActionKey] = useState(0);
   const [tenants, setTenants] = useState([]);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [auditLog, setAuditLog] = useState([]);
@@ -97,6 +101,18 @@ export default function SuperAdminApp({ admin, onLogout }) {
           </div>
           <div className="flex items-center gap-2">
             <button
+              onClick={() => setView('payments')}
+              className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 ${view === 'payments' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              <Wallet className="w-4 h-4" /> Payments
+            </button>
+            <button
+              onClick={() => setView('revenue')}
+              className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 ${view === 'revenue' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+            >
+              <TrendingUp className="w-4 h-4" /> Revenue
+            </button>
+            <button
               onClick={() => setView('tenants')}
               className={`px-3 py-1.5 rounded text-sm flex items-center gap-1.5 ${view === 'tenants' || view === 'tenant-detail' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
             >
@@ -120,6 +136,20 @@ export default function SuperAdminApp({ admin, onLogout }) {
 
       {/* Content */}
       <main className="max-w-7xl mx-auto p-6">
+        {(view === 'payments' || view === 'tenants') && (
+          <NeedsActionStrip
+            refreshKey={needsActionKey}
+            onOpenPayments={() => setView('payments')}
+            onOpenExpiring={() => { setFilter('expiring'); setExpiringDays(30); setView('tenants'); }}
+          />
+        )}
+
+        {view === 'payments' && (
+          <PaymentsView onSelectTenant={openTenantDetail} onChanged={() => setNeedsActionKey((k) => k + 1)} />
+        )}
+
+        {view === 'revenue' && <RevenueView />}
+
         {view === 'tenants' && (
           <TenantsView
             tenants={tenants}
@@ -211,6 +241,7 @@ function TenantsView({ tenants, loading, filter, setFilter, expiringDays, setExp
                 <th className="px-4 py-3">Restaurant</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Plan</th>
+                <th className="px-4 py-3">Agent Pack</th>
                 <th className="px-4 py-3">Expires</th>
                 <th className="px-4 py-3">Branches</th>
                 <th className="px-4 py-3">Last Active</th>
@@ -232,7 +263,12 @@ function TenantsView({ tenants, loading, filter, setFilter, expiringDays, setExp
                       {t.subscription_status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-300">{t.subscription_plan || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-300 capitalize">{t.subscription_plan || '—'}</td>
+                  <td className="px-4 py-3 text-sm">
+                    {t.ai_agent_pack_enabled
+                      ? <span className="flex items-center gap-1 text-emerald-400"><Sparkles className="w-3 h-3" /> On</span>
+                      : <span className="text-gray-500">Off</span>}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-300">
                     {t.subscription_period_end
                       ? new Date(t.subscription_period_end).toLocaleDateString()
@@ -319,6 +355,8 @@ function TenantDetailView({ tenant, loading, onBack, onRefresh, statusColor, onA
         </span>
       </div>
 
+      <TenantPlanPanel tenant={t} payments={tenant.payments || []} onChanged={() => { onRefresh(); onAction(); }} />
+
       {/* Subscription Info */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-6">
         <h3 className="text-sm font-medium text-gray-300 mb-3 flex items-center gap-2">
@@ -326,8 +364,8 @@ function TenantDetailView({ tenant, loading, onBack, onRefresh, statusColor, onA
         </h3>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           <div>
-            <span className="text-gray-500">Plan</span>
-            <p className="text-white">{t.subscription_plan || '—'}</p>
+            <span className="text-gray-500">Status</span>
+            <p className="text-white capitalize">{t.subscription_status}</p>
           </div>
           <div>
             <span className="text-gray-500">Period Start</span>

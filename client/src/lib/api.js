@@ -161,6 +161,24 @@ export const api = {
   getStaffInvites: () => request('/staff-invites'),
   getStaff: () => request('/staff'),
   runAgentNow: (agent) => request(`/agents/${agent}/run-now`, { method: 'POST' }),
+  // Plan & billing (impl-32)
+  getBillingPlans: () => requestPublic('/billing/plans'),
+  getBilling: () => request('/billing'),
+  submitPayment: (fields, receiptFile) => {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) form.append(k, String(v));
+    if (receiptFile) form.append('receipt', receiptFile);
+    const token = getToken();
+    return fetch(`${API_BASE}/billing/submissions`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    }).then(async (res) => {
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw apiError(data?.error?.message || `Submission failed (${res.status})`, res.status);
+      return data;
+    });
+  },
   deactivateStaff: (id) => request(`/staff/${id}/deactivate`, { method: 'POST' }),
   reactivateStaff: (id) => request(`/staff/${id}/reactivate`, { method: 'POST' }),
   createStaffInvite: (body) => request('/staff-invites', { method: 'POST', body: JSON.stringify(body) }),

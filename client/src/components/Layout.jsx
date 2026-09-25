@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import useKeyboardShortcuts from '../hooks/useKeyboardShortcuts';
 import CommandPalette from './CommandPalette';
@@ -10,7 +11,7 @@ import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
   Package, Megaphone, Globe, Receipt, Bike, Users, ShieldCheck,
-  Sparkles, Tag, UserPlus, Menu, X, ChevronDown, Search, Headphones, Link2,
+  Sparkles, Tag, UserPlus, Menu, X, ChevronDown, Search, Headphones, Link2, CreditCard, Clock,
 } from 'lucide-react';
 
 // ── Grouped navigation ──────────────────────────────────────────────
@@ -62,6 +63,7 @@ const roleGatedItems = {
     { to: '/staff', icon: UserPlus, label: 'Staff', roles: ['owner', 'manager'] },
     { to: '/coupons', icon: Tag, label: 'Coupons', roles: ['owner', 'manager'] },
     { to: '/permissions', icon: ShieldCheck, label: 'Permissions', roles: ['owner'] },
+    { to: '/billing', icon: CreditCard, label: 'Plan & Billing', roles: ['owner'] },
     { to: '/whatsapp-connect', icon: Link2, label: 'WhatsApp Connect', roles: ['owner', 'manager'] },
   ],
   'Intelligence': [
@@ -84,8 +86,16 @@ export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState(null);
+  const location = useLocation();
 
   const groups = buildNav(user?.role || 'staff');
+
+  // impl-32: owners see a reminder while a bank transfer awaits verification
+  useEffect(() => {
+    if (user?.role !== 'owner') return;
+    api.getBilling().then((res) => setPendingPayment(res.pending)).catch(() => {});
+  }, [user?.role, location.pathname]);
 
   // Global keyboard shortcuts
   useKeyboardShortcuts([
@@ -260,6 +270,16 @@ export default function Layout({ children }) {
         </div>
 
         <div className="p-6">
+          {pendingPayment && location.pathname !== '/billing' && (
+            <button
+              type="button"
+              onClick={() => navigate('/billing')}
+              className="mb-4 flex w-full items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-left text-sm text-amber-800 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300"
+            >
+              <Clock className="h-4 w-4 shrink-0" />
+              Payment pending verification — we'll message you on WhatsApp once it's approved.
+            </button>
+          )}
           {children}
         </div>
       </main>

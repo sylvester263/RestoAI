@@ -289,6 +289,16 @@ export default function Agents() {
         )}
       </div>
 
+      {isOwner && settings && settings.agent_pack_enabled === false && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          <span className="flex items-center gap-2">
+            <Lock className="h-4 w-4 shrink-0" />
+            These agents are part of the AI Agent Pack, which isn't on for your restaurant. WhatsApp AI ordering keeps working either way.
+          </span>
+          <a href="/billing" className="font-medium underline">Add the AI Agent Pack</a>
+        </div>
+      )}
+
       {/* ── Agent overview strip ── */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <AgentCard agent={AGENTS[0]} label="Daily briefing" {...runProps(AGENTS[0])} />

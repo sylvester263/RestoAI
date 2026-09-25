@@ -22,7 +22,16 @@ export default function Login() {
     try {
       const res = isRegister ? await api.register(form) : await api.login(form);
       login(res.token, res.user, res.tenant);
-      navigate('/dashboard');
+      // A plan picked on the marketing page carries through to Plan & Billing (impl-32)
+      const plan = searchParams.get('plan');
+      if (plan) {
+        const qs = new URLSearchParams({ plan });
+        if (searchParams.get('branches')) qs.set('branches', searchParams.get('branches'));
+        if (searchParams.get('pack')) qs.set('pack', searchParams.get('pack'));
+        navigate(`/billing?${qs}`);
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err) {
       setError(err.message);
     } finally {
