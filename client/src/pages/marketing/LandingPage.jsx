@@ -7,7 +7,7 @@ import {
   ShieldCheck, Users, Bike, TrendingDown, Scale, Flame,
   BadgeCheck, MessageCircle, Wand2, LifeBuoy, Lock, BadgePercent, CalendarX, Landmark,
 } from 'lucide-react';
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import { useReducedMotion } from 'framer-motion';
 import ScrollReveal from './ScrollReveal';
 import AITeamSection, { AgentStrip } from './AITeamSection';
 import DarkModeToggle from '../../components/DarkModeToggle';
@@ -312,57 +312,175 @@ function StatBar({ pricing }) {
   );
 }
 
-// Tabbed two-column feature block. Old section anchors (#ordering, #ai-team,
-// …) still work: they select the matching tab and scroll here.
-function Features() {
-  const [activeId, setActiveId] = useState(FEATURES[0].id);
+// Sticky stacking cards (impl-22 v5): each feature is its own card that pins
+// below the nav while the next one slides up and covers it. The pill row is a
+// sticky set of scroll shortcuts whose highlight follows the pinned card.
+const NAV_H = 70;        // sticky site header
+const PILLS_H = 74;      // sticky pill row
+const STACK_TOP = NAV_H + PILLS_H;
+const PEEK = 14;         // each pinned card sits a little lower so earlier edges peek out
+
+function useMediaQuery(query) {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    setMatch(mq.matches);
+    const h = (e) => setMatch(e.matches);
+    mq.addEventListener('change', h);
+    return () => mq.removeEventListener('change', h);
+  }, [query]);
+  return match;
+}
+
+function FeatureCard({ f, index, stacked, cardRef }) {
+  const shots = f.shots || [];
   const [shotIdx, setShotIdx] = useState(0);
-  const sectionRef = useRef(null);
+  const shot = shots[shotIdx];
+  return (
+    <div
+      ref={cardRef}
+      className={`border-t border-[var(--border)] bg-[var(--surface-2)] ${
+        stacked
+          ? 'sticky min-h-[calc(130vh-9rem)] rounded-t-3xl shadow-[0_-10px_30px_rgba(0,0,0,0.10)]'
+          : 'mb-6 rounded-3xl'
+      }`}
+      style={stacked ? { top: STACK_TOP + index * PEEK, zIndex: index + 1 } : undefined}
+    >
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-10 sm:px-8 lg:grid-cols-2 lg:items-start">
+        <div className="lg:pt-6">
+          <span className="text-sm font-bold tracking-wide text-brand-600">{f.n}</span>
+          <h3 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">{f.title}</h3>
+          <p className="mt-3 text-[var(--text-secondary)]">{f.subtitle}</p>
+          <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">What's included</p>
+          <ul className="mt-3 space-y-2.5">
+            {f.included.map((item, i) => (
+              <ScrollReveal key={item} as="li" delay={i * 0.09} className="flex items-start gap-2.5 text-sm text-[var(--text-primary)]">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> {item}
+              </ScrollReveal>
+            ))}
+          </ul>
+          {f.id === 'ordering' && (
+            <p className="mt-4 text-sm text-[var(--text-secondary)]">
+              Plus in-store token &amp; menu boards for the counter — <ScreenshotLink src={tokenBoard} />
+            </p>
+          )}
+          <Link to="/login?mode=register" className="btn-primary mt-7 inline-flex px-5 py-2.5">
+            Start free trial <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+
+        {/* one fixed frame for every card (v4 Part 4 containment) */}
+        <div className="flex h-[24rem] flex-col rounded-3xl bg-gradient-to-br from-amber-100 via-orange-50 to-brand-100 p-5 dark:from-amber-900/30 dark:via-stone-900 dark:to-brand-900/30 sm:h-[27rem] sm:p-6">
+          {f.custom === 'ai-team' ? (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <AITeamSection compact />
+            </div>
+          ) : (
+            <>
+              <div className="flex min-h-0 flex-1 items-center justify-center">
+                <img
+                  key={shot.src}
+                  src={shot.src}
+                  alt={shot.alt}
+                  className="max-h-full max-w-full rounded-xl border border-[var(--border)] bg-white object-contain shadow-2xl"
+                />
+              </div>
+              {shots.length > 1 && (
+                <div className="mt-4 flex shrink-0 justify-center gap-2">
+                  {shots.map((s, i) => (
+                    <button
+                      key={s.src}
+                      onClick={() => setShotIdx(i)}
+                      aria-label={`Show: ${s.alt}`}
+                      className={`h-12 w-16 overflow-hidden rounded-md border-2 bg-white transition ${i === shotIdx ? 'border-brand-600' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                    >
+                      <img src={s.src} alt="" className="h-full w-full object-cover object-top" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Features() {
   const reduceMotion = useReducedMotion();
-  const active = FEATURES.find((f) => f.id === activeId) ?? FEATURES[0];
+  const desktop = useMediaQuery('(min-width: 1024px)');
+  // Below lg a card is taller than the viewport, so pinning would hide its
+  // bottom — those widths (and reduced-motion) get a plain stacked flow.
+  const stacked = desktop && !reduceMotion;
+  const [activeIdx, setActiveIdx] = useState(0);
+  const stackRef = useRef(null);
+  const cardRefs = useRef([]);
 
   useEffect(() => {
+    let raf = 0;
+    function update() {
+      let idx = 0;
+      cardRefs.current.forEach((el, i) => {
+        if (!el) return;
+        const threshold = stacked ? STACK_TOP + i * PEEK + 60 : STACK_TOP + 40;
+        if (el.getBoundingClientRect().top <= threshold) idx = i;
+      });
+      setActiveIdx(idx);
+    }
+    const onScroll = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(update); };
+    update();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('scroll', onScroll); window.removeEventListener('resize', onScroll); };
+  }, [stacked]);
+
+  function goTo(i) {
+    const stackTop = stackRef.current.getBoundingClientRect().top + window.scrollY;
+    let target;
+    if (stacked) {
+      // natural (unpinned) top of card i, minus where it pins
+      let y = stackTop;
+      for (let j = 0; j < i; j += 1) y += cardRefs.current[j].offsetHeight;
+      target = y - (STACK_TOP + i * PEEK);
+    } else {
+      target = cardRefs.current[i].getBoundingClientRect().top + window.scrollY - STACK_TOP - 8;
+    }
+    window.scrollTo({ top: Math.max(0, target), behavior: reduceMotion ? 'auto' : 'smooth' });
+  }
+
+  // Old section anchors (#ordering, #ai-team, ...) scroll to the matching card.
+  useEffect(() => {
     function fromHash() {
-      const id = window.location.hash.slice(1);
-      if (FEATURES.some((f) => f.id === id)) {
-        setActiveId(id);
-        setShotIdx(0);
-        sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
+      const i = FEATURES.findIndex((f) => f.id === window.location.hash.slice(1));
+      if (i >= 0) setTimeout(() => goTo(i), 50);
     }
     fromHash();
     window.addEventListener('hashchange', fromHash);
     return () => window.removeEventListener('hashchange', fromHash);
-  }, []);
-
-  function select(id) {
-    setActiveId(id);
-    setShotIdx(0);
-  }
-
-  const shot = active.shots?.[shotIdx];
+  });
 
   return (
-    <section id="features" ref={sectionRef} className="scroll-mt-20">
-      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+    <section>
+      <div className="mx-auto max-w-6xl px-4 pt-16 sm:px-6 sm:pt-24">
         <ScrollReveal as="div" className="mx-auto max-w-2xl text-center">
           <span className="text-sm font-semibold uppercase tracking-wide text-brand-600">Features</span>
           <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">Every channel, one system</h2>
         </ScrollReveal>
+      </div>
 
-        {/* pill tab selector */}
-        <div className="-mx-4 mt-10 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+      {/* sticky pill row: scroll shortcuts that follow the pinned card */}
+      <div className="sticky z-30 bg-[var(--surface-1)]/95 py-3 backdrop-blur" style={{ top: NAV_H }}>
+        <div className="overflow-x-auto px-4">
           <div role="tablist" aria-label="Features" className="mx-auto flex w-max gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)] p-1.5 shadow-sm">
-            {FEATURES.map((f) => (
+            {FEATURES.map((f, i) => (
               <button
                 key={f.id}
-                id={`tab-${f.id}`}
                 role="tab"
-                aria-selected={f.id === activeId}
-                aria-controls="feature-panel"
-                onClick={() => select(f.id)}
-                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors ${
-                  f.id === activeId ? 'bg-brand-600 text-white shadow' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-3)] hover:text-[var(--text-primary)]'
+                aria-selected={i === activeIdx}
+                onClick={() => goTo(i)}
+                className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors duration-150 ${
+                  i === activeIdx ? 'bg-brand-600 text-white shadow' : 'text-[var(--text-secondary)] hover:bg-[var(--surface-3)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 {f.tab}
@@ -370,78 +488,17 @@ function Features() {
             ))}
           </div>
         </div>
+      </div>
 
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={active.id}
-            id="feature-panel"
-            role="tabpanel"
-            aria-labelledby={`tab-${active.id}`}
-            className="mt-10 grid gap-10 lg:grid-cols-2 lg:items-center"
-            initial={reduceMotion ? false : { opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
-            transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
-          >
-            {/* left: copy */}
-            <div>
-              <span className="text-sm font-bold tracking-wide text-brand-600">{active.n}</span>
-              <h3 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">{active.title}</h3>
-              <p className="mt-3 text-[var(--text-secondary)]">{active.subtitle}</p>
-              <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">What's included</p>
-              <ul className="mt-3 space-y-2.5">
-                {active.included.map((item, i) => (
-                  <ScrollReveal key={item} as="li" delay={i * 0.09} className="flex items-start gap-2.5 text-sm text-[var(--text-primary)]">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> {item}
-                  </ScrollReveal>
-                ))}
-              </ul>
-              {active.id === 'ordering' && (
-                <p className="mt-4 text-sm text-[var(--text-secondary)]">
-                  Plus in-store token &amp; menu boards for the counter — <ScreenshotLink src={tokenBoard} />
-                </p>
-              )}
-              <Link to="/login?mode=register" className="btn-primary mt-7 inline-flex px-5 py-2.5">
-                Start free trial <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
+      <div id="features" ref={stackRef} className={`mx-auto mt-4 max-w-[90rem] ${stacked ? '' : 'px-4 sm:px-6'}`}>
+        {FEATURES.map((f, i) => (
+          <FeatureCard key={f.id} f={f} index={i} stacked={stacked} cardRef={(el) => { cardRefs.current[i] = el; }} />
+        ))}
+      </div>
 
-            {/* right: real screenshot(s) — one fixed frame for every tab so switching never jumps */}
-            <div className="flex h-[26rem] flex-col rounded-3xl bg-gradient-to-br from-amber-100 via-orange-50 to-brand-100 p-5 dark:from-amber-900/30 dark:via-stone-900 dark:to-brand-900/30 sm:h-[30rem] sm:p-8">
-              {active.custom === 'ai-team' ? (
-                <div className="min-h-0 flex-1 overflow-y-auto">
-                  <AITeamSection compact />
-                </div>
-              ) : (
-                <>
-                  <div className="flex min-h-0 flex-1 items-center justify-center">
-                    <img
-                      key={shot.src}
-                      src={shot.src}
-                      alt={shot.alt}
-                      className="max-h-full max-w-full rounded-xl border border-[var(--border)] bg-white object-contain shadow-2xl"
-                    />
-                  </div>
-                  {active.shots.length > 1 && (
-                    <div className="mt-4 flex shrink-0 justify-center gap-2">
-                      {active.shots.map((s, i) => (
-                        <button
-                          key={s.src}
-                          onClick={() => setShotIdx(i)}
-                          aria-label={`Show: ${s.alt}`}
-                          className={`h-12 w-16 overflow-hidden rounded-md border-2 bg-white transition ${i === shotIdx ? 'border-brand-600' : 'border-transparent opacity-70 hover:opacity-100'}`}
-                        >
-                          <img src={s.src} alt="" className="h-full w-full object-cover object-top" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </motion.div>
-        </AnimatePresence>
-        {active.custom === 'ai-team' && <AgentStrip />}
+      {/* the ten-agent strip belongs to AI Team but is too tall to live in a pinned card */}
+      <div className="mx-auto max-w-6xl px-4 pb-16 sm:px-6 sm:pb-24">
+        <AgentStrip />
       </div>
     </section>
   );
