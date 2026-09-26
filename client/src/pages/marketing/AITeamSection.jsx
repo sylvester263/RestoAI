@@ -100,8 +100,8 @@ export default function AITeamSection({ compact = false }) {
 
   if (compact) {
     return (
-      <div>
-        <div className="flex flex-wrap gap-1.5">
+      <div className="flex h-full flex-col">
+        <div className="flex shrink-0 flex-wrap gap-1.5">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -117,8 +117,8 @@ export default function AITeamSection({ compact = false }) {
             </button>
           ))}
         </div>
-        <div className="mt-4">{active.content}</div>
-        <p className="mt-4 text-sm text-[var(--text-secondary)]">{active.description}</p>
+        <div className="mt-4 min-h-0 flex-1 [&>*]:h-full">{active.content}</div>
+        <p className="mt-4 shrink-0 text-sm text-[var(--text-secondary)]">{active.description}</p>
       </div>
     );
   }

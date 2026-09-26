@@ -7,6 +7,7 @@ import {
   ShieldCheck, Users, Bike, TrendingDown, Scale, Flame,
   BadgeCheck, MessageCircle, Wand2, LifeBuoy, Lock, BadgePercent, CalendarX, Landmark,
 } from 'lucide-react';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import ScrollReveal from './ScrollReveal';
 import AITeamSection, { AgentStrip } from './AITeamSection';
 import DarkModeToggle from '../../components/DarkModeToggle';
@@ -247,7 +248,7 @@ function Hero() {
   return (
     <section className="relative overflow-hidden" style={HERO_GLOW}>
       <div className="mx-auto grid max-w-6xl gap-12 px-4 pb-20 pt-14 sm:px-6 sm:pt-20 lg:grid-cols-[1.05fr_1fr] lg:items-center">
-        <div className="text-center lg:text-left">
+        <ScrollReveal as="div" className="text-center lg:text-left">
           <span className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface-2)]/80 px-3 py-1 text-xs font-semibold text-[var(--text-secondary)] shadow-sm backdrop-blur">
             <BadgeCheck className="h-4 w-4 text-brand-600" /> {META_BADGE}
           </span>
@@ -267,9 +268,9 @@ function Hero() {
               See how it works
             </a>
           </div>
-        </div>
+        </ScrollReveal>
 
-        <div className="relative mx-auto h-[22rem] w-full max-w-lg sm:h-[26rem]">
+        <ScrollReveal as="div" delay={0.1} className="relative mx-auto h-[22rem] w-full max-w-lg sm:h-[26rem]">
           <img
             src={branchAnalytics}
             alt="Branch comparison and revenue dashboard"
@@ -282,7 +283,7 @@ function Hero() {
             className="absolute bottom-0 left-0 w-[70%] rounded-2xl border border-[var(--border)] bg-white shadow-2xl"
             style={{ transform: 'rotate(-4deg)' }}
           />
-        </div>
+        </ScrollReveal>
       </div>
     </section>
   );
@@ -300,11 +301,11 @@ function StatBar({ pricing }) {
   return (
     <section className="border-y border-[var(--border)] bg-[var(--surface-2)]">
       <div className={`mx-auto grid max-w-6xl grid-cols-2 gap-y-8 px-4 py-10 sm:px-6 ${stats.length === 4 ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
-        {stats.map((s) => (
-          <div key={s.label} className="px-2 text-center">
+        {stats.map((s, i) => (
+          <ScrollReveal key={s.label} as="div" delay={i * 0.09} className="px-2 text-center">
             <p className="text-3xl font-extrabold tracking-tight text-[var(--text-primary)] sm:text-4xl">{s.value}</p>
             <p className="mx-auto mt-1 max-w-[12rem] text-xs text-[var(--text-secondary)] sm:text-sm">{s.label}</p>
-          </div>
+          </ScrollReveal>
         ))}
       </div>
     </section>
@@ -317,6 +318,7 @@ function Features() {
   const [activeId, setActiveId] = useState(FEATURES[0].id);
   const [shotIdx, setShotIdx] = useState(0);
   const sectionRef = useRef(null);
+  const reduceMotion = useReducedMotion();
   const active = FEATURES.find((f) => f.id === activeId) ?? FEATURES[0];
 
   useEffect(() => {
@@ -369,64 +371,76 @@ function Features() {
           </div>
         </div>
 
-        <div id="feature-panel" role="tabpanel" aria-labelledby={`tab-${active.id}`} className="mt-10 grid gap-10 lg:grid-cols-2 lg:items-center">
-          {/* left: copy */}
-          <div>
-            <span className="text-sm font-bold tracking-wide text-brand-600">{active.n}</span>
-            <h3 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">{active.title}</h3>
-            <p className="mt-3 text-[var(--text-secondary)]">{active.subtitle}</p>
-            <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">What's included</p>
-            <ul className="mt-3 space-y-2.5">
-              {active.included.map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm text-[var(--text-primary)]">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> {item}
-                </li>
-              ))}
-            </ul>
-            {active.id === 'ordering' && (
-              <p className="mt-4 text-sm text-[var(--text-secondary)]">
-                Plus in-store token &amp; menu boards for the counter — <ScreenshotLink src={tokenBoard} />
-              </p>
-            )}
-            <Link to="/login?mode=register" className="btn-primary mt-7 inline-flex px-5 py-2.5">
-              Start free trial <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={active.id}
+            id="feature-panel"
+            role="tabpanel"
+            aria-labelledby={`tab-${active.id}`}
+            className="mt-10 grid gap-10 lg:grid-cols-2 lg:items-center"
+            initial={reduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={reduceMotion ? { opacity: 1 } : { opacity: 0 }}
+            transition={{ duration: reduceMotion ? 0 : 0.18, ease: 'easeOut' }}
+          >
+            {/* left: copy */}
+            <div>
+              <span className="text-sm font-bold tracking-wide text-brand-600">{active.n}</span>
+              <h3 className="mt-2 text-2xl font-extrabold tracking-tight sm:text-3xl">{active.title}</h3>
+              <p className="mt-3 text-[var(--text-secondary)]">{active.subtitle}</p>
+              <p className="mt-6 text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">What's included</p>
+              <ul className="mt-3 space-y-2.5">
+                {active.included.map((item, i) => (
+                  <ScrollReveal key={item} as="li" delay={i * 0.09} className="flex items-start gap-2.5 text-sm text-[var(--text-primary)]">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" /> {item}
+                  </ScrollReveal>
+                ))}
+              </ul>
+              {active.id === 'ordering' && (
+                <p className="mt-4 text-sm text-[var(--text-secondary)]">
+                  Plus in-store token &amp; menu boards for the counter — <ScreenshotLink src={tokenBoard} />
+                </p>
+              )}
+              <Link to="/login?mode=register" className="btn-primary mt-7 inline-flex px-5 py-2.5">
+                Start free trial <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
 
-          {/* right: real screenshot(s) on a warm panel */}
-          <div className="rounded-3xl bg-gradient-to-br from-amber-100 via-orange-50 to-brand-100 p-5 dark:from-amber-900/30 dark:via-stone-900 dark:to-brand-900/30 sm:p-8">
-            {active.custom === 'ai-team' ? (
-              <AITeamSection compact />
-            ) : (
-              <>
-                <div className="flex min-h-[16rem] items-center justify-center">
-                  <img
-                    key={shot.src}
-                    src={shot.src}
-                    alt={shot.alt}
-                    className="max-h-[26rem] w-auto max-w-full rounded-xl border border-[var(--border)] bg-white shadow-2xl"
-                    style={{ transform: 'rotate(-1.5deg)' }}
-                    loading="lazy"
-                  />
+            {/* right: real screenshot(s) — one fixed frame for every tab so switching never jumps */}
+            <div className="flex h-[26rem] flex-col rounded-3xl bg-gradient-to-br from-amber-100 via-orange-50 to-brand-100 p-5 dark:from-amber-900/30 dark:via-stone-900 dark:to-brand-900/30 sm:h-[30rem] sm:p-8">
+              {active.custom === 'ai-team' ? (
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  <AITeamSection compact />
                 </div>
-                {active.shots.length > 1 && (
-                  <div className="mt-5 flex justify-center gap-2">
-                    {active.shots.map((s, i) => (
-                      <button
-                        key={s.src}
-                        onClick={() => setShotIdx(i)}
-                        aria-label={`Show: ${s.alt}`}
-                        className={`h-12 w-16 overflow-hidden rounded-md border-2 bg-white transition ${i === shotIdx ? 'border-brand-600' : 'border-transparent opacity-70 hover:opacity-100'}`}
-                      >
-                        <img src={s.src} alt="" className="h-full w-full object-cover object-top" />
-                      </button>
-                    ))}
+              ) : (
+                <>
+                  <div className="flex min-h-0 flex-1 items-center justify-center">
+                    <img
+                      key={shot.src}
+                      src={shot.src}
+                      alt={shot.alt}
+                      className="max-h-full max-w-full rounded-xl border border-[var(--border)] bg-white object-contain shadow-2xl"
+                    />
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
+                  {active.shots.length > 1 && (
+                    <div className="mt-4 flex shrink-0 justify-center gap-2">
+                      {active.shots.map((s, i) => (
+                        <button
+                          key={s.src}
+                          onClick={() => setShotIdx(i)}
+                          aria-label={`Show: ${s.alt}`}
+                          className={`h-12 w-16 overflow-hidden rounded-md border-2 bg-white transition ${i === shotIdx ? 'border-brand-600' : 'border-transparent opacity-70 hover:opacity-100'}`}
+                        >
+                          <img src={s.src} alt="" className="h-full w-full object-cover object-top" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        </AnimatePresence>
         {active.custom === 'ai-team' && <AgentStrip />}
       </div>
     </section>
@@ -574,7 +588,7 @@ function Pricing({ pricing }) {
         )}
 
         {tier && (
-          <div className="mx-auto mt-12 grid max-w-4xl gap-5 md:grid-cols-[15rem_1fr]">
+          <ScrollReveal as="div" className="mx-auto mt-12 grid max-w-4xl gap-5 md:grid-cols-[15rem_1fr]">
             {/* vertical tier selector (horizontal on phones) */}
             <div role="tablist" aria-label="Plans" className="grid grid-cols-3 gap-2 md:grid-cols-1 md:content-start">
               {pricing.plans.map((p) => (
@@ -649,7 +663,7 @@ function Pricing({ pricing }) {
                 <a href={cta.href} className="mt-8 flex w-full items-center justify-center rounded-lg border border-gray-600 py-3 text-base font-medium text-white hover:bg-gray-800">{cta.label}</a>
               )}
             </div>
-          </div>
+          </ScrollReveal>
         )}
 
         <div className="mx-auto mt-10 flex max-w-4xl flex-wrap items-center justify-center gap-x-8 gap-y-3 text-sm text-gray-400">

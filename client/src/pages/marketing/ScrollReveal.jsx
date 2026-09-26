@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from 'framer-motion';
 
-const TAGS = { div: motion.div, section: motion.section, article: motion.article };
+const TAGS = { div: motion.div, section: motion.section, article: motion.article, li: motion.li };
 
 // Same fade + slight upward slide on every non-hero section, per impl-26 —
 // one consistent motion language rather than a different treatment per section.
