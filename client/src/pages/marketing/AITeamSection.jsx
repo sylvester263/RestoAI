@@ -58,9 +58,70 @@ const TABS = [
   },
 ];
 
-export default function AITeamSection() {
+// "Meet your team" — exact copy from impl-22 v2 (10 agents, not 8).
+const AGENTS = [
+  ['Customer Support', 'escalates complaints to a human, never auto-resolves'],
+  ["Owner's Assistant", "answers business questions on the owner's own WhatsApp"],
+  ['Daily Briefing', 'proactive WhatsApp summary, every morning'],
+  ['Win-Back', 'detects lapsed customers, sends personalized offers'],
+  ['Rider Dispatch', 'reasons over load, suggests or auto-assigns'],
+  ['Live ETA', 'dynamic prep-time from the real kitchen queue'],
+  ['Reconciliation', 'cross-checks orders, payments and cash, flags only'],
+  ['Replenishment', 'predicts stockouts, suggests purchase orders'],
+  ['Menu Insight', 'flags high-margin items to feature, low performers to review'],
+  ['Abuse Detection', 'flags suspicious patterns, never auto-blocks'],
+];
+
+export function AgentStrip() {
+  return (
+    <div className="mt-14">
+      <h4 className="text-center text-lg font-extrabold tracking-tight">Meet your team — 10 agents</h4>
+      <ol className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {AGENTS.map(([name, desc], i) => (
+          <li key={name} className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-4 shadow-sm">
+            <span className="text-xs font-bold text-brand-600">{String(i + 1).padStart(2, '0')}</span>
+            <p className="mt-1 text-sm font-semibold text-[var(--text-primary)]">{name}</p>
+            <p className="mt-1 text-xs text-[var(--text-secondary)]">{desc[0].toUpperCase() + desc.slice(1)}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="mx-auto mt-6 max-w-2xl text-center text-sm font-medium text-[var(--text-primary)]">
+        Not a chatbot. RestoAI holds a real conversation, corrects mid-order, and confirms before it commits.
+      </p>
+    </div>
+  );
+}
+
+// `compact`: stacked layout for the homepage's tabbed feature panel (impl-22 v3)
+// — sub-tabs, then the screenshot, then its description, all in one column.
+export default function AITeamSection({ compact = false }) {
   const [activeId, setActiveId] = useState(TABS[0].id);
   const active = TABS.find((t) => t.id === activeId) ?? TABS[0];
+
+  if (compact) {
+    return (
+      <div>
+        <div className="flex flex-wrap gap-1.5">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveId(tab.id)}
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                tab.id === activeId
+                  ? 'border-brand-600 bg-brand-600 text-white'
+                  : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-secondary)] hover:border-brand-300 hover:text-brand-700'
+              }`}
+            >
+              <tab.icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-4">{active.content}</div>
+        <p className="mt-4 text-sm text-[var(--text-secondary)]">{active.description}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
