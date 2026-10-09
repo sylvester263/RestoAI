@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -40,6 +40,7 @@ import RiderDashboard from './pages/rider/RiderDashboard';
 import Support from './pages/Support';
 import SuperAdminAuth from './super-admin/SuperAdminAuth';
 import SuperAdminApp from './super-admin/SuperAdminApp';
+import { routeAllowed } from './lib/modules';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -55,6 +56,25 @@ function OwnerRoute({ children }) {
     return <div className="p-6 text-sm text-gray-500">Only the restaurant owner can access this page.</div>;
   }
   return children;
+}
+
+// impl-33: a page outside the tenant's plan shows an upgrade note instead of
+// a screen full of 403s. Cosmetic — the API enforces the same rule.
+function ModuleGate({ children }) {
+  const { user, modules, modulesLoaded } = useAuth();
+  const { pathname } = useLocation();
+  // impl-33 Part 4: a PIN (offline) session is the till and nothing else.
+  if (user?.offline_session && pathname !== '/pos') return <Navigate to="/pos" replace />;
+  if (routeAllowed(modules, pathname)) return children;
+  if (!modulesLoaded) return <div className="p-6 text-sm text-gray-500">Loading...</div>;
+  return (
+    <div className="p-6 text-sm text-gray-600 dark:text-gray-400">
+      <p className="font-medium text-gray-900 dark:text-gray-100">This isn't part of your current plan.</p>
+      {user?.role === 'owner'
+        ? <p className="mt-1">You can upgrade from <Link to="/billing" className="text-brand-600 underline">Plan &amp; Billing</Link>.</p>
+        : <p className="mt-1">Ask the restaurant owner if you need it.</p>}
+    </div>
+  );
 }
 
 // The public marketing page at "/" for anyone not signed in; a signed-in
@@ -104,12 +124,13 @@ export default function App() {
           <SuperAdminApp onLogout={() => window.location.href = '/super-admin/login'} />
         </SuperAdminRoute>
       } />
-      <Route path="/kitchen" element={<ProtectedRoute><Kitchen /></ProtectedRoute>} />
+      <Route path="/kitchen" element={<ProtectedRoute><ModuleGate><Kitchen /></ModuleGate></ProtectedRoute>} />
       <Route
         path="/*"
         element={
           <ProtectedRoute>
             <Layout>
+              <ModuleGate>
               <Routes>
                 <Route path="/dashboard" element={<Dashboard />} />
                 <Route path="/menu" element={<Menu />} />
@@ -132,6 +153,7 @@ export default function App() {
                 <Route path="/whatsapp-connect" element={<WhatsAppConnect />} />
                 <Route path="/support" element={<Support />} />
               </Routes>
+              </ModuleGate>
             </Layout>
           </ProtectedRoute>
         }

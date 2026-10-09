@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import { Skeleton } from '../components/ui/Skeleton';
 import EmptyState from '../components/ui/EmptyState';
 import {
@@ -11,6 +12,7 @@ import {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { hasModule, modulesLoaded } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -28,14 +30,18 @@ export default function Dashboard() {
       .then(setData)
       .catch((err) => { console.error(err); setLoadError(err); })
       .finally(() => setLoading(false));
+  }, []);
 
-    // Attention items — each is independent; a failure just leaves that
-    // card in its empty state rather than breaking the whole dashboard.
+  // Attention items — each is independent; a failure just leaves that
+  // card in its empty state rather than breaking the whole dashboard.
+  // impl-33: only asked for when the plan includes agents.
+  useEffect(() => {
+    if (!modulesLoaded || !hasModule('ai_agents')) return;
     api.getReconciliationFlags('open').then((r) => setReconFlags(r.flags)).catch(() => {});
     api.getAbuseFlags('open').then((r) => setAbuseFlags(r.flags)).catch(() => {});
     api.getReplenishmentSuggestions('pending').then((r) => setReplenishment(r.suggestions)).catch(() => {});
     api.getMenuInsights('new').then((r) => setMenuInsights(r.insights)).catch(() => {});
-  }, []);
+  }, [modulesLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return (
     <div className="space-y-6">
@@ -177,7 +183,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Branch analytics (impl-25) ── */}
-      <BranchAnalytics />
+      {hasModule('insights') && <BranchAnalytics />}
 
       {/* ── Detail cards ── */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

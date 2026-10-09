@@ -5,6 +5,7 @@ import { z } from 'zod';
 import config from '../config.js';
 import pool, { query } from '../db/pool.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../services/permissions.js';
+import { applyPlanPreset } from '../services/modules.js';
 
 const router = Router();
 
@@ -14,6 +15,9 @@ const registerSchema = z.object({
   password: z.string().min(6),
   restaurantName: z.string().min(2),
   restaurantSlug: z.string().min(2).regex(/^[a-z0-9-]+$/),
+  // impl-33: the pricing card the owner came from. Only POS Only changes
+  // anything at signup (its module preset); paid tiers start on the full trial.
+  plan: z.string().max(20).optional(),
 });
 
 const loginSchema = z.object({
@@ -77,6 +81,10 @@ router.post('/register', async (req, res, next) => {
           [tenant.id, role, key],
         );
       }
+    }
+
+    if (data.plan === 'pos_only') {
+      await applyPlanPreset(client, tenant.id, 'pos_only');
     }
 
     await client.query('COMMIT');

@@ -8,6 +8,7 @@
  */
 import { Router } from 'express';
 import { authenticate, checkTenantActive, authorize, canSeeBranch, attachBranchAccess } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import {
   computeBranchKpis, branchRevenueTrend, branchTopItems, branchPeakHours,
@@ -17,6 +18,7 @@ import {
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('insights'));
 router.use(attachBranchAccess);
 router.use(authorize('reports.view'));
 

@@ -39,6 +39,9 @@ import eventRoutes from './routes/events.js';
 import supportRoutes from './routes/support.js';
 import superAdminRoutes from './routes/super-admin.js';
 import whatsappConnectRoutes from './routes/whatsapp-connect.js';
+import meRoutes from './routes/me.js';
+import fiscalRoutes from './routes/fiscal.js';
+import posOfflineRoutes from './routes/pos-offline.js';
 
 const app = express();
 
@@ -159,6 +162,9 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/whatsapp-connect', whatsappConnectRoutes);
+app.use('/api/me', meRoutes);
+app.use('/api/fiscal', fiscalRoutes);
+app.use('/api/pos-offline', posOfflineRoutes);
 // ── impl-29: Super Admin Panel — separate auth domain, rate-limited like /api/auth ──
 app.use('/api/super-admin', authLimiter);
 app.use('/api/super-admin', superAdminRoutes);

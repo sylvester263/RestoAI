@@ -1104,6 +1104,167 @@ async function migrate() {
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_submissions_one_pending ON payment_submissions(tenant_id) WHERE status = 'pending';`);
     await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_payment_submissions_reference ON payment_submissions(lower(bank_reference_number)) WHERE status IN ('pending','approved');`);
 
+    // ── Module gating + POS Only plan (impl-33) ──
+    // No backfill on purpose: a missing row means enabled (services/modules.js),
+    // so every existing tenant keeps every module. Presets write explicit rows.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tenant_modules (
+        tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        module      VARCHAR(40) NOT NULL,
+        enabled     BOOLEAN NOT NULL DEFAULT true,
+        updated_at  TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (tenant_id, module)
+      );
+    `);
+    await client.query(`ALTER TABLE payment_submissions DROP CONSTRAINT IF EXISTS payment_submissions_claimed_plan_check;`);
+    await client.query(`ALTER TABLE payment_submissions ADD CONSTRAINT payment_submissions_claimed_plan_check CHECK (claimed_plan IN ('pos_only','starter','growth','enterprise'));`);
+
+    // ── Fiscal invoicing seam (impl-33 Part 3) — services/fiscal.js ──
+    // Per settled bill (pos_tabs), not per order round: one bill, one invoice.
+    // The impl-24 orders.fbr_* columns stay as they were (never populated).
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS fiscal_provider VARCHAR(30) NOT NULL DEFAULT 'none';`);
+    await client.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS fiscal_config JSONB;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_invoice_number VARCHAR(100);`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_qr_code_url TEXT;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_status VARCHAR(20) CHECK (fiscal_status IN ('not_required','pending','submitted','failed'));`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_error TEXT;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_attempts INTEGER NOT NULL DEFAULT 0;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_last_attempt_at TIMESTAMPTZ;`);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_tabs_fiscal_queue ON pos_tabs(settled_at) WHERE fiscal_status IN ('pending','failed');`);
+    // Providers: none | pra | fbr | stub (stub refused in production by its adapter).
+    await client.query(`ALTER TABLE tenants DROP CONSTRAINT IF EXISTS tenants_fiscal_provider_check;`);
+    await client.query(`ALTER TABLE tenants ADD CONSTRAINT tenants_fiscal_provider_check CHECK (fiscal_provider IN ('none','pra','fbr','stub'));`);
+    // A bill rung up while offline and synced later: reported as issued
+    // offline, with settled_at holding the original sale time from the device.
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_issued_offline BOOLEAN NOT NULL DEFAULT false;`);
+
+    // ── Offline POS, Level 1 (impl-33 Part 4) ──
+    // Idempotency: a client-generated UUID per action, unique per tenant, so a
+    // replayed tab-open / add-items / settle returns the original result.
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS client_request_id UUID;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS settle_request_id UUID;`);
+    await client.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS client_request_id UUID;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_tabs_client_request ON pos_tabs(tenant_id, client_request_id) WHERE client_request_id IS NOT NULL;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_tabs_settle_request ON pos_tabs(tenant_id, settle_request_id) WHERE settle_request_id IS NOT NULL;`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_orders_client_request ON orders(tenant_id, client_request_id) WHERE client_request_id IS NOT NULL;`);
+    // Where the bill came from and anything a manager should look at.
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS device_id UUID;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS bill_number BIGINT;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS created_offline BOOLEAN NOT NULL DEFAULT false;`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS sync_flags TEXT[] NOT NULL DEFAULT '{}';`);
+    await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_pos_tabs_branch_bill_number ON pos_tabs(branch_id, bill_number) WHERE bill_number IS NOT NULL;`);
+
+    // Devices and per-device bill-number blocks. The counter only ever moves
+    // forward, so a block is never handed out twice; unused numbers at the end
+    // of a block are simply skipped (gaps are expected and are not missing bills).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_devices (
+        id             UUID PRIMARY KEY,
+        tenant_id      UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id      UUID REFERENCES branches(id) ON DELETE SET NULL,
+        label          VARCHAR(100),
+        registered_by  UUID REFERENCES users(id) ON DELETE SET NULL,
+        pending_count  INTEGER NOT NULL DEFAULT 0,
+        pending_reported_at TIMESTAMPTZ,
+        last_user_id   UUID REFERENCES users(id) ON DELETE SET NULL,
+        last_seen_at   TIMESTAMPTZ DEFAULT NOW(),
+        created_at     TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_bill_counters (
+        branch_id    UUID PRIMARY KEY REFERENCES branches(id) ON DELETE CASCADE,
+        tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        next_number  BIGINT NOT NULL DEFAULT 1
+      );
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_bill_blocks (
+        id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id    UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        branch_id    UUID NOT NULL REFERENCES branches(id) ON DELETE CASCADE,
+        device_id    UUID NOT NULL REFERENCES pos_devices(id) ON DELETE CASCADE,
+        range_start  BIGINT NOT NULL,
+        range_end    BIGINT NOT NULL,
+        leased_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+        leased_at    TIMESTAMPTZ DEFAULT NOW(),
+        CHECK (range_end >= range_start)
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_bill_blocks_device ON pos_bill_blocks(device_id, branch_id);`);
+    await client.query(`ALTER TABLE pos_devices ADD COLUMN IF NOT EXISTS last_user_id UUID REFERENCES users(id) ON DELETE SET NULL;`);
+
+    // Staff PIN for offline unlock. bcrypt on the server; the device keeps only
+    // its own PBKDF2 hash, derived locally when the PIN is entered online.
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pos_pin_hash TEXT;`);
+    await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS pos_pin_set_at TIMESTAMPTZ;`);
+
+    // Offline actions the server would not apply automatically (removed staff,
+    // suspended tenant, POS module off, shift no longer open…): held for a
+    // manager, never silently applied or dropped.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_sync_review (
+        id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id          UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        device_id          UUID,
+        user_id            UUID REFERENCES users(id) ON DELETE SET NULL,
+        client_request_id  UUID NOT NULL,
+        action_type        VARCHAR(20) NOT NULL,
+        tab_client_id      UUID,
+        payload            JSONB NOT NULL,
+        reason             VARCHAR(50) NOT NULL,
+        status             VARCHAR(20) NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review','resolved')),
+        resolution_note    TEXT,
+        reviewed_by        UUID REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at        TIMESTAMPTZ,
+        created_at         TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE (tenant_id, client_request_id)
+      );
+    `);
+
+    // Tenant-side POS audit trail (shift-close overrides, review decisions, PIN changes).
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS pos_audit_log (
+        id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        tenant_id   UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+        user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+        action      VARCHAR(50) NOT NULL,
+        details     JSONB NOT NULL DEFAULT '{}',
+        created_at  TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_pos_audit_log_tenant ON pos_audit_log(tenant_id, created_at DESC);`);
+    await client.query(`ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS unsynced_at_close INTEGER;`);
+    await client.query(`ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS unsynced_override_by UUID REFERENCES users(id) ON DELETE SET NULL;`);
+    await client.query(`ALTER TABLE pos_shifts ADD COLUMN IF NOT EXISTS unsynced_override_reason TEXT;`);
+
+    // Price/availability history, so a sale made offline at the price on the
+    // device's menu snapshot can be told apart from a tampered price.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS menu_item_price_history (
+        id            BIGSERIAL PRIMARY KEY,
+        menu_item_id  UUID NOT NULL REFERENCES menu_items(id) ON DELETE CASCADE,
+        tenant_id     UUID NOT NULL,
+        price         NUMERIC(10,2) NOT NULL,
+        is_available  BOOLEAN NOT NULL,
+        valid_to      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+    `);
+    await client.query(`CREATE INDEX IF NOT EXISTS idx_menu_price_history_item ON menu_item_price_history(menu_item_id, valid_to DESC);`);
+    await client.query(`
+      CREATE OR REPLACE FUNCTION record_menu_item_price_history() RETURNS trigger AS $$
+      BEGIN
+        IF OLD.price IS DISTINCT FROM NEW.price OR OLD.is_available IS DISTINCT FROM NEW.is_available THEN
+          INSERT INTO menu_item_price_history (menu_item_id, tenant_id, price, is_available)
+          VALUES (OLD.id, OLD.tenant_id, OLD.price, OLD.is_available);
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await client.query(`DROP TRIGGER IF EXISTS trg_menu_item_price_history ON menu_items;`);
+    await client.query(`CREATE TRIGGER trg_menu_item_price_history AFTER UPDATE ON menu_items FOR EACH ROW EXECUTE FUNCTION record_menu_item_price_history();`);
+
     // ── Indexes for performance ──
     await client.query(`CREATE INDEX IF NOT EXISTS idx_users_tenant ON users(tenant_id);`);
     await client.query(`CREATE INDEX IF NOT EXISTS idx_branches_tenant ON branches(tenant_id);`);

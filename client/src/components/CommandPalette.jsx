@@ -8,6 +8,7 @@
  */
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { routeAllowed } from '../lib/modules';
 import {
   LayoutDashboard, Receipt, ShoppingBag, UtensilsCrossed, Package,
   Users, QrCode, CalendarCheck, Megaphone, Bike, Globe, MessageCircle,
@@ -48,9 +49,9 @@ function fuzzyMatch(query, text) {
   return qi === q.length;
 }
 
-// `roles` mirrors the sidebar's role-gated items (Layout.jsx) — the palette
-// must not offer pages the sidebar hides from this role.
-export default function CommandPalette({ open, onClose, role }) {
+// `roles` and `modules` mirror the sidebar's filtering (Layout.jsx) — the
+// palette must not offer pages the sidebar hides from this role or plan.
+export default function CommandPalette({ open, onClose, role, modules }) {
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const navigate = useNavigate();
@@ -58,10 +59,10 @@ export default function CommandPalette({ open, onClose, role }) {
   const listRef = useRef(null);
 
   const filtered = useMemo(() => {
-    const allowed = ALL_ITEMS.filter((item) => !item.roles || item.roles.includes(role));
+    const allowed = ALL_ITEMS.filter((item) => (!item.roles || item.roles.includes(role)) && routeAllowed(modules, item.to));
     if (!query.trim()) return allowed;
     return allowed.filter((item) => fuzzyMatch(query, item.label));
-  }, [query, role]);
+  }, [query, role, modules]);
 
   // Reset state when opening
   useEffect(() => {

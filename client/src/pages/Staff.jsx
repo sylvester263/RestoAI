@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import { Skeleton } from '../components/ui/Skeleton';
 import Modal from '../components/ui/Modal';
 import { toast, confirmAction } from '../components/ui/toast';
-import { UserPlus, Plus, X, Loader2, Copy, Check, Clock, CheckCircle2, XCircle, Users } from 'lucide-react';
+import { UserPlus, Plus, X, Loader2, Copy, Check, Clock, CheckCircle2, XCircle, Users, KeyRound } from 'lucide-react';
 
 const STATUS_STYLE = {
   pending: 'bg-amber-100 text-amber-700',
@@ -20,6 +21,22 @@ export default function Staff() {
   const [loading, setLoading] = useState(true);
   const [showInvite, setShowInvite] = useState(false);
   const [error, setError] = useState('');
+  const { user } = useAuth();
+  const [pinFor, setPinFor] = useState(null); // staff member whose POS PIN is being set
+  // impl-33 Part 4: owner/manager set POS PINs; only the owner sets the owner's.
+  const canSetPin = (m) => (user?.role === 'owner' || user?.role === 'manager') && !m.deactivated_at && (m.role !== 'owner' || user?.role === 'owner');
+
+  async function clearPin(member) {
+    const ok = await confirmAction(`Clear ${member.name}'s POS PIN?`, 'They will no longer be able to unlock a till with a PIN on any device until a new PIN is set.');
+    if (!ok) return;
+    try {
+      await api.clearStaffPin(member.id);
+      setStaff((list) => list.map((m) => (m.id === member.id ? { ...m, has_pin: false } : m)));
+      toast.success('PIN cleared');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
 
   function load() {
     Promise.all([api.getStaff(), api.getStaffInvites(), api.getBranches()])
@@ -77,6 +94,7 @@ export default function Staff() {
               <th className="py-3 pr-4">Role</th>
               <th className="py-3 pr-4">Branches</th>
               <th className="py-3 pr-4">Status</th>
+              <th className="py-3 pr-4">POS PIN</th>
               <th className="py-3 pr-4 text-right">Access</th>
             </tr>
           </thead>
@@ -95,6 +113,15 @@ export default function Staff() {
                     {removed
                       ? <span className="badge bg-[var(--surface-3)] text-[var(--text-secondary)]">Removed {new Date(m.deactivated_at).toLocaleDateString()}</span>
                       : <span className="badge bg-green-100 text-green-700">Active</span>}
+                  </td>
+                  <td className="py-3 pr-4" data-testid="pin-cell">
+                    <span className="text-xs text-[var(--text-secondary)]">{m.has_pin ? 'Set' : 'Not set'}</span>
+                    {canSetPin(m) && (
+                      <span className="ml-2 inline-flex gap-2">
+                        <button type="button" onClick={() => setPinFor(m)} className="text-xs font-medium text-brand-600 hover:underline">{m.has_pin ? 'Reset' : 'Set'}</button>
+                        {m.has_pin && <button type="button" onClick={() => clearPin(m)} className="text-xs text-red-600 hover:underline">Clear</button>}
+                      </span>
+                    )}
                   </td>
                   <td className="py-3 pr-4 text-right">
                     {m.role !== 'owner' && !m.is_you && (
@@ -149,6 +176,13 @@ export default function Staff() {
         </table>
       </div>
 
+      {pinFor && (
+        <PinModal
+          member={pinFor}
+          onClose={() => setPinFor(null)}
+          onSaved={() => { setStaff((list) => list.map((m) => (m.id === pinFor.id ? { ...m, has_pin: true } : m))); setPinFor(null); }}
+        />
+      )}
       {showInvite && (
         <InviteModal branches={branches} onClose={() => setShowInvite(false)} onCreated={() => { setShowInvite(false); load(); }} />
       )}
@@ -228,6 +262,43 @@ function InviteModal({ branches, onClose, onCreated }) {
           <button onClick={onCreated} className="btn-primary mt-4 w-full justify-center">Done</button>
         </>
       )}
+    </Modal>
+  );
+}
+
+// impl-33 Part 4: set or reset someone's POS PIN (4–6 digits). Resetting it
+// retires every device's offline unlock for them until they set it up again.
+function PinModal({ member, onClose, onSaved }) {
+  const [pin, setPin] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      await api.setStaffPin(member.id, pin);
+      toast.success(`PIN ${member.has_pin ? 'reset' : 'set'} for ${member.name}`);
+      onSaved();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <Modal open onClose={onClose} title={`${member.has_pin ? 'Reset' : 'Set'} POS PIN — ${member.name}`} size="sm">
+      <form onSubmit={save}>
+        <p className="mb-3 text-sm text-[var(--text-secondary)]">The PIN unlocks a till that has been set up for them, including when the internet is down. A PIN session can only sell for cash.</p>
+        <div className="relative mb-2">
+          <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-tertiary)]" />
+          <input className="input pl-9 tracking-widest" type="password" inputMode="numeric" autoComplete="new-password" maxLength={6} value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/D/g, ''))} placeholder="4–6 digits" autoFocus />
+        </div>
+        {member.has_pin && <p className="mb-2 text-xs text-amber-700">Devices where they set up PIN unlock will need them to set it up again.</p>}
+        {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
+        <button type="submit" disabled={saving || pin.length < 4} className="btn-primary w-full justify-center">{saving ? 'Saving…' : 'Save PIN'}</button>
+      </form>
     </Modal>
   );
 }

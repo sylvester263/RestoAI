@@ -12,6 +12,15 @@ import { authenticate, checkTenantActive, authorize } from '../middleware/auth.j
 import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
 import { friendlyValidationMessage } from '../utils/validation-messages.js';
 import { emit } from '../services/event-bus.js';
+import { isModuleEnabled, moduleDisabledBody } from '../services/modules.js';
+
+// impl-33: QR self-ordering is an online-ordering channel, so it follows the
+// whatsapp_ordering module (off on POS Only). Closing a session (staff) is not gated.
+async function qrOrderingBlocked(res, tenantId) {
+  if (await isModuleEnabled(tenantId, 'whatsapp_ordering')) return false;
+  res.status(403).json(moduleDisabledBody('whatsapp_ordering'));
+  return true;
+}
 
 const router = Router();
 
@@ -41,6 +50,7 @@ router.get('/:qrToken', async (req, res, next) => {
     if (!table) {
       return res.status(404).json({ error: { message: 'Table not found' } });
     }
+    if (await qrOrderingBlocked(res, table.tenant_id)) return;
 
     let sessionRes = await query(
       `SELECT * FROM table_sessions WHERE table_id = $1 AND status != 'closed'`,
@@ -93,6 +103,7 @@ router.post('/:id/orders', async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: { message: 'Session not found' } });
     }
+    if (await qrOrderingBlocked(res, session.tenant_id)) return;
     if (session.status !== 'open') {
       return res.status(400).json({ error: { message: 'This table has already requested the bill — ask staff for a new round' } });
     }
@@ -137,6 +148,7 @@ router.post('/:id/request-bill', async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: { message: 'Session not found' } });
     }
+    if (await qrOrderingBlocked(res, session.tenant_id)) return;
     const updated = await query(
       `UPDATE table_sessions SET status = 'bill_requested' WHERE id = $1 AND status = 'open' RETURNING id`,
       [session.id],
@@ -169,6 +181,7 @@ router.get('/:id/bill', async (req, res, next) => {
     if (!session) {
       return res.status(404).json({ error: { message: 'Session not found' } });
     }
+    if (await qrOrderingBlocked(res, session.tenant_id)) return;
 
     // `status` rides along so the diner can see whether a round has even
     // started cooking yet, not just its price (audit I5: "no per-round

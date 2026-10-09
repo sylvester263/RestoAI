@@ -5,6 +5,12 @@
  * amount on submission and rejects a mismatch, so the two can't drift silently.
  */
 
+// Included where the plan includes it, never where it isn't offered (POS Only).
+function packFor(p, requested) {
+  if (p.agent_pack_available === false) return false;
+  return p.agent_pack_included ? true : !!requested;
+}
+
 export function planById(pricing, id) {
   return pricing?.plans.find((p) => p.id === id) || null;
 }
@@ -12,17 +18,18 @@ export function planById(pricing, id) {
 /** Clamp a requested plan/branch/pack combination to what that plan allows. */
 export function normalizeSelection(pricing, { plan, branches, pack }) {
   const selfServe = pricing?.plans.filter((p) => p.self_serve) || [];
-  const p = planById(pricing, plan) && planById(pricing, plan).self_serve ? planById(pricing, plan) : selfServe[0];
+  const fallback = selfServe.find((x) => x.id === 'starter') || selfServe[0];
+  const p = planById(pricing, plan) && planById(pricing, plan).self_serve ? planById(pricing, plan) : fallback;
   if (!p) return null;
   const n = Math.min(Math.max(parseInt(branches, 10) || p.min_branches, p.min_branches), p.max_branches ?? p.min_branches);
-  return { plan: p.id, branches: n, pack: p.agent_pack_included ? true : !!pack };
+  return { plan: p.id, branches: n, pack: packFor(p, pack) };
 }
 
 export function monthlyAmount(pricing, { plan, branches, pack }) {
   const p = planById(pricing, plan);
   if (!p || !p.self_serve) return null;
   const base = p.monthly != null ? p.monthly : p.per_branch * branches;
-  return base + (pack && !p.agent_pack_included ? pricing.agent_pack_monthly : 0);
+  return base + (packFor(p, pack) && !p.agent_pack_included ? pricing.agent_pack_monthly : 0);
 }
 
 export function formatRs(n) {

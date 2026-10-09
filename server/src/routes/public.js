@@ -17,6 +17,7 @@ import { getBalance, redeemPoints, getLoyaltyConfig } from '../services/loyalty.
 import { previewCoupon, validateAndApplyCoupon, attachRedemptionToOrder, getOrCreateReferralCode } from '../services/coupons.js';
 import { estimateReadyTime } from '../services/eta-agent.js';
 import { hasAgentPack } from '../services/billing.js';
+import { isModuleEnabled, moduleDisabledBody } from '../services/modules.js';
 import config from '../config.js';
 
 const router = Router({ mergeParams: true });
@@ -46,6 +47,22 @@ async function resolveTenant(req, res, next) {
 }
 
 router.use('/:tenantSlug', resolveTenant);
+
+// impl-33: each customer-facing flow belongs to a module; a tenant without it
+// (e.g. POS Only) gets the same 403 the staff app gets, keyed on the tenant
+// resolved from the slug above, never on anything the client sends.
+function tenantModule(module) {
+  return async (req, res, next) => {
+    try {
+      if (!(await isModuleEnabled(req.tenant.id, module))) return res.status(403).json(moduleDisabledBody(module));
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+}
+const ordering = tenantModule('whatsapp_ordering');
+const loyaltyCrm = tenantModule('loyalty_crm');
 
 // Pickup (audit I11) was previously unreachable from the web app —
 // delivery_address was unconditionally required, so every web order was
@@ -84,7 +101,7 @@ router.get('/:tenantSlug', (req, res) => {
 // grayed out/"sold out" rather than silently vanishing — actual ordering
 // is independently blocked server-side in resolveOrderItems, which is the
 // real enforcement point, so this list is display-only.
-router.get('/:tenantSlug/menu', async (req, res, next) => {
+router.get('/:tenantSlug/menu', ordering, async (req, res, next) => {
   try {
     // Ratings ride along on each item. The menu page used to fetch them with
     // one request per item, which alone spent ~half of the public rate-limit
@@ -113,7 +130,7 @@ router.get('/:tenantSlug/menu', async (req, res, next) => {
 // ── POST /api/public/:tenantSlug/orders ──
 // Create a cash-on-delivery order from a cart. Prices are always resolved
 // server-side from menu_items — client-supplied prices are never trusted.
-router.post('/:tenantSlug/orders', async (req, res, next) => {
+router.post('/:tenantSlug/orders', ordering, async (req, res, next) => {
   try {
     const data = checkoutSchema.parse(req.body);
     const isPickup = data.fulfillment_type === 'pickup';
@@ -220,7 +237,7 @@ function previewDeliveryFee(req) {
 // ── GET /api/public/:tenantSlug/coupons/:code/preview ──
 // Read-only — shows the discount a code would apply before final checkout.
 // Final enforcement still happens atomically inside POST /orders.
-router.get('/:tenantSlug/coupons/:code/preview', async (req, res, next) => {
+router.get('/:tenantSlug/coupons/:code/preview', ordering, async (req, res, next) => {
   try {
     const phone = (req.query.phone || '').toString().trim();
     const subtotal = parseFloat(req.query.subtotal) || 0;
@@ -257,7 +274,7 @@ const validateCouponSchema = z.object({
 // optional cart (items) so a 'bogo' coupon can preview accurately — prices
 // are always re-resolved server-side, never trusted from the client, same
 // as order creation.
-router.post('/:tenantSlug/coupons/validate', async (req, res, next) => {
+router.post('/:tenantSlug/coupons/validate', ordering, async (req, res, next) => {
   try {
     const data = validateCouponSchema.parse(req.body);
     let customerId = null;
@@ -284,7 +301,7 @@ router.post('/:tenantSlug/coupons/validate', async (req, res, next) => {
 // ── GET /api/public/:tenantSlug/referral?phone=... ──
 // "Invite a friend" surface — get-or-create the customer's personal,
 // reusable referral code (impl-12 Section 1.1).
-router.get('/:tenantSlug/referral', async (req, res, next) => {
+router.get('/:tenantSlug/referral', loyaltyCrm, async (req, res, next) => {
   try {
     const phone = (req.query.phone || '').toString().trim();
     if (!phone) return res.status(400).json({ error: { message: 'phone is required' } });
@@ -302,7 +319,7 @@ router.get('/:tenantSlug/referral', async (req, res, next) => {
 // but this prevents order-id enumeration without one.
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-router.get('/:tenantSlug/orders/:orderId', async (req, res, next) => {
+router.get('/:tenantSlug/orders/:orderId', ordering, async (req, res, next) => {
   try {
     if (!UUID_RE.test(req.params.orderId)) {
       return res.status(404).json({ error: { message: 'Order not found' } });
@@ -384,7 +401,7 @@ const reservationSchema = z.object({
 // ── POST /api/public/:tenantSlug/reservations ──
 // Book a table in advance. Branch is resolved as the tenant's first branch,
 // matching the same "single default branch" precedent used for orders.
-router.post('/:tenantSlug/reservations', reservationLimiter, async (req, res, next) => {
+router.post('/:tenantSlug/reservations', tenantModule('reservations'), reservationLimiter, async (req, res, next) => {
   try {
     const data = reservationSchema.parse(req.body);
 
@@ -423,7 +440,7 @@ router.post('/:tenantSlug/reservations', reservationLimiter, async (req, res, ne
 });
 
 // ── GET /api/public/:tenantSlug/loyalty/balance?phone=... ──
-router.get('/:tenantSlug/loyalty/balance', async (req, res, next) => {
+router.get('/:tenantSlug/loyalty/balance', loyaltyCrm, async (req, res, next) => {
   try {
     const phone = (req.query.phone || '').toString().trim();
     if (!phone) return res.status(400).json({ error: { message: 'phone is required' } });
@@ -450,7 +467,7 @@ const reviewSchema = z.object({
 // ── POST /api/public/:tenantSlug/reviews ──
 // Only allowed once the order is delivered and the phone matches — same
 // ownership check used for order tracking.
-router.post('/:tenantSlug/reviews', async (req, res, next) => {
+router.post('/:tenantSlug/reviews', ordering, async (req, res, next) => {
   try {
     const data = reviewSchema.parse(req.body);
 
@@ -493,7 +510,7 @@ router.post('/:tenantSlug/reviews', async (req, res, next) => {
 
 // ── GET /api/public/:tenantSlug/reviews/item/:menuItemId ──
 // Aggregate rating + recent comments — social proof on the menu.
-router.get('/:tenantSlug/reviews/item/:menuItemId', async (req, res, next) => {
+router.get('/:tenantSlug/reviews/item/:menuItemId', ordering, async (req, res, next) => {
   try {
     const aggRes = await query(
       `SELECT COUNT(*) as count, COALESCE(AVG(rating), 0) as average
@@ -523,7 +540,7 @@ const subscribeSchema = z.object({
 });
 
 // ── POST /api/public/:tenantSlug/notifications/subscribe ──
-router.post('/:tenantSlug/notifications/subscribe', async (req, res, next) => {
+router.post('/:tenantSlug/notifications/subscribe', ordering, async (req, res, next) => {
   try {
     const data = subscribeSchema.parse(req.body);
     const customer = await getOrCreateCustomer(req.tenant.id, data.phone);
@@ -546,7 +563,7 @@ const recommendationSchema = z.object({ message: z.string().min(1).max(500) });
 // ── POST /api/public/:tenantSlug/recommendations ──
 // In-app AI assistant — reuses the exact same recommendation logic already
 // proven on WhatsApp. Read-only: never creates an order.
-router.post('/:tenantSlug/recommendations', async (req, res, next) => {
+router.post('/:tenantSlug/recommendations', ordering, async (req, res, next) => {
   try {
     const data = recommendationSchema.parse(req.body);
     const menuRes = await query(

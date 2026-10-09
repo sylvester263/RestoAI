@@ -11,11 +11,13 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query, withTransaction } from '../db/pool.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('delivery_riders'));
 
 // A random 6-digit PIN, zero-padded — generated when the owner doesn't set
 // one explicitly at rider creation/reset.

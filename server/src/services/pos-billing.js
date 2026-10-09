@@ -128,43 +128,77 @@ export async function buildZReport(tenantId, shiftId) {
     voids: { total: parseFloat(voidsRes.rows[0].total), count: parseInt(voidsRes.rows[0].count, 10) },
     refunds: { total: parseFloat(refundsRes.rows[0].total), count: parseInt(refundsRes.rows[0].count, 10) },
     closing_cash_expected: closingCashExpected,
+    // impl-33: offline sales still unsynced when a manager overrode the close
+    unsynced_at_close: shift.unsynced_at_close ?? null,
+    unsynced_override_reason: shift.unsynced_override_reason ?? null,
   };
 }
 
 // ── Receipts ──
+// A POS bill (tab) is one receipt even though each "add items" round is its
+// own order row: items, subtotal, discount, tax and total are summed across
+// every round of the tab. Before impl-33 only the requested order (usually
+// the first round) was printed, so multi-round bills under-printed.
 export async function buildReceiptData(tenantId, orderId) {
   const orderRes = await query(
-    `SELECT o.*, b.name as branch_name, b.address as branch_address, b.phone as branch_phone
+    `SELECT o.*, b.name as branch_name, b.address as branch_address, b.phone as branch_phone,
+            pt.fiscal_invoice_number, pt.fiscal_qr_code_url, pt.fiscal_status,
+            pt.bill_number, pt.sync_flags
      FROM orders o
      JOIN branches b ON b.id = o.branch_id
+     LEFT JOIN pos_tabs pt ON pt.id = o.pos_tab_id
      WHERE o.id = $1 AND o.tenant_id = $2`,
     [orderId, tenantId],
   );
   const order = orderRes.rows[0];
   if (!order) return null;
 
-  const [itemsRes, taxConfig, tabPaymentsRes] = await Promise.all([
-    query('SELECT name, quantity, unit_price, total_price FROM order_items WHERE order_id = $1', [orderId]),
+  const tabId = order.pos_tab_id;
+  const [itemsRes, totalsRes, taxConfig, tabPaymentsRes] = await Promise.all([
+    tabId
+      ? query(
+        `SELECT oi.name, oi.quantity, oi.unit_price, oi.total_price
+         FROM order_items oi JOIN orders o ON o.id = oi.order_id
+         WHERE o.pos_tab_id = $1 AND o.tenant_id = $2
+         ORDER BY o.created_at, oi.id`,
+        [tabId, tenantId],
+      )
+      : query('SELECT name, quantity, unit_price, total_price FROM order_items WHERE order_id = $1', [orderId]),
+    tabId
+      ? query(
+        `SELECT SUM(subtotal) AS subtotal, SUM(discount_amount) AS discount, SUM(tax) AS tax, SUM(total) AS total,
+                MIN(created_at) AS created_at
+         FROM orders WHERE pos_tab_id = $1 AND tenant_id = $2`,
+        [tabId, tenantId],
+      )
+      : Promise.resolve({ rows: [{ subtotal: order.subtotal, discount: order.discount_amount, tax: order.tax, total: order.total, created_at: order.created_at }] }),
     getTaxConfig(order.branch_id),
-    order.pos_tab_id
-      ? query('SELECT method, amount FROM pos_tab_payments WHERE pos_tab_id = $1 ORDER BY created_at', [order.pos_tab_id])
+    tabId
+      ? query('SELECT method, amount FROM pos_tab_payments WHERE pos_tab_id = $1 ORDER BY created_at', [tabId])
       : Promise.resolve({ rows: [] }),
   ]);
+  const totals = totalsRes.rows[0];
 
   return {
     order_number: order.order_number,
-    created_at: order.created_at,
+    bill_number: order.bill_number ?? null,
+    created_at: totals.created_at,
     branch: { name: order.branch_name, address: order.branch_address, phone: order.branch_phone },
     tax: { authority: taxConfig.tax_authority, registration_number: taxConfig.tax_registration_number },
     items: itemsRes.rows,
-    subtotal: parseFloat(order.subtotal),
-    discount: parseFloat(order.discount_amount),
-    tax_amount: parseFloat(order.tax),
-    total: parseFloat(order.total),
+    subtotal: parseFloat(totals.subtotal),
+    discount: parseFloat(totals.discount),
+    tax_amount: parseFloat(totals.tax),
+    total: parseFloat(totals.total),
     payments: tabPaymentsRes.rows.length > 0
       ? tabPaymentsRes.rows.map((p) => ({ method: p.method, amount: parseFloat(p.amount) }))
       : [{ method: order.payment_method, amount: parseFloat(order.total) }],
     fbr_invoice_number: order.fbr_invoice_number,
     fbr_qr_code_url: order.fbr_qr_code_url,
+    // impl-33: printed only when present; nothing changes for fiscal_provider 'none'
+    fiscal_invoice_number: order.fiscal_invoice_number || null,
+    fiscal_qr_code_url: order.fiscal_qr_code_url || null,
+    fiscal_status: order.fiscal_status || null,
+    sync_flags: order.sync_flags || [],
   };
 }

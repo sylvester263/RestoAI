@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { notifyStatusChange, getStatusMessage } from '../services/whatsapp.js';
 import { getOrderType, orderTypeSql, canEnterStatus } from '../utils/order-type.js';
@@ -136,7 +137,7 @@ router.get('/', authorize('orders.view'), async (req, res, next) => {
 // older than a day that never left these states is stale — a test order, a
 // forgotten one — and would sit on the screen forever; the Orders page still
 // lists it for staff to cancel (audit C9).
-router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
+router.get('/kitchen', requireModule('kitchen'), authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
       `SELECT o.*, ${orderTypeSql('o')} AS order_type, rt.table_number,
@@ -165,7 +166,7 @@ router.get('/kitchen', authorize('orders.view'), async (req, res, next) => {
 // generic GET /:id below — a literal 2-segment path never collides with
 // it (different segment count), but keeping specific-before-generic
 // matches this file's existing /kitchen convention.
-router.get('/deliveries/unassigned', authorize('orders.view'), async (req, res, next) => {
+router.get('/deliveries/unassigned', requireModule('delivery_riders'), authorize('orders.view'), async (req, res, next) => {
   try {
     const result = await query(
       `SELECT o.*, ${orderTypeSql('o')} AS order_type, c.name as customer_name, c.phone as customer_phone
@@ -275,7 +276,7 @@ router.patch('/:id/status', authorize('orders.status_update'), async (req, res, 
 const assignRiderSchema = z.object({ rider_id: z.string().uuid().optional() });
 
 // ── POST /api/orders/:id/assign-rider ── (impl-05)
-router.post('/:id/assign-rider', authorize('orders.status_update'), async (req, res, next) => {
+router.post('/:id/assign-rider', requireModule('delivery_riders'), authorize('orders.status_update'), async (req, res, next) => {
   try {
     const orderRes = await query('SELECT * FROM orders WHERE id = $1 AND tenant_id = $2', [req.params.id, req.user.tenant_id]);
     const order = orderRes.rows[0];
@@ -412,7 +413,7 @@ export async function applyDeliveryStatus(tenantId, orderId, data, riderId = nul
 }
 
 // ── POST /api/orders/:id/delivery-status ── (impl-05)
-router.post('/:id/delivery-status', authorize('orders.status_update'), async (req, res, next) => {
+router.post('/:id/delivery-status', requireModule('delivery_riders'), authorize('orders.status_update'), async (req, res, next) => {
   try {
     const data = deliveryStatusSchema.parse(req.body);
     const result = await applyDeliveryStatus(req.user.tenant_id, req.params.id, data);

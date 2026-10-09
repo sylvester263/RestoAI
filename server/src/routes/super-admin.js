@@ -15,6 +15,8 @@ import { sendReply } from '../services/whatsapp.js';
 import { PLANS, BILLING_PERIOD_MONTHS, invalidateAgentPack } from '../services/billing.js';
 import { periodStartSql } from '../utils/business-time.js';
 import { authenticateSuperAdmin } from '../middleware/auth.js';
+import { FISCAL_PROVIDERS } from '../services/fiscal.js';
+import { MODULES, MODULE_LABELS, loadTenantModules, setTenantModule, applyPlanPreset, invalidateModules } from '../services/modules.js';
 import { loginStep1, loginStep2, setupTotp } from '../services/super-admin-auth.js';
 
 const router = Router();
@@ -264,6 +266,8 @@ router.get(
 
       res.json({
         tenant: tenantRes.rows[0],
+        modules: await loadTenantModules(req.params.id),
+        module_labels: MODULE_LABELS,
         branches: branchesRes.rows,
         users: usersRes.rows,
         payments: paymentsRes.rows,
@@ -512,6 +516,14 @@ router.post(
           `UPDATE payment_submissions SET status = 'approved', reviewed_by = $2, reviewed_at = NOW() WHERE id = $1`,
           [sub.id, req.superAdmin.id],
         );
+        // impl-33: a plan change resets modules to the new plan's preset
+        // (POS Only <-> a full tier). A renewal of the same plan keeps any
+        // per-tenant overrides a super admin has made.
+        const prevRes = await client.query('SELECT subscription_plan FROM tenants WHERE id = $1 FOR UPDATE', [sub.tenant_id]);
+        if (prevRes.rows[0]?.subscription_plan !== sub.claimed_plan) {
+          await applyPlanPreset(client, sub.tenant_id, sub.claimed_plan);
+        }
+
         // Renewing early (still active, period not over) extends from the
         // current end; otherwise the new period starts now.
         const tenantRes = await client.query(
@@ -537,6 +549,7 @@ router.post(
 
       const { sub, tenant } = outcome;
       invalidateAgentPack(sub.tenant_id);
+      invalidateModules(sub.tenant_id); // again after commit, in case a request re-cached mid-transaction
       res.locals.auditTenantId = sub.tenant_id;
       res.locals.auditDetails = { plan: sub.claimed_plan, agent_pack: sub.claimed_agent_pack, amount: sub.claimed_amount, reference: sub.bank_reference_number };
 
@@ -647,6 +660,77 @@ router.post(
       );
       if (result.rows.length === 0) return res.status(404).json({ error: { message: 'Tenant not found' } });
       invalidateAgentPack(req.params.id);
+      res.json({ tenant: result.rows[0] });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── POST /tenants/:id/modules — impl-33 per-tenant module override ──
+// One module at a time, with a mandatory reason, same as the Agent Pack toggle.
+const moduleToggleSchema = z.object({
+  module: z.enum(MODULES),
+  enabled: z.boolean(),
+  reason: z.string().trim().min(1).max(500),
+});
+router.post(
+  '/tenants/:id/modules',
+  auditLog('toggle_module', (req) => ({
+    targetTenantId: req.params.id,
+    details: req.body,
+  })),
+  async (req, res, next) => {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: { message: 'Tenant not found' } });
+    try {
+      const parsed = moduleToggleSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: { message: 'module, enabled (true/false) and a reason are required' } });
+      const { module, enabled, reason } = parsed.data;
+      const tenantRes = await query(
+        `UPDATE tenants
+         SET subscription_notes = COALESCE(subscription_notes, '') || E'\\n[' || NOW()::date || '] Module '
+               || $2::text || ' ' || CASE WHEN $3::boolean THEN 'enabled' ELSE 'disabled' END || ': ' || $4::text,
+             updated_at = NOW()
+         WHERE id = $1 RETURNING id`,
+        [req.params.id, module, enabled, reason],
+      );
+      if (tenantRes.rows.length === 0) return res.status(404).json({ error: { message: 'Tenant not found' } });
+      await setTenantModule(req.params.id, module, enabled);
+      invalidateAgentPack(req.params.id); // hasAgentPack() reads the ai_agents module too
+      res.json({ modules: await loadTenantModules(req.params.id) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── POST /tenants/:id/fiscal-provider — impl-33 Part 3 ──
+// Set by the platform, not the owner: a provider means a signed integrator agreement.
+const fiscalProviderSchema = z.object({
+  provider: z.enum(FISCAL_PROVIDERS),
+  reason: z.string().trim().min(1).max(500),
+});
+router.post(
+  '/tenants/:id/fiscal-provider',
+  auditLog('set_fiscal_provider', (req) => ({
+    targetTenantId: req.params.id,
+    details: req.body,
+  })),
+  async (req, res, next) => {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: { message: 'Tenant not found' } });
+    try {
+      const parsed = fiscalProviderSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: { message: `provider (${FISCAL_PROVIDERS.join(', ')}) and a reason are required` } });
+      const result = await query(
+        `UPDATE tenants
+         SET fiscal_provider = $2::varchar,
+             subscription_notes = COALESCE(subscription_notes, '') || E'\\n[' || NOW()::date || '] Fiscal provider set to '
+               || $2::text || ': ' || $3::text,
+             updated_at = NOW()
+         WHERE id = $1 RETURNING id, fiscal_provider`,
+        [req.params.id, parsed.data.provider, parsed.data.reason],
+      );
+      if (result.rows.length === 0) return res.status(404).json({ error: { message: 'Tenant not found' } });
       res.json({ tenant: result.rows[0] });
     } catch (err) {
       next(err);

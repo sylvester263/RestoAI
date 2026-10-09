@@ -25,6 +25,29 @@ export function invalidateUserStatus(userId) {
   userStatusCache.delete(userId);
 }
 
+// What a POS-scoped (offline PIN) token may call. Matched on method + exact
+// path shape; everything else is refused before any handler runs.
+const POS_SCOPE_ALLOWLIST = [
+  ['GET', /^\/api\/pos\/tabs(\/[^/]+)?$/],
+  ['GET', /^\/api\/pos\/receipts\/[^/]+$/],
+  ['GET', /^\/api\/pos\/shifts\/current$/],
+  ['GET', /^\/api\/pos\/tax-config$/],
+  ['GET', /^\/api\/me\/modules$/],
+  ['GET', /^\/api\/menu$/],
+  ['GET', /^\/api\/branches$/],
+  ['POST', /^\/api\/pos\/tabs$/],
+  ['POST', /^\/api\/pos\/tabs\/[^/]+\/(items|settle)$/],
+  ['GET', /^\/api\/pos-offline\/snapshot$/],
+  ['GET', /^\/api\/pos-offline\/devices\/[^/]+$/],
+  ['POST', /^\/api\/pos-offline\/devices\/(register|lease)$/],
+  ['POST', /^\/api\/pos-offline\/refresh$/],
+];
+
+export function posScopeAllowed(req) {
+  const path = req.originalUrl.split('?')[0].replace(/\/+$/, '');
+  return POS_SCOPE_ALLOWLIST.some(([method, re]) => method === req.method && re.test(path));
+}
+
 /**
  * JWT authentication middleware.
  * Extracts token from Authorization header, verifies it, confirms the
@@ -43,15 +66,35 @@ export async function authenticate(req, res, next) {
   } catch {
     return res.status(401).json({ error: { message: 'Invalid or expired token' } });
   }
+  // impl-33 Part 4: an offline-unlock (PIN) session carries scope 'pos' and
+  // may only reach the till endpoints below — never discounts, voids,
+  // refunds, shifts, menu edits, staff or anything outside the POS.
+  if (decoded.scope === 'pos' && !posScopeAllowed(req)) {
+    return res.status(403).json({ error: { message: 'Sign in fully to do this — a PIN session can only sell.', code: 'pos_session_limited' } });
+  }
   try {
     if (!(await isUserActive(decoded.id, decoded.tenant_id))) {
       return res.status(401).json({ error: { message: 'This account no longer has access. Please contact the restaurant owner.' } });
+    }
+    if (decoded.scope === 'pos' && !(await posPinStillValid(decoded))) {
+      return res.status(401).json({ error: { message: 'Your POS PIN was changed. Sign in again to set up offline unlock.', code: 'pin_changed' } });
     }
   } catch (err) {
     return next(err);
   }
   req.user = decoded;
   next();
+}
+
+/**
+ * A PIN-session token is tied to the PIN it was issued against (`pv` =
+ * users.pos_pin_set_at at issue). Setting, resetting or clearing the PIN
+ * moves pos_pin_set_at, which retires every such token for that person.
+ */
+export async function posPinStillValid(decoded) {
+  const res = await query('SELECT pos_pin_hash, pos_pin_set_at FROM users WHERE id = $1 AND tenant_id = $2', [decoded.id, decoded.tenant_id]);
+  const row = res.rows[0];
+  return !!row?.pos_pin_hash && !!row.pos_pin_set_at && new Date(row.pos_pin_set_at).toISOString() === decoded.pv;
 }
 
 /**

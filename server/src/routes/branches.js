@@ -2,6 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { authenticate, checkTenantActive } from '../middleware/auth.js';
 import { authorize } from '../middleware/auth.js';
+import { requireModule, isModuleEnabled, moduleDisabledBody } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
 import { orderTypeSql } from '../utils/order-type.js';
@@ -18,6 +19,7 @@ router.get('/:id/token-board', async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Branch not found' } });
     }
     const tenantId = branchRes.rows[0].tenant_id;
+    if (!(await isModuleEnabled(tenantId, 'kitchen'))) return res.status(403).json(moduleDisabledBody('kitchen'));
 
     // The board is for people standing in the restaurant (pickup, dine-in,
     // counter). A delivery customer isn't watching it — their "ready" moment
@@ -50,6 +52,7 @@ router.get('/:id/menu-board', async (req, res, next) => {
       return res.status(404).json({ error: { message: 'Branch not found' } });
     }
     const tenantId = branchRes.rows[0].tenant_id;
+    if (!(await isModuleEnabled(tenantId, 'menu'))) return res.status(403).json(moduleDisabledBody('menu'));
 
     const result = await query(
       `SELECT mi.id, mi.name, mi.name_urdu, mi.price, mi.is_available,
@@ -165,7 +168,7 @@ router.get('/:id/tables', async (req, res, next) => {
 
 // ── GET /api/branches/:id/reservations?date=YYYY-MM-DD ──
 // Day view of reservations for staff (impl-06)
-router.get('/:id/reservations', async (req, res, next) => {
+router.get('/:id/reservations', requireModule('reservations'), async (req, res, next) => {
   try {
     if (!(await assertBranchOwnedByTenant(req.user.tenant_id, req.params.id))) {
       return res.status(404).json({ error: { message: 'Branch not found' } });

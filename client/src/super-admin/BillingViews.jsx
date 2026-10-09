@@ -8,14 +8,14 @@ import { useCallback, useEffect, useState } from 'react';
 import { superAdminApi } from './superAdminApi';
 import { RefreshCw, CheckCircle, XCircle, Clock, Sparkles, ExternalLink, AlertTriangle } from 'lucide-react';
 
-const PLAN_NAMES = { starter: 'Starter', growth: 'Growth', enterprise: 'Enterprise' };
+const PLAN_NAMES = { pos_only: 'POS Only', starter: 'Starter', growth: 'Growth', enterprise: 'Enterprise' };
 const rs = (n) => `Rs. ${Number(n).toLocaleString('en-PK')}`;
 const when = (d) => (d ? new Date(d).toLocaleString('en-PK', { dateStyle: 'medium', timeStyle: 'short' }) : '—');
 
 export function planLabel(plan, branches, pack) {
   if (!plan) return '—';
   const name = PLAN_NAMES[plan] || plan;
-  const b = plan === 'growth' && branches ? ` · ${branches} branches` : '';
+  const b = (plan === 'growth' || plan === 'pos_only') && branches ? ` · ${branches} branches` : '';
   return `${name}${b}${pack ? ' + Agent Pack' : ''}`;
 }
 
@@ -342,6 +342,84 @@ export function TenantPlanPanel({ tenant, payments, onChanged }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── impl-33: per-tenant module overrides ──
+// Plan changes (payment approval) reset these to the plan's preset; a toggle
+// here is a deliberate exception and needs a reason, like the Agent Pack.
+export function TenantModulesPanel({ tenantId, modules, labels, fiscalProvider, onChanged }) {
+  const [pending, setPending] = useState(null); // { module, enabled } or { fiscal: provider }
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  if (!modules) return null;
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (pending.fiscal) await superAdminApi.setFiscalProvider(tenantId, pending.fiscal, reason);
+      else await superAdminApi.setTenantModule(tenantId, pending.module, pending.enabled, reason);
+      setPending(null);
+      setReason('');
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-6 rounded-lg border border-gray-700 bg-gray-800 p-4">
+      <h3 className="mb-3 text-sm font-medium text-gray-300">Modules</h3>
+      <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        {Object.entries(modules).map(([module, enabled]) => (
+          <div key={module} className="flex items-center justify-between rounded border border-gray-700 px-3 py-2">
+            <span className={enabled ? 'text-white' : 'text-gray-500'}>{labels?.[module] || module}</span>
+            <button
+              type="button"
+              onClick={() => { setPending({ module, enabled: !enabled }); setReason(''); setError(''); }}
+              className={`text-xs ${enabled ? 'text-emerald-400' : 'text-gray-400'} hover:underline`}
+            >
+              {enabled ? 'On' : 'Off'}
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-sm">
+        <span className="text-gray-500">Fiscal invoicing (FBR/PRA)</span>
+        <select
+          value={pending?.fiscal || fiscalProvider || 'none'}
+          onChange={(e) => { setPending(e.target.value === (fiscalProvider || 'none') ? null : { fiscal: e.target.value }); setReason(''); setError(''); }}
+          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white"
+        >
+          <option value="none">None</option>
+          <option value="pra">PRA (Punjab) — not configured yet</option>
+          <option value="fbr">FBR — not configured yet</option>
+          <option value="stub">Stub (dev only)</option>
+        </select>
+      </div>
+      {pending && (
+        <form onSubmit={save} className="mt-4 flex flex-wrap items-center gap-2">
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={pending.fiscal ? `Reason for setting the fiscal provider to ${pending.fiscal}` : `Reason for turning ${labels?.[pending.module] || pending.module} ${pending.enabled ? 'on' : 'off'}`}
+            className="min-w-0 flex-1 rounded border border-gray-600 bg-gray-700 px-3 py-1.5 text-sm text-white"
+            required
+            maxLength={500}
+          />
+          <button type="submit" disabled={busy} className="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 disabled:opacity-50">
+            {busy ? 'Saving…' : pending.fiscal ? 'Save' : `Turn ${pending.enabled ? 'on' : 'off'}`}
+          </button>
+          <button type="button" onClick={() => setPending(null)} className="px-2 text-sm text-gray-400 hover:text-white">Cancel</button>
+        </form>
+      )}
+      {error && <p className="mt-2 flex items-center gap-1 text-sm text-red-300"><AlertTriangle className="h-3.5 w-3.5" /> {error}</p>}
     </div>
   );
 }

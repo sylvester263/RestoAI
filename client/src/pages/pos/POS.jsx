@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast, confirmAction } from '../../components/ui/toast';
@@ -6,6 +6,13 @@ import Modal from '../../components/ui/Modal';
 import usePolling from '../../hooks/usePolling';
 import useKeyboardShortcuts from '../../hooks/useKeyboardShortcuts';
 import useEvents from '../../hooks/useEvents';
+import { QRCodeSVG } from 'qrcode.react';
+import OfflineTill from '../../offline/OfflineTill';
+import OfflineBanner from '../../offline/OfflineBanner';
+import OfflineSetupPanel from '../../offline/OfflineSetupPanel';
+import InstallBanner from '../../components/InstallBanner';
+import FiscalQueuePanel from './FiscalQueuePanel';
+import useOfflineStatus from '../../offline/useOfflineStatus';
 import {
   Plus, Minus, X, Receipt, Phone, UtensilsCrossed,
   Clock, Percent, CreditCard, Loader2, Trash2, Pause, Play,
@@ -23,8 +30,28 @@ function elapsed(createdAt) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
+// impl-33 Part 4: the online POS when connected with a full sign-in; the
+// offline till (IndexedDB + outbox) when offline or in a PIN session.
+// Offline mode only exists for tenants whose plan includes the POS module.
 export default function POS() {
+  const { user, hasModule } = useAuth();
+  const { online } = useOfflineStatus();
+  // Installing from the till installs "RestoAI POS", which opens straight to /pos.
+  useEffect(() => {
+    const link = document.querySelector('link[rel="manifest"]');
+    if (!link) return undefined;
+    const previous = link.getAttribute('href');
+    link.setAttribute('href', '/pos.webmanifest');
+    return () => link.setAttribute('href', previous);
+  }, []);
+  if (hasModule('pos') && (user?.offline_session || !online)) return <OfflineTill online={online} />;
+  return <OnlinePOS />;
+}
+
+function OnlinePOS() {
   const { user } = useAuth();
+  const roundRequestId = useRef(null);
+  const { pending: unsyncedSales } = useOfflineStatus();
   const canDiscount = user?.role === 'owner' || user?.role === 'manager';
   const canRefund = canDiscount;
 
@@ -42,6 +69,8 @@ export default function POS() {
   const [showTaxSettings, setShowTaxSettings] = useState(false);
   const [receiptOrderId, setReceiptOrderId] = useState(null);
   const [voidItemTarget, setVoidItemTarget] = useState(null);
+
+  useEffect(() => { roundRequestId.current = null; }, [cart]);
 
   const loadTabs = useCallback(async (bId) => {
     if (!bId) return;
@@ -96,7 +125,7 @@ export default function POS() {
 
   // POS keyboard shortcuts
   useKeyboardShortcuts([
-    { key: 'n', callback: () => setShowNewTab(true) },
+    { key: 'n', callback: () => { if (shift) setShowNewTab(true); } },
     { key: 'Enter', ctrl: true, callback: () => sendRound(), when: 'always' },
     { key: 'h', ctrl: true, callback: () => { if (selectedId) handleHold(); } },
     { key: 'Escape', callback: () => { if (selectedId) selectTab(null); } },
@@ -128,10 +157,14 @@ export default function POS() {
     if (cart.length === 0) return;
     setSending(true);
     setError('');
+    // impl-33: same id for retries of this exact round; a new cart gets a new id.
+    if (!roundRequestId.current) roundRequestId.current = crypto.randomUUID();
     try {
       await api.addPosTabItems(selectedId, {
         items: cart.map((i) => ({ menu_item_id: i.menu_item_id, quantity: i.quantity })),
+        client_request_id: roundRequestId.current,
       });
+      roundRequestId.current = null;
       setCart([]);
       await Promise.all([loadDetail(selectedId), loadTabs(branchId)]);
     } catch (err) {
@@ -194,9 +227,12 @@ export default function POS() {
   const parkedTabs = tabs.filter((t) => t.status === 'held');
 
   return (
-    <div className="flex h-[calc(100vh-3rem)] gap-6">
+    <div>
+    <OfflineBanner />
+    <InstallBanner variant="inline" />
+    <div className="flex flex-col gap-6 lg:h-[calc(100vh-3rem)] lg:flex-row">
       {/* ── Floor view ── */}
-      <div className="flex w-80 shrink-0 flex-col">
+      <div className="flex w-full shrink-0 flex-col lg:w-80">
         <div className="mb-3 flex items-center justify-between">
           <h1 className="text-xl font-bold text-[var(--text-primary)]">POS</h1>
           <div className="flex items-center gap-1">
@@ -205,11 +241,11 @@ export default function POS() {
                 <Settings className="h-4 w-4" />
               </button>
             )}
-            <button onClick={() => setShowNewTab(true)} className="btn-primary text-sm"><Plus className="h-4 w-4" /> New Tab</button>
+            <button onClick={() => setShowNewTab(true)} disabled={!shift} title={shift ? undefined : 'Open a shift to start selling'} className="btn-primary text-sm disabled:cursor-not-allowed disabled:opacity-50"><Plus className="h-4 w-4" /> New Tab</button>
           </div>
         </div>
 
-        {branchId && <ShiftBar branchId={branchId} shift={shift} onChange={() => loadShift(branchId)} />}
+        {branchId && <ShiftBar branchId={branchId} shift={shift} unsyncedSales={unsyncedSales} canOverride={canDiscount} onChange={() => loadShift(branchId)} />}
 
         {branches.length > 1 && (
           <select className="input mb-3" value={branchId} onChange={(e) => { setBranchId(e.target.value); setSelectedId(null); }}>
@@ -249,7 +285,7 @@ export default function POS() {
       </div>
 
       {/* ── Tab detail ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-w-0 flex-1 lg:overflow-y-auto">
         {!detail ? (
           <div className="flex h-full items-center justify-center text-[var(--text-tertiary)]">Select or open a tab</div>
         ) : (
@@ -298,6 +334,9 @@ export default function POS() {
         />
       </Modal>
     </div>
+    {branchId && <OfflineSetupPanel branchId={branchId} />}
+    {canDiscount && !user?.offline_session && <FiscalQueuePanel />}
+    </div>
   );
 }
 
@@ -323,7 +362,7 @@ function TabCard({ tab, selected, onClick }) {
   );
 }
 
-function ShiftBar({ branchId, shift, onChange }) {
+function ShiftBar({ branchId, shift, unsyncedSales, canOverride, onChange }) {
   const [showOpen, setShowOpen] = useState(false);
   const [showClose, setShowClose] = useState(false);
 
@@ -336,6 +375,7 @@ function ShiftBar({ branchId, shift, onChange }) {
         >
           <Wallet className="h-4 w-4" /> Open shift
         </button>
+        <p className="-mt-1 mb-3 text-center text-xs text-[var(--text-tertiary)]">Open a shift to start selling.</p>
         {showOpen && <OpenShiftModal branchId={branchId} onClose={() => setShowOpen(false)} onOpened={() => { setShowOpen(false); onChange(); }} />}
       </>
     );
@@ -349,7 +389,7 @@ function ShiftBar({ branchId, shift, onChange }) {
         </span>
         <button onClick={() => setShowClose(true)} className="shrink-0 font-medium text-brand-700 underline">Close</button>
       </div>
-      {showClose && <CloseShiftModal shift={shift} onClose={() => setShowClose(false)} onClosed={() => { setShowClose(false); onChange(); }} />}
+      {showClose && <CloseShiftModal shift={shift} unsyncedSales={unsyncedSales} canOverride={canOverride} onClose={() => setShowClose(false)} onClosed={() => { setShowClose(false); onChange(); }} />}
     </>
   );
 }
@@ -387,8 +427,11 @@ function OpenShiftModal({ branchId, onClose, onOpened }) {
   );
 }
 
-function CloseShiftModal({ shift, onClose, onClosed }) {
+function CloseShiftModal({ shift, unsyncedSales = 0, canOverride = false, onClose, onClosed }) {
   const [counted, setCounted] = useState('');
+  // impl-33: unsynced offline sales block the close unless a manager overrides
+  const [overrideReason, setOverrideReason] = useState('');
+  const [blockedCount, setBlockedCount] = useState(unsyncedSales);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null); // { shift, report }
@@ -397,10 +440,11 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
     setSaving(true);
     setError('');
     try {
-      const res = await api.closePosShift(shift.id, Number(counted) || 0);
+      const res = await api.closePosShift(shift.id, Number(counted) || 0, { unsyncedCount: unsyncedSales, overrideReason: overrideReason.trim() || undefined });
       const reportRes = await api.getPosZReport(shift.id);
       setResult({ shift: res.shift, report: reportRes.report });
     } catch (err) {
+      if (err.details?.code === 'unsynced_sales') setBlockedCount((c) => Math.max(c, 1));
       setError(err.message);
     } finally {
       setSaving(false);
@@ -446,6 +490,11 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
           <div className={`flex justify-between font-bold ${variance === 0 ? 'text-[var(--text-primary)]' : variance > 0 ? 'text-green-600' : 'text-red-600'}`}>
             <span>Variance</span><span>{variance > 0 ? '+' : ''}Rs. {variance.toLocaleString()}</span>
           </div>
+          {report.unsynced_at_close > 0 && (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              Closed with {report.unsynced_at_close} offline sale{report.unsynced_at_close === 1 ? '' : 's'} not yet synced — {report.unsynced_override_reason}
+            </p>
+          )}
         </div>
 
         <button onClick={onClosed} className="btn-primary mt-4 w-full justify-center">Done</button>
@@ -457,6 +506,17 @@ function CloseShiftModal({ shift, onClose, onClosed }) {
     <Modal open={true} onClose={onClose} title="Close Shift" size="sm">
       <label className="mb-1 block text-xs font-medium text-[var(--text-secondary)]">Counted cash in drawer (Rs.)</label>
       <input type="number" min="0" className="input mb-4" value={counted} onChange={(e) => setCounted(e.target.value)} autoFocus />
+      {blockedCount > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+          {unsyncedSales > 0 ? `${unsyncedSales} offline sale${unsyncedSales === 1 ? '' : 's'} on this device ${unsyncedSales === 1 ? 'has' : 'have'} not synced yet.` : 'Offline sales from this cashier have not synced yet.'}
+          {canOverride ? (
+            <>
+              <p className="mt-1 text-xs">Reconnect and let them sync, or close anyway with a reason — the unsynced count is recorded on the Z-report.</p>
+              <input className="input mt-2" placeholder="Reason for closing with unsynced sales" value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} maxLength={500} />
+            </>
+          ) : <p className="mt-1 text-xs">Reconnect and let them sync, or ask a manager to close the shift.</p>}
+        </div>
+      )}
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       <div className="flex justify-end gap-2">
         <button onClick={onClose} className="btn-secondary">Cancel</button>
@@ -701,6 +761,7 @@ function SettleModal({ tabId, estimatedTotal, onClose, onSettled }) {
     setLines((ls) => ls.filter((_, j) => j !== i));
   }
 
+  const [settleRequestId] = useState(() => crypto.randomUUID());
   async function handleSettle() {
     setSettling(true);
     setError('');
@@ -708,7 +769,9 @@ function SettleModal({ tabId, estimatedTotal, onClose, onSettled }) {
       const payload = lines.length === 1
         ? { payment_method: lines[0].method }
         : { payments: lines.map((l) => ({ method: l.method, amount: Number(l.amount) || 0 })) };
-      const res = await api.settlePosTab(tabId, payload);
+      // impl-33: one request id per settle dialog — a retry after a dropped
+      // response can't take the payment twice.
+      const res = await api.settlePosTab(tabId, { ...payload, client_request_id: settleRequestId });
       onSettled(res.primary_order_id);
     } catch (err) {
       setError(err.message);
@@ -827,6 +890,7 @@ function ReceiptModal({ orderId, canRefund, onClose }) {
               {receipt.tax.registration_number && <p>{receipt.tax.authority} Reg# {receipt.tax.registration_number}</p>}
             </div>
             <div className="mb-2 border-t border-dashed border-gray-400 pt-2">
+              {receipt.bill_number && <p>Bill #{receipt.bill_number}</p>}
               <p>Order #{receipt.order_number}</p>
               <p>{new Date(receipt.created_at).toLocaleString()}</p>
             </div>
@@ -849,6 +913,16 @@ function ReceiptModal({ orderId, canRefund, onClose }) {
                 <div key={i} className="flex justify-between"><span>{METHOD_LABEL[p.method] || p.method}</span><span>{p.amount.toLocaleString()}</span></div>
               ))}
             </div>
+            {/* impl-33: fiscal invoice, only for tenants with a fiscal provider */}
+            {receipt.fiscal_invoice_number && (
+              <div className="mt-3 flex flex-col items-center gap-1 border-t border-dashed border-gray-400 pt-2">
+                <p>Invoice # {receipt.fiscal_invoice_number}</p>
+                {receipt.fiscal_qr_code_url && <QRCodeSVG value={receipt.fiscal_qr_code_url} size={88} />}
+              </div>
+            )}
+            {!receipt.fiscal_invoice_number && (receipt.fiscal_status === 'pending' || receipt.fiscal_status === 'failed') && (
+              <p className="mt-3 text-center text-[10px]">Tax invoice number pending, reprint later for the invoice number.</p>
+            )}
             <p className="mt-3 text-center text-[10px]">Thank you for dining with us!</p>
           </div>
         )}
@@ -924,6 +998,7 @@ function NewTabModal({ branchId, onClose, onCreated }) {
   const [customerPhone, setCustomerPhone] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
+  const [openRequestId] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     if (orderType === 'dine_in' && branchId) {
@@ -945,6 +1020,7 @@ function NewTabModal({ branchId, onClose, onCreated }) {
         table_id: orderType === 'dine_in' ? tableId : undefined,
         customer_name: customerName || undefined,
         customer_phone: customerPhone || undefined,
+        client_request_id: openRequestId,
       });
       onCreated(res.tab);
     } catch (err) {

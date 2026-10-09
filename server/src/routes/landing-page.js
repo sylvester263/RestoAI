@@ -7,6 +7,7 @@ import { z } from 'zod';
 import dns from 'node:dns/promises';
 import crypto from 'node:crypto';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import {
   TEMPLATE_IDS, contentSchema, themeSchema, subdomainSchema, defaultLandingPage,
@@ -15,6 +16,7 @@ import {
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('website_builder'));
 
 async function getRow(tenantId) {
   const res = await query('SELECT * FROM landing_pages WHERE tenant_id = $1', [tenantId]);

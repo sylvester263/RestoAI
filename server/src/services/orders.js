@@ -104,7 +104,10 @@ export function calculatePricing(orderItems, { deliveryFee = 100, discount = 0, 
 }
 
 // ── Persist a finalized order ──
-export async function createOrder({ tenantId, customer, items, pricing, deliveryAddress, paymentMethod, channel, notes, branchId, tableSessionId, posTabId }) {
+// impl-33: clientRequestId makes the insert idempotent per tenant (a replay
+// hits uq_orders_client_request and the caller fetches the original);
+// createdAt lets an offline POS round keep the time it was actually rung up.
+export async function createOrder({ tenantId, customer, items, pricing, deliveryAddress, paymentMethod, channel, notes, branchId, tableSessionId, posTabId, clientRequestId = null, createdAt = null }) {
   let resolvedBranchId = branchId;
   if (!resolvedBranchId) {
     const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [tenantId]);
@@ -116,8 +119,8 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
   // and orders must never be able to drift out of sync with each other.
   const { order, touchedIngredients } = await withTransaction(async (client) => {
     const orderRes = await client.query(
-      `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, discount_amount, total, delivery_address, payment_method, notes, table_session_id, pos_tab_id)
-       VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      `INSERT INTO orders (tenant_id, branch_id, customer_id, channel, status, subtotal, tax, delivery_fee, discount_amount, total, delivery_address, payment_method, notes, table_session_id, pos_tab_id, client_request_id, created_at)
+       VALUES ($1, $2, $3, $4, 'new', $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, COALESCE($16::timestamptz, NOW()))
        RETURNING *`,
       [
         tenantId,
@@ -142,6 +145,8 @@ export async function createOrder({ tenantId, customer, items, pricing, delivery
         notes || null,
         tableSessionId || null,
         posTabId || null,
+        clientRequestId,
+        createdAt,
       ],
     );
     const order = orderRes.rows[0];

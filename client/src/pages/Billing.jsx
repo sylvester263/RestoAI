@@ -173,7 +173,7 @@ export default function Billing() {
 
           {/* ── 1. Choose a plan ── */}
           <h2 className="mb-3 text-lg font-semibold text-[var(--text-primary)]">1. Choose your plan</h2>
-          <div className="mb-6 grid gap-3 md:grid-cols-3">
+          <div className="mb-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {pricing.plans.map((p) => {
               const selected = sel.plan === p.id;
               return (
@@ -193,7 +193,7 @@ export default function Billing() {
                     {p.max_branches === p.min_branches ? `${p.min_branches} branch` : p.max_branches ? `${p.min_branches}–${p.max_branches} branches` : `${p.min_branches}+ branches`}
                   </p>
                   <p className="mt-2 text-xs text-[var(--text-secondary)]">
-                    AI Agent Pack: {p.agent_pack_included ? <span className="font-medium text-emerald-600">Included</span> : `+${formatRs(pricing.agent_pack_monthly)}/month`}
+                    AI Agent Pack: {p.agent_pack_available === false ? 'Not available' : p.agent_pack_included ?<span className="font-medium text-emerald-600">Included</span> : `+${formatRs(pricing.agent_pack_monthly)}/month`}
                   </p>
                   {!p.self_serve && (
                     <a href="/#contact" className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-brand-600 hover:underline" onClick={(e) => e.stopPropagation()}>
@@ -214,6 +214,7 @@ export default function Billing() {
                 </select>
               </label>
             )}
+            {selPlan.agent_pack_available !== false && (
             <label className={`flex items-start justify-between gap-3 text-sm ${selPlan.agent_pack_included ? 'opacity-70' : ''}`}>
               <span>
                 <span className="font-medium text-[var(--text-primary)]">AI Agent Pack</span>
@@ -234,6 +235,7 @@ export default function Billing() {
                 {selPlan.agent_pack_included && <span className="text-xs font-medium text-emerald-600">Included</span>}
               </span>
             </label>
+            )}
             <div className="flex items-center justify-between border-t border-[var(--border-light)] pt-4">
               <span className="font-semibold text-[var(--text-primary)]">Total per month</span>
               <span className="text-2xl font-bold text-[var(--text-primary)]">{formatRs(amount)}</span>
@@ -319,7 +321,7 @@ export default function Billing() {
                     <tr key={s.id}>
                       <td className="py-2 pr-4 text-[var(--text-secondary)]">{fmtDate(s.submitted_at)}</td>
                       <td className="py-2 pr-4 text-[var(--text-primary)]">
-                        {planById(pricing, s.claimed_plan)?.name}{s.claimed_plan === 'growth' ? ` · ${s.claimed_branch_count} branches` : ''}{s.claimed_agent_pack ? ' + Agent Pack' : ''}
+                        {planById(pricing, s.claimed_plan)?.name}{s.claimed_plan === 'growth' || s.claimed_plan === 'pos_only' ?` · ${s.claimed_branch_count} branches` : ''}{s.claimed_agent_pack ? ' + Agent Pack' : ''}
                       </td>
                       <td className="py-2 pr-4 text-[var(--text-primary)]">{formatRs(s.claimed_amount)}</td>
                       <td className="py-2 pr-4 font-mono text-xs text-[var(--text-secondary)]">{s.bank_reference_number}</td>

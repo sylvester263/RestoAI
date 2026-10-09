@@ -10,10 +10,20 @@ import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { authenticateRider, checkRiderTenantActive } from '../middleware/auth.js';
 import { applyDeliveryStatus, deliveryStatusSchema } from './orders.js';
+import { isModuleEnabled, moduleDisabledBody } from '../services/modules.js';
 
 const router = Router();
 router.use(authenticateRider);
 router.use(checkRiderTenantActive);
+// impl-33: rider tokens carry tenant_id like staff ones; same module rule.
+router.use(async (req, res, next) => {
+  try {
+    if (!(await isModuleEnabled(req.rider.tenant_id, 'delivery_riders'))) return res.status(403).json(moduleDisabledBody('delivery_riders'));
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ── GET /api/rider-app/me ──
 router.get('/me', async (req, res, next) => {

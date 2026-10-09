@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { createCoupon } from '../services/coupons.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('loyalty_crm'));
 
 // ── GET /api/coupons ──
 router.get('/', authorize('coupons.manage'), async (req, res, next) => {

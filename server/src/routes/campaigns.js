@@ -7,6 +7,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { waitUntil } from '@vercel/functions';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query, withTransaction } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
 import { buildSegmentQuery, computeRFM, RFM_LABELS } from '../services/segments.js';
@@ -15,6 +16,7 @@ import { z } from 'zod';
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('loyalty_crm'));
 
 const campaignSchema = z.object({
   name: z.string().min(1).max(150),

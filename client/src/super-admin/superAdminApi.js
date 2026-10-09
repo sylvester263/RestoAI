@@ -105,6 +105,10 @@ export const superAdminApi = {
   rejectPayment: (id, reason) =>
     request(`/super-admin/payments/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   getRevenue: () => request('/super-admin/revenue'),
+  setFiscalProvider: (id, provider, reason) =>
+    request(`/super-admin/tenants/${id}/fiscal-provider`, { method: 'POST', body: JSON.stringify({ provider, reason }) }),
+  setTenantModule: (id, module, enabled, reason) =>
+    request(`/super-admin/tenants/${id}/modules`, { method: 'POST', body: JSON.stringify({ module, enabled, reason }) }),
   setAgentPack: (id, enabled, reason) =>
     request(`/super-admin/tenants/${id}/agent-pack`, { method: 'POST', body: JSON.stringify({ enabled, reason }) }),
   getAuditLog: (params = {}) => {

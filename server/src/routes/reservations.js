@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { sendReply } from '../services/whatsapp.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('reservations'));
 
 const statusSchema = z.object({
   status: z.enum(['confirmed', 'seated', 'completed', 'cancelled', 'no_show']),

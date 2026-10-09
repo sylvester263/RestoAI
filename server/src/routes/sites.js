@@ -5,6 +5,7 @@
  */
 import { Router } from 'express';
 import { query } from '../db/pool.js';
+import { isModuleEnabled } from '../services/modules.js';
 
 const router = Router();
 
@@ -23,7 +24,8 @@ router.get('/:identifier', async (req, res, next) => {
       [value],
     );
     const page = pageRes.rows[0];
-    if (!page) {
+    // impl-33: a tenant without the website builder has no public site — same 404 as a draft.
+    if (!page || !(await isModuleEnabled(page.tenant_id, 'website_builder'))) {
       return res.status(404).json({ error: { message: 'Site not found' } });
     }
 

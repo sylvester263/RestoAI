@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
 import { ChefHat, Eye, EyeOff } from 'lucide-react';
 import DarkModeToggle from '../components/DarkModeToggle';
+import PinUnlock, { usePinEnrollments } from '../offline/PinUnlock';
 
 export default function Login() {
   const [searchParams] = useSearchParams();
@@ -14,13 +15,20 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  // impl-33 Part 4: PIN unlock for people set up on this device (works offline)
+  const enrollments = usePinEnrollments();
+  const [pinMode, setPinMode] = useState(searchParams.get('pin') === '1' || !navigator.onLine);
+  const showPin = pinMode && !isRegister && enrollments && enrollments.length > 0;
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const res = isRegister ? await api.register(form) : await api.login(form);
+      // impl-33: the plan matters at signup only for POS Only (its module preset)
+      const res = isRegister
+        ? await api.register({ ...form, plan: searchParams.get('plan') || undefined })
+        : await api.login(form);
       login(res.token, res.user, res.tenant);
       // A plan picked on the marketing page carries through to Plan & Billing (impl-32)
       const plan = searchParams.get('plan');
@@ -54,8 +62,10 @@ export default function Login() {
 
         <div className="card">
           <h2 className="mb-6 text-lg font-semibold text-[var(--text-primary)]">
-            {isRegister ? 'Create your restaurant' : 'Sign in to your account'}
+            {isRegister ? 'Create your restaurant' : showPin ? 'Unlock the till' : 'Sign in to your account'}
           </h2>
+
+          {showPin ? <PinUnlock enrollments={enrollments} onCancel={() => setPinMode(false)} /> : (<>
 
           {error && (
             <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>
@@ -111,6 +121,12 @@ export default function Login() {
               Demo: ahmed@karahi.pk / demo1234
             </p>
           )}
+          {!isRegister && enrollments?.length > 0 && (
+            <button type="button" onClick={() => setPinMode(true)} className="mt-3 w-full text-center text-sm font-medium text-brand-600" data-testid="use-pin">
+              Unlock the till with a PIN
+            </button>
+          )}
+          </>)}
         </div>
       </div>
     </div>

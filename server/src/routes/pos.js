@@ -9,17 +9,22 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query, withTransaction } from '../db/pool.js';
-import { getOrCreateCustomer, resolveOrderItems, calculatePricing, createOrder, OrderError } from '../services/orders.js';
+import { OrderError } from '../services/orders.js';
 import {
-  getTaxConfig, upsertTaxConfig, computeSettlement,
+  getTaxConfig, upsertTaxConfig,
   findOpenShift, buildZReport, buildReceiptData,
 } from '../services/pos-billing.js';
 import { emit } from '../services/event-bus.js';
+import { scheduleFiscal, listFiscalQueue, retryPendingFiscal } from '../services/fiscal.js';
+import { openTab, addItems, settleTab, PosError } from '../services/pos-tabs.js';
+import { posAudit } from '../services/pos-audit.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('pos'));
 
 // Refunds move money back out of the business — gated on the actual role,
 // same as agents.js's requireOwner, not on a role_permissions flag an owner
@@ -109,66 +114,34 @@ const openTabSchema = z.object({
   table_id: z.string().uuid().optional(),
   customer_name: z.string().max(255).optional(),
   customer_phone: z.string().max(20).optional(),
+  // impl-33 Part 4: idempotency key + this device's bill number (both optional)
+  client_request_id: z.string().uuid().optional(),
+  device_id: z.string().uuid().optional(),
+  bill_number: z.number().int().positive().optional(),
 });
 
-// ── POST /api/pos/tabs ──
+function sendPosError(res, err) {
+  if (err instanceof z.ZodError) return res.status(400).json({ error: { message: err.errors[0].message } });
+  if (err instanceof PosError) return res.status(err.status).json({ error: { message: err.message, code: err.code } });
+  if (err instanceof OrderError) return res.status(err.status).json({ error: { message: err.message } });
+  return null;
+}
+
+// ── POST /api/pos/tabs ── (logic in services/pos-tabs.js)
 router.post('/tabs', async (req, res, next) => {
   try {
     const data = openTabSchema.parse(req.body);
-    if (data.order_type === 'dine_in' && !data.table_id) {
-      return res.status(400).json({ error: { message: 'table_id is required for a dine-in tab' } });
-    }
-
-    let branchId = data.branch_id || null;
-    if (branchId) {
-      const branchRes = await query('SELECT id FROM branches WHERE id = $1 AND tenant_id = $2', [branchId, req.user.tenant_id]);
-      if (branchRes.rows.length === 0) {
-        return res.status(400).json({ error: { message: 'Invalid branch' } });
-      }
-    } else {
-      const branchRes = await query('SELECT id FROM branches WHERE tenant_id = $1 LIMIT 1', [req.user.tenant_id]);
-      branchId = branchRes.rows[0]?.id;
-    }
-    if (!branchId) {
-      return res.status(400).json({ error: { message: 'No branch configured for this restaurant' } });
-    }
-
-    let tableSessionId = null;
-    if (data.order_type === 'dine_in') {
-      const tableRes = await query(
-        'SELECT id FROM restaurant_tables WHERE id = $1 AND tenant_id = $2 AND branch_id = $3',
-        [data.table_id, req.user.tenant_id, branchId],
-      );
-      if (tableRes.rows.length === 0) {
-        return res.status(400).json({ error: { message: 'Table not found for this branch' } });
-      }
-      const sessionRes = await query(`SELECT id FROM table_sessions WHERE table_id = $1 AND status != 'closed'`, [data.table_id]);
-      if (sessionRes.rows.length > 0) {
-        tableSessionId = sessionRes.rows[0].id;
-      } else {
-        const created = await query(
-          `INSERT INTO table_sessions (tenant_id, table_id) VALUES ($1, $2) RETURNING id`,
-          [req.user.tenant_id, data.table_id],
-        );
-        tableSessionId = created.rows[0].id;
-      }
-    }
-
-    // Best-effort — a tab opens fine with no shift on record; it just won't
-    // contribute to that cashier's Z-report reconciliation later.
-    const openShift = await findOpenShift(req.user.tenant_id, branchId, req.user.id);
-
-    const result = await query(
-      `INSERT INTO pos_tabs (tenant_id, branch_id, table_session_id, order_type, opened_by, customer_name, customer_phone, pos_shift_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-      [req.user.tenant_id, branchId, tableSessionId, data.order_type, req.user.id, data.customer_name || null, data.customer_phone || null, openShift?.id || null],
-    );
-    res.status(201).json({ tab: result.rows[0] });
+    const { tab, replay } = await openTab({
+      tenantId: req.user.tenant_id,
+      user: req.user,
+      data,
+      clientRequestId: data.client_request_id || null,
+      deviceId: data.device_id || null,
+      billNumber: data.bill_number ?? null,
+    });
+    res.status(replay ? 200 : 201).json({ tab, replay });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
-    }
-    next(err);
+    if (!sendPosError(res, err)) next(err);
   }
 });
 
@@ -178,6 +151,7 @@ const itemsSchema = z.object({
     quantity: z.number().int().min(1).max(50),
   })).min(1),
   notes: z.string().max(500).optional(),
+  client_request_id: z.string().uuid().optional(),
 });
 
 // ── POST /api/pos/tabs/:id/items ──
@@ -186,45 +160,23 @@ router.post('/tabs/:id/items', async (req, res, next) => {
   try {
     const tab = await loadTab(req.user.tenant_id, req.params.id);
     if (!tab) return res.status(404).json({ error: { message: 'Tab not found' } });
-    if (tab.status !== 'open') {
-      return res.status(400).json({ error: { message: `This tab is already ${tab.status}` } });
-    }
-
     const data = itemsSchema.parse(req.body);
-    const resolvedItems = await resolveOrderItems(tab.tenant_id, data.items);
-    const taxConfig = await getTaxConfig(tab.branch_id);
-    const pricing = calculatePricing(resolvedItems, { deliveryFee: 0, taxRate: (parseFloat(taxConfig.tax_rate) || 0) / 100 });
-    const customer = tab.customer_phone
-      ? await getOrCreateCustomer(tab.tenant_id, tab.customer_phone, { name: tab.customer_name })
-      : { id: null };
-
-    const order = await createOrder({
-      tenantId: tab.tenant_id,
-      customer,
-      items: resolvedItems,
-      pricing,
-      deliveryAddress: null,
-      paymentMethod: null, // chosen once, at settlement
-      channel: 'pos',
+    const { order, replay } = await addItems({
+      tenantId: req.user.tenant_id,
+      user: req.user,
+      tab,
+      items: data.items,
       notes: data.notes,
-      branchId: tab.branch_id,
-      tableSessionId: tab.table_session_id,
-      posTabId: tab.id,
+      clientRequestId: data.client_request_id || null,
     });
-
-    res.status(201).json({ order });
-
-    // Real-time: kitchen display should show this new round immediately
-    emit(`kitchen:${tab.tenant_id}`, 'order:new', { orderId: order.id, tabId: tab.id });
-    emit(`pos:${tab.branch_id}`, 'tab:updated', { tabId: tab.id });
+    res.status(replay ? 200 : 201).json({ order, replay });
+    if (!replay) {
+      // Real-time: kitchen display should show this new round immediately
+      emit(`kitchen:${tab.tenant_id}`, 'order:new', { orderId: order.id, tabId: tab.id });
+      emit(`pos:${tab.branch_id}`, 'tab:updated', { tabId: tab.id });
+    }
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
-    }
-    if (err instanceof OrderError) {
-      return res.status(err.status).json({ error: { message: err.message } });
-    }
-    next(err);
+    if (!sendPosError(res, err)) next(err);
   }
 });
 
@@ -429,113 +381,33 @@ const settleSchema = z.object({
     method: z.enum(['cash', 'jazzcash', 'easypaisa', 'card']),
     amount: z.number().positive(),
   })).min(1).optional(),
+  client_request_id: z.string().uuid().optional(),
 }).refine((d) => d.payment_method || (d.payments && d.payments.length > 0), {
   message: 'payment_method or payments is required',
 });
 
-// ── POST /api/pos/tabs/:id/settle ──
-// Finalizes payment across every round already placed against this tab.
-// impl-24: tax is recomputed here on the post-discount subtotal (provincial
-// tax_config rate), and both discount and tax are prorated across the
-// underlying order rows the same way discount alone used to be — so
-// SUM(orders.total) still matches the bill total for Insights, and each
-// order row stays internally consistent (subtotal - discount + tax = total).
-// Accepts either a single `payment_method` (legacy — full amount) or a
-// `payments` array for split-tender; a split's amounts must sum to the total.
+// ── POST /api/pos/tabs/:id/settle ── (logic in services/pos-tabs.js)
 router.post('/tabs/:id/settle', async (req, res, next) => {
   try {
     const data = settleSchema.parse(req.body);
-
-    const result = await withTransaction(async (client) => {
-      const tabRes = await client.query(
-        `SELECT * FROM pos_tabs WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
-        [req.params.id, req.user.tenant_id],
-      );
-      const tab = tabRes.rows[0];
-      if (!tab) {
-        const err = new Error('Tab not found');
-        err.status = 404;
-        throw err;
-      }
-      if (tab.status !== 'open' && tab.status !== 'held') {
-        const err = new Error(`This tab is already ${tab.status}`);
-        err.status = 400;
-        throw err;
-      }
-
-      const ordersRes = await client.query(
-        `SELECT id, subtotal, tax, total FROM orders WHERE pos_tab_id = $1 ORDER BY created_at FOR UPDATE`,
-        [tab.id],
-      );
-      if (ordersRes.rows.length === 0) {
-        const err = new Error('Add at least one item before settling');
-        err.status = 400;
-        throw err;
-      }
-
-      const taxConfig = await getTaxConfig(tab.branch_id);
-      const settlement = computeSettlement(ordersRes.rows, parseFloat(tab.discount_amount) || 0, taxConfig.tax_rate);
-
-      for (const line of settlement.perOrder) {
-        await client.query(
-          'UPDATE orders SET discount_amount = $2, tax = $3, total = $4, updated_at = NOW() WHERE id = $1',
-          [line.id, line.discount, line.tax, line.total],
-        );
-      }
-
-      const paymentLines = data.payments || [{ method: data.payment_method, amount: settlement.total }];
-      const paidSum = Math.round(paymentLines.reduce((sum, p) => sum + p.amount, 0) * 100) / 100;
-      if (Math.abs(paidSum - settlement.total) > 1) {
-        const err = new Error(`Payment total (Rs. ${paidSum}) doesn't match the bill total (Rs. ${settlement.total})`);
-        err.status = 400;
-        throw err;
-      }
-
-      for (const line of paymentLines) {
-        await client.query(
-          `INSERT INTO pos_tab_payments (pos_tab_id, method, amount) VALUES ($1, $2, $3)`,
-          [tab.id, line.method, line.amount],
-        );
-      }
-
-      // Aggregate `payments` row — existing reporting reads this table across
-      // every channel. Primary method is the split's first line; amount is
-      // the full settled total. pos_tab_payments is the granular record.
-      const primaryMethod = paymentLines[0].method === 'cash' ? 'cod' : paymentLines[0].method;
-      await client.query(
-        `INSERT INTO payments (tenant_id, order_id, method, status, amount)
-         VALUES ($1, $2, $3, 'paid', $4)`,
-        [tab.tenant_id, ordersRes.rows[0].id, primaryMethod, settlement.total],
-      );
-
-      const updatedTab = await client.query(
-        `UPDATE pos_tabs SET status = 'settled', settled_at = NOW() WHERE id = $1 RETURNING *`,
-        [tab.id],
-      );
-
-      return {
-        tab: updatedTab.rows[0],
-        total: settlement.total,
-        subtotal: settlement.subtotal,
-        discount: settlement.discount,
-        tax: settlement.tax,
-        primary_order_id: ordersRes.rows[0].id,
-      };
+    // A PIN-unlocked (offline) session follows the offline rules even after
+    // the connection is back: cash only until a full sign-in.
+    const { result, replay } = await settleTab({
+      tenantId: req.user.tenant_id,
+      tabId: req.params.id,
+      data,
+      clientRequestId: data.client_request_id || null,
+      offline: req.user.scope === 'pos',
     });
-
-    res.json(result);
+    res.json({ ...result, replay });
+    if (replay) return;
 
     // Real-time: notify POS and kitchen that this tab is settled
     emit(`pos:${result.tab.branch_id}`, 'tab:settled', { tabId: req.params.id });
     emit(`kitchen:${req.user.tenant_id}`, 'order:settled', { tabId: req.params.id });
+    scheduleFiscal(result.tab, req.user.tenant_id);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: { message: err.errors[0].message } });
-    }
-    if (err.status) {
-      return res.status(err.status).json({ error: { message: err.message } });
-    }
-    next(err);
+    if (!sendPosError(res, err)) next(err);
   }
 });
 
@@ -545,59 +417,99 @@ const refundSchema = z.object({
   method: z.enum(['cash', 'card', 'jazzcash', 'easypaisa']).optional(),
 });
 
+function refundError(status, message) {
+  const err = new Error(message);
+  err.status = status;
+  return err;
+}
+
+// Default the refund method to how the bill was actually paid — needed so
+// the Z-report only deducts a refund from the cash drawer when it genuinely
+// left as cash.
+async function defaultRefundMethod(client, orderId) {
+  const payRes = await client.query('SELECT method FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1', [orderId]);
+  return payRes.rows[0]?.method === 'cod' ? 'cash' : (payRes.rows[0]?.method || 'cash');
+}
+
 // ── POST /api/pos/orders/:id/refund ── manager/owner only, hard role check
+// impl-33: for a POS bill the refund is against the whole bill, not one
+// round. Any round's order id may be passed; the cap is the sum of every
+// round on the tab minus what the tab has already had refunded, and the bill's
+// payment is marked refunded only once the whole bill has been. The refund is
+// recorded once, on the order that carries the bill's payment row (so the
+// Z-report's refund count is one per refund). Non-POS orders are unchanged.
 router.post('/orders/:id/refund', requireManagerOrOwner, async (req, res, next) => {
   try {
     const data = refundSchema.parse(req.body);
 
     const result = await withTransaction(async (client) => {
       const orderRes = await client.query(
-        'SELECT * FROM orders WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
+        'SELECT id, pos_tab_id, total FROM orders WHERE id = $1 AND tenant_id = $2',
         [req.params.id, req.user.tenant_id],
       );
       const order = orderRes.rows[0];
-      if (!order) {
-        const err = new Error('Order not found');
-        err.status = 404;
-        throw err;
+      if (!order) throw refundError(404, 'Order not found');
+
+      if (!order.pos_tab_id) {
+        await client.query('SELECT id FROM orders WHERE id = $1 FOR UPDATE', [order.id]);
+        const priorRes = await client.query(
+          `SELECT COALESCE(SUM(amount), 0) as total FROM pos_voids WHERE order_id = $1 AND type = 'refund'`,
+          [order.id],
+        );
+        const alreadyRefunded = parseFloat(priorRes.rows[0].total);
+        if (alreadyRefunded + data.amount > parseFloat(order.total) + 0.01) {
+          throw refundError(400, `Refund would exceed the order total (already refunded Rs. ${alreadyRefunded})`);
+        }
+        const method = data.method || await defaultRefundMethod(client, order.id);
+        const voidRes = await client.query(
+          `INSERT INTO pos_voids (tenant_id, pos_tab_id, order_id, type, method, amount, reason, authorized_by, requested_by)
+           VALUES ($1, NULL, $2, 'refund', $3, $4, $5, $6, $7) RETURNING *`,
+          [req.user.tenant_id, order.id, method, data.amount, data.reason, req.user.id, req.body.requested_by || req.user.id],
+        );
+        const fullyRefunded = alreadyRefunded + data.amount >= parseFloat(order.total) - 0.01;
+        await client.query(`UPDATE payments SET status = $2, updated_at = NOW() WHERE order_id = $1`, [order.id, fullyRefunded ? 'refunded' : 'paid']);
+        return { refund: voidRes.rows[0], bill_total: parseFloat(order.total), refunded_total: alreadyRefunded + data.amount };
       }
 
+      // POS bill: lock the tab (serializes refunds on the same bill), then its rounds.
+      const tabRes = await client.query('SELECT id, status FROM pos_tabs WHERE id = $1 AND tenant_id = $2 FOR UPDATE', [order.pos_tab_id, req.user.tenant_id]);
+      const tab = tabRes.rows[0];
+      if (!tab) throw refundError(404, 'Order not found');
+      if (tab.status !== 'settled') throw refundError(400, 'Only a settled bill can be refunded');
+      const roundsRes = await client.query(
+        'SELECT id, total FROM orders WHERE pos_tab_id = $1 AND tenant_id = $2 ORDER BY created_at FOR UPDATE',
+        [tab.id, req.user.tenant_id],
+      );
+      const billTotal = Math.round(roundsRes.rows.reduce((s, o) => s + parseFloat(o.total), 0) * 100) / 100;
       const priorRes = await client.query(
-        `SELECT COALESCE(SUM(amount), 0) as total FROM pos_voids WHERE order_id = $1 AND type = 'refund'`,
-        [order.id],
+        `SELECT COALESCE(SUM(amount), 0) as total FROM pos_voids WHERE pos_tab_id = $1 AND type = 'refund'`,
+        [tab.id],
       );
       const alreadyRefunded = parseFloat(priorRes.rows[0].total);
-      if (alreadyRefunded + data.amount > parseFloat(order.total) + 0.01) {
-        const err = new Error(`Refund would exceed the order total (already refunded Rs. ${alreadyRefunded})`);
-        err.status = 400;
-        throw err;
+      if (alreadyRefunded + data.amount > billTotal + 0.01) {
+        throw refundError(400, `Refund would exceed the bill total of Rs. ${billTotal} (already refunded Rs. ${alreadyRefunded})`);
       }
 
-      // Default the refund method to how the order was actually paid —
-      // needed so the Z-report only deducts a refund from the cash drawer
-      // when it genuinely left as cash.
-      let method = data.method;
-      if (!method) {
-        const payRes = await client.query('SELECT method FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1', [order.id]);
-        method = payRes.rows[0]?.method === 'cod' ? 'cash' : (payRes.rows[0]?.method || 'cash');
-      }
+      // The settle step put the bill's payment row on one round — refund against that one.
+      const payOrderRes = await client.query(
+        'SELECT order_id FROM payments WHERE order_id = ANY($1::uuid[]) ORDER BY created_at DESC LIMIT 1',
+        [roundsRes.rows.map((o) => o.id)],
+      );
+      const payOrderId = payOrderRes.rows[0]?.order_id || roundsRes.rows[0].id;
+      const method = data.method || await defaultRefundMethod(client, payOrderId);
 
       const voidRes = await client.query(
         `INSERT INTO pos_voids (tenant_id, pos_tab_id, order_id, type, method, amount, reason, authorized_by, requested_by)
          VALUES ($1, $2, $3, 'refund', $4, $5, $6, $7, $8) RETURNING *`,
-        [req.user.tenant_id, order.pos_tab_id, order.id, method, data.amount, data.reason, req.user.id, req.body.requested_by || req.user.id],
+        [req.user.tenant_id, tab.id, payOrderId, method, data.amount, data.reason, req.user.id, req.body.requested_by || req.user.id],
       );
-
-      const fullyRefunded = alreadyRefunded + data.amount >= parseFloat(order.total) - 0.01;
-      await client.query(
-        `UPDATE payments SET status = $2, updated_at = NOW() WHERE order_id = $1`,
-        [order.id, fullyRefunded ? 'refunded' : 'paid'],
-      );
-
-      return voidRes.rows[0];
+      const refundedTotal = Math.round((alreadyRefunded + data.amount) * 100) / 100;
+      const fullyRefunded = refundedTotal >= billTotal - 0.01;
+      await client.query(`UPDATE payments SET status = $2, updated_at = NOW() WHERE order_id = $1`, [payOrderId, fullyRefunded ? 'refunded' : 'paid']);
+      return { refund: voidRes.rows[0], bill_total: billTotal, refunded_total: refundedTotal };
     });
 
-    res.status(201).json({ refund: result });
+    res.status(201).json(result);
   } catch (err) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: { message: err.errors[0].message } });
@@ -622,6 +534,26 @@ router.get('/orders/:id/voids', async (req, res, next) => {
       [req.user.tenant_id, req.params.id],
     );
     res.json({ voids: result.rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ── impl-33: tax invoices still pending or failed (manager/owner) ──
+// Oldest first, aged from the sale time; anything past FISCAL_WARN_AFTER_HOURS
+// is flagged. Listing and retrying never touches the sales themselves.
+router.get('/fiscal-invoices', requireManagerOrOwner, async (req, res, next) => {
+  try {
+    res.json(await listFiscalQueue(req.user.tenant_id));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/fiscal-invoices/retry', requireManagerOrOwner, async (req, res, next) => {
+  try {
+    const result = await retryPendingFiscal({ tenantId: req.user.tenant_id, limit: 50 });
+    res.json({ ...result, ...(await listFiscalQueue(req.user.tenant_id)) });
   } catch (err) {
     next(err);
   }
@@ -733,7 +665,12 @@ router.get('/shifts', requireManagerOrOwner, async (req, res, next) => {
   }
 });
 
-const closeShiftSchema = z.object({ closing_cash_counted: z.number().min(0) });
+const closeShiftSchema = z.object({
+  closing_cash_counted: z.number().min(0),
+  // impl-33 Part 4: sales still in the closing device's offline outbox
+  unsynced_count: z.number().int().min(0).default(0),
+  override_reason: z.string().trim().min(1).max(500).optional(),
+});
 
 router.post('/shifts/:id/close', async (req, res, next) => {
   try {
@@ -748,16 +685,44 @@ router.post('/shifts/:id/close', async (req, res, next) => {
       return res.status(403).json({ error: { message: 'You can only close your own shift' } });
     }
 
+    // Unsynced offline sales: the closing device's own count, or what the
+    // cashier's devices last reported during this shift, whichever is higher.
+    const deviceRes = await query(
+      `SELECT COALESCE(SUM(pending_count), 0)::int AS pending FROM pos_devices
+       WHERE tenant_id = $1 AND branch_id = $2 AND last_user_id = $3 AND pending_reported_at >= $4`,
+      [req.user.tenant_id, shift.branch_id, shift.opened_by, shift.opened_at],
+    );
+    const unsynced = Math.max(data.unsynced_count, deviceRes.rows[0].pending);
+    if (unsynced > 0) {
+      const isManager = req.user.role === 'owner' || req.user.role === 'manager';
+      if (!isManager || !data.override_reason) {
+        return res.status(409).json({
+          error: {
+            message: `${unsynced} offline sale${unsynced === 1 ? ' is' : 's are'} still waiting to sync. Reconnect and let them sync, or ask a manager to close with an override.`,
+            code: 'unsynced_sales',
+          },
+          unsynced,
+        });
+      }
+    }
+
     const report = await buildZReport(req.user.tenant_id, shift.id);
     const expected = report.closing_cash_expected;
     const variance = Math.round((data.closing_cash_counted - expected) * 100) / 100;
 
     const result = await query(
       `UPDATE pos_shifts SET status = 'closed', closed_by = $2, closing_cash_counted = $3,
-              closing_cash_expected = $4, variance = $5, closed_at = NOW()
+              closing_cash_expected = $4, variance = $5, closed_at = NOW(),
+              unsynced_at_close = $6, unsynced_override_by = $7, unsynced_override_reason = $8
        WHERE id = $1 RETURNING *`,
-      [shift.id, req.user.id, data.closing_cash_counted, expected, variance],
+      [shift.id, req.user.id, data.closing_cash_counted, expected, variance,
+        unsynced, unsynced > 0 ? req.user.id : null, unsynced > 0 ? data.override_reason : null],
     );
+    if (unsynced > 0) {
+      await posAudit(req.user.tenant_id, req.user.id, 'shift_closed_with_unsynced_sales', {
+        shift_id: shift.id, unsynced, reason: data.override_reason,
+      });
+    }
     res.json({ shift: result.rows[0] });
   } catch (err) {
     if (err instanceof z.ZodError) {

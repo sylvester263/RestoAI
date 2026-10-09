@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('inventory'));
 
 const supplierSchema = z.object({
   name: z.string().min(1).max(150),

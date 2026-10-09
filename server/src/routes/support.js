@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { authenticate, checkTenantActive } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { staffReplyToTicket, updateTicketStatus } from '../services/customer-support-agent.js';
 
 const router = Router();
@@ -9,6 +10,7 @@ const router = Router();
 // All support routes require authentication
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('whatsapp_ordering'));
 
 // ── GET /api/support/tickets ──
 // List tickets for the caller's tenant, optionally filtered by status.

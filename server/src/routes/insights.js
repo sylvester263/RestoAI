@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate, checkTenantActive, authorize, attachBranchAccess, hasPermission } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { periodStartSql, localDateSql, isSaleSql } from '../utils/business-time.js';
 
@@ -17,7 +18,7 @@ const insightsLimiter = rateLimit({
 
 // ── POST /api/insights/query ──
 // Natural-language query over the restaurant's order data, powered by Qwen
-router.post('/query', authorize('reports.view'), insightsLimiter, attachBranchAccess, async (req, res, next) => {
+router.post('/query', requireModule('insights'), authorize('reports.view'), insightsLimiter, attachBranchAccess, async (req, res, next) => {
   try {
     const { question, history } = req.body;
     if (!question || typeof question !== 'string') {

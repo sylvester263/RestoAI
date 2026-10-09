@@ -296,7 +296,8 @@ function StatBar({ pricing }) {
     { value: '10', label: 'AI agents working behind the scenes' },
     { value: '0%', label: 'commission on every order, always' },
     { value: '1', label: 'order queue for WhatsApp, storefront & dine-in' },
-    starter && { value: formatRs(starter.monthly), label: 'per month — where plans start' },
+    // The full platform's entry price; POS Only (impl-33) is a separate, cheaper till-only plan.
+    starter && { value: formatRs(starter.monthly), label: 'per month for the full platform' },
   ].filter(Boolean);
   return (
     <section className="border-y border-[var(--border)] bg-[var(--surface-2)]">
@@ -588,11 +589,13 @@ function TrustSection() {
 // from GET /api/billing/plans — the same numbers Plan & Billing charges — and
 // the chosen tier, branch count and Agent Pack carry through signup.
 const TIER_FEATURES = {
+  pos_only: ['POS billing, tax & split payments', 'Shifts, Z-reports, voids & refunds', 'Kitchen display & token board', 'Menu management & basic reports'],
   starter: ['WhatsApp AI ordering', 'Your own ordering website', 'Dine-in QR, reservations, loyalty & reviews', 'POS billing, basic inventory'],
   growth: ['Everything in Starter', 'Branch analytics & benchmarking', 'CRM, coupons, referrals & campaigns', 'Multi-branch staff permissions'],
   enterprise: ['Everything in Growth', 'Dedicated onboarding', 'Priority support', 'Volume pricing beyond Growth'],
 };
 const TIER_BLURB = {
+  pos_only: 'Just the till, per branch',
   starter: 'Solo restaurant, one branch',
   growth: (p) => `${p.min_branches}–${p.max_branches} branches`,
   enterprise: (p) => `${p.min_branches}+ branches and chains`,
@@ -607,6 +610,7 @@ function Pricing({ pricing }) {
   const [tierId, setTierId] = useState('growth');
   const [starterPack, setStarterPack] = useState(false);
   const [growthBranches, setGrowthBranches] = useState(3);
+  const [posBranches, setPosBranches] = useState(1);
 
   const tier = pricing ? pricing.plans.find((p) => p.id === tierId) : null;
   const blurb = (p) => (typeof TIER_BLURB[p.id] === 'function' ? TIER_BLURB[p.id](p) : TIER_BLURB[p.id]);
@@ -615,7 +619,11 @@ function Pricing({ pricing }) {
   let unit = '';
   let total = null;
   let cta = null;
-  if (tier?.id === 'starter') {
+  if (tier?.id === 'pos_only') {
+    price = formatRs(tier.per_branch); unit = '/branch/month';
+    total = monthlyAmount(pricing, { plan: 'pos_only', branches: posBranches, pack: false });
+    cta = { to: `/login?mode=register&plan=pos_only&branches=${posBranches}`, label: 'Start with POS Only' };
+  } else if (tier?.id === 'starter') {
     price = formatRs(tier.monthly); unit = '/month';
     total = monthlyAmount(pricing, { plan: 'starter', branches: 1, pack: starterPack });
     cta = { to: `/login?mode=register&plan=starter&pack=${starterPack ? 1 : 0}`, label: 'Start with Starter' };
@@ -647,7 +655,7 @@ function Pricing({ pricing }) {
         {tier && (
           <ScrollReveal as="div" className="mx-auto mt-12 grid max-w-4xl gap-5 md:grid-cols-[15rem_1fr]">
             {/* vertical tier selector (horizontal on phones) */}
-            <div role="tablist" aria-label="Plans" className="grid grid-cols-3 gap-2 md:grid-cols-1 md:content-start">
+            <div role="tablist" aria-label="Plans" className="grid grid-cols-2 gap-2 sm:grid-cols-4 md:grid-cols-1 md:content-start">
               {pricing.plans.map((p) => (
                 <button
                   key={p.id}
@@ -678,7 +686,12 @@ function Pricing({ pricing }) {
               </p>
 
               <div className="mt-5 rounded-xl bg-gray-800/60 px-4 py-3 text-sm">
-                {tier.agent_pack_included ? (
+                {tier.agent_pack_available === false ? (
+                  <p className="flex items-center justify-between gap-2">
+                    <span className="text-gray-300">AI Agent Pack</span>
+                    <span className="text-gray-400">Available from Starter</span>
+                  </p>
+                ) : tier.agent_pack_included ? (
                   <p className="flex items-center justify-between gap-2">
                     <span className="text-gray-300">AI Agent Pack</span>
                     <span className="font-semibold text-brand-400">Included</span>
@@ -694,6 +707,14 @@ function Pricing({ pricing }) {
                 )}
               </div>
 
+              {tier.id === 'pos_only' && (
+                <label className="mt-4 flex items-center justify-between gap-2 text-sm text-gray-300">
+                  Branches
+                  <select className="w-20 rounded-lg border border-gray-700 bg-gray-800 px-2 py-1.5 text-white" value={posBranches} onChange={(e) => setPosBranches(Number(e.target.value))}>
+                    {Array.from({ length: tier.max_branches - tier.min_branches + 1 }, (_, i) => tier.min_branches + i).map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              )}
               {tier.id === 'growth' && (
                 <label className="mt-4 flex items-center justify-between gap-2 text-sm text-gray-300">
                   Branches

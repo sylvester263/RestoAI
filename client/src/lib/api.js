@@ -164,6 +164,7 @@ export const api = {
   // Plan & billing (impl-32)
   getBillingPlans: () => requestPublic('/billing/plans'),
   getBilling: () => request('/billing'),
+  getMyModules: () => request('/me/modules'),
   submitPayment: (fields, receiptFile) => {
     const form = new FormData();
     for (const [k, v] of Object.entries(fields)) if (v !== undefined && v !== null) form.append(k, String(v));
@@ -308,9 +309,27 @@ export const api = {
   openPosShift: (body) => request('/pos/shifts/open', { method: 'POST', body: JSON.stringify(body) }),
   getCurrentPosShift: (branchId) => request(`/pos/shifts/current?branch_id=${branchId}`),
   getPosShifts: (branchId) => request(`/pos/shifts${branchId ? `?branch_id=${branchId}` : ''}`),
-  closePosShift: (id, closingCashCounted) =>
-    request(`/pos/shifts/${id}/close`, { method: 'POST', body: JSON.stringify({ closing_cash_counted: closingCashCounted }) }),
+  // impl-33: unsyncedCount = this device's offline sales still queued;
+  // overrideReason lets a manager close anyway (recorded in the Z-report).
+  closePosShift: (id, closingCashCounted, { unsyncedCount = 0, overrideReason } = {}) =>
+    request(`/pos/shifts/${id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({ closing_cash_counted: closingCashCounted, unsynced_count: unsyncedCount, ...(overrideReason && { override_reason: overrideReason }) }),
+    }),
   getPosZReport: (id) => request(`/pos/shifts/${id}/z-report`),
+  // impl-33 Part 4: offline POS
+  registerPosDevice: (body) => request('/pos-offline/devices/register', { method: 'POST', body: JSON.stringify(body) }),
+  leasePosBillBlock: (body) => request('/pos-offline/devices/lease', { method: 'POST', body: JSON.stringify(body) }),
+  getPosDevice: (id) => request(`/pos-offline/devices/${id}`),
+  getPosSnapshot: (branchId) => request(`/pos-offline/snapshot?branch_id=${branchId}`),
+  enrollPosPin: (body) => request('/pos-offline/enroll', { method: 'POST', body: JSON.stringify(body) }),
+  refreshPosToken: (deviceId) => request('/pos-offline/refresh', { method: 'POST', body: JSON.stringify({ device_id: deviceId }) }),
+  getPosSyncReview: () => request('/pos-offline/review'),
+  getFiscalInvoices: () => request('/pos/fiscal-invoices'),
+  retryFiscalInvoices: () => request('/pos/fiscal-invoices/retry', { method: 'POST' }),
+  resolvePosSyncReview: (id, note) => request(`/pos-offline/review/${id}/resolve`, { method: 'POST', body: JSON.stringify({ note }) }),
+  setStaffPin: (id, pin) => request(`/staff/${id}/pin`, { method: 'PUT', body: JSON.stringify({ pin }) }),
+  clearStaffPin: (id) => request(`/staff/${id}/pin`, { method: 'DELETE' }),
 
   // Landing page builder
   getLandingPage: () => request('/landing-page'),

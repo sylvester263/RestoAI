@@ -9,3 +9,6 @@ build/
 .claude/
 .aicoding-chat-workspace
 *.png
+# impl-33: the PWA icons are real app files, not screenshots
+!client/public/icon-192.png
+!client/public/icon-512.png

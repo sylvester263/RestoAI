@@ -10,29 +10,41 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 
+// The browser fires beforeinstallprompt once per page load. It is captured
+// at module level so every component using this hook (the floating banner,
+// the inline one on the POS) sees it, whichever mounted first.
+let savedPrompt = null;
+const subscribers = new Set();
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    savedPrompt = e;
+    subscribers.forEach((fn) => fn(true));
+  });
+  window.addEventListener('appinstalled', () => {
+    savedPrompt = null;
+    subscribers.forEach((fn) => fn(false));
+  });
+}
+
 export default function useInstallPrompt() {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [canInstall, setCanInstall] = useState(false);
+  const [canInstall, setCanInstall] = useState(!!savedPrompt);
 
   useEffect(() => {
-    function handler(e) {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      setCanInstall(true);
-    }
-
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+    subscribers.add(setCanInstall);
+    setCanInstall(!!savedPrompt);
+    return () => subscribers.delete(setCanInstall);
   }, []);
 
   const install = useCallback(async () => {
-    if (!deferredPrompt) return false;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    setCanInstall(false);
+    if (!savedPrompt) return false;
+    const prompt = savedPrompt;
+    prompt.prompt();
+    const { outcome } = await prompt.userChoice;
+    savedPrompt = null;
+    subscribers.forEach((fn) => fn(false));
     return outcome === 'accepted';
-  }, [deferredPrompt]);
+  }, []);
 
   return { canInstall, install };
 }

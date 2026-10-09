@@ -7,6 +7,7 @@ import CommandPalette from './CommandPalette';
 import InstallBanner from './InstallBanner';
 import DarkModeToggle from './DarkModeToggle';
 import OwnerChat from './OwnerChat';
+import { routeAllowed } from '../lib/modules';
 import {
   LayoutDashboard, UtensilsCrossed, ShoppingBag, BarChart3,
   MessageCircle, LogOut, ChefHat, QrCode, CalendarCheck,
@@ -71,17 +72,17 @@ const roleGatedItems = {
   ],
 };
 
-function buildNav(role) {
+function buildNav(role, modules) {
   return navGroups.map((group) => {
     const extras = (roleGatedItems[group.label] || []).filter(
       (item) => item.roles.includes(role),
     );
-    return { ...group, items: [...group.items, ...extras] };
+    return { ...group, items: [...group.items, ...extras].filter((item) => routeAllowed(modules, item.to)) };
   }).filter((group) => group.items.length > 0);
 }
 
 export default function Layout({ children }) {
-  const { user, tenant, logout } = useAuth();
+  const { user, tenant, logout, modules, hasModule } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState({});
@@ -89,11 +90,15 @@ export default function Layout({ children }) {
   const [pendingPayment, setPendingPayment] = useState(null);
   const location = useLocation();
 
-  const groups = buildNav(user?.role || 'staff');
+  // impl-33 Part 4: a PIN (offline) session can only use the till.
+  const offlineSession = !!user?.offline_session;
+  const groups = offlineSession
+    ? buildNav(user?.role || 'staff', modules).map((g) => ({ ...g, items: g.items.filter((i) => i.to === '/pos') })).filter((g) => g.items.length > 0)
+    : buildNav(user?.role || 'staff', modules);
 
   // impl-32: owners see a reminder while a bank transfer awaits verification
   useEffect(() => {
-    if (user?.role !== 'owner') return;
+    if (user?.role !== 'owner' || user?.offline_session) return;
     api.getBilling().then((res) => setPendingPayment(res.pending)).catch(() => {});
   }, [user?.role, location.pathname]);
 
@@ -103,7 +108,7 @@ export default function Layout({ children }) {
     { key: 'k', meta: true, callback: () => setPaletteOpen(true) },
     { key: 'g', callback: () => navigate('/dashboard') },
     { key: 'o', callback: () => navigate('/orders') },
-    { key: 'p', callback: () => navigate('/pos') },
+    { key: 'p', callback: () => routeAllowed(modules, '/pos') && navigate('/pos') },
     // Not in text fields — people type question marks there.
     { key: '?', callback: () => setPaletteOpen(true) },
   ]);
@@ -191,17 +196,19 @@ export default function Layout({ children }) {
       </nav>
 
       {/* Kitchen link */}
-      <div className="border-t border-gray-200 px-3 py-3 dark:border-gray-800">
-        <a
-          href="/kitchen"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-        >
-          <ChefHat className="h-5 w-5" />
-          Kitchen Display ↗
-        </a>
-      </div>
+      {hasModule('kitchen') && !offlineSession && (
+        <div className="border-t border-gray-200 px-3 py-3 dark:border-gray-800">
+          <a
+            href="/kitchen"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+          >
+            <ChefHat className="h-5 w-5" />
+            Kitchen Display ↗
+          </a>
+        </div>
+      )}
 
       {/* User */}
       <div className="border-t border-gray-200 px-4 py-4 dark:border-gray-800">
@@ -284,9 +291,11 @@ export default function Layout({ children }) {
         </div>
       </main>
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} role={user?.role || 'staff'} />
-      <InstallBanner />
-      <OwnerChat />
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} role={user?.role || 'staff'} modules={modules} />
+      {/* impl-33: the POS shows an inline install prompt instead, so nothing floats over the till */}
+      {location.pathname !== '/pos' && <InstallBanner />}
+      {/* impl-33: nothing floats over the till; the assistant is on every other page */}
+      {hasModule('insights') && !offlineSession && location.pathname !== '/pos' && <OwnerChat />}
     </div>
   );
 }

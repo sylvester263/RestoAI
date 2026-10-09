@@ -6,12 +6,14 @@
  */
 import { Router } from 'express';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { z } from 'zod';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('inventory'));
 
 const ingredientSchema = z.object({
   name: z.string().min(1).max(150),

@@ -6,7 +6,11 @@ import { Toaster } from 'react-hot-toast';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import ErrorBoundary from './components/ui/ErrorBoundary';
+import UpdateBanner from './components/UpdateBanner';
+import { registerServiceWorker } from './lib/serviceWorker';
 import './index.css';
+
+registerServiceWorker();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
@@ -14,6 +18,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <AuthProvider>
           <App />
+          <UpdateBanner />
           <Toaster
             position="top-right"
             toastOptions={{

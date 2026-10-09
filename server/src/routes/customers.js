@@ -6,12 +6,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { getLoyaltyConfig, getBalance } from '../services/loyalty.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('loyalty_crm'));
 
 // ── GET /api/customers ──
 router.get('/', async (req, res, next) => {

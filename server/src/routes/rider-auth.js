@@ -16,6 +16,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import config from '../config.js';
 import { query } from '../db/pool.js';
+import { isModuleEnabled, moduleDisabledBody } from '../services/modules.js';
 
 const router = Router();
 
@@ -53,6 +54,11 @@ router.post('/login', riderLoginLimiter, async (req, res, next) => {
       return res.status(403).json({
         error: { message: 'This account has been suspended. Please contact support.' },
       });
+    }
+
+    // impl-33: no rider app on a plan without delivery.
+    if (!(await isModuleEnabled(tenant.id, 'delivery_riders'))) {
+      return res.status(403).json(moduleDisabledBody('delivery_riders'));
     }
 
     const riderRes = await query(

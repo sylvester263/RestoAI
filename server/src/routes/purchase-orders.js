@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authenticate, checkTenantActive, authorize } from '../middleware/auth.js';
+import { requireModule } from '../services/modules.js';
 import { query } from '../db/pool.js';
 import { createDraftPurchaseOrder, receivePurchaseOrder } from '../services/purchase-orders.js';
 
 const router = Router();
 router.use(authenticate);
 router.use(checkTenantActive);
+router.use(requireModule('inventory'));
 
 // ── GET /api/purchase-orders ──
 router.get('/', async (req, res, next) => {

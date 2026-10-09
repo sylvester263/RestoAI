@@ -91,7 +91,7 @@ function receiveReceipt(req, res, next) {
 }
 
 const submissionSchema = z.object({
-  plan: z.enum(['starter', 'growth', 'enterprise']),
+  plan: z.enum(['pos_only', 'starter', 'growth', 'enterprise']),
   branch_count: z.coerce.number().int().optional(),
   agent_pack: z.preprocess((v) => v === true || v === 'true' || v === '1', z.boolean()),
   claimed_amount: z.coerce.number().positive(),
