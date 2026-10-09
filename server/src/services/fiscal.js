@@ -17,6 +17,8 @@
 import { waitUntil } from '@vercel/functions';
 import { query } from '../db/pool.js';
 import { FiscalError } from './fiscal-errors.js';
+import { posAudit } from './pos-audit.js';
+import { sendReply } from './whatsapp.js';
 import * as pra from './fiscal-providers/pra.js';
 import * as fbr from './fiscal-providers/fbr.js';
 import * as stub from './fiscal-providers/stub.js';
@@ -47,6 +49,11 @@ export async function submitInvoice(bill, provider, config) {
   const impl = PROVIDERS[provider];
   if (!impl) throw new FiscalError('config', `Unknown fiscal provider: ${provider}`);
   return impl(bill, config);
+}
+
+/** The bill exactly as a provider sees it (used by the FBR validate pilot). */
+export async function loadBillForFiscal(tabId) {
+  return (await loadBill(tabId))?.bill || null;
 }
 
 async function loadBill(tabId) {
@@ -121,27 +128,62 @@ export async function processFiscalForTab(tabId) {
   try {
     const { invoiceNumber, qrUrl } = await submitInvoice(bill, tab.fiscal_provider, tab.fiscal_config);
     await query(
-      `UPDATE pos_tabs SET fiscal_status = 'submitted', fiscal_invoice_number = $2, fiscal_qr_code_url = $3, fiscal_error = NULL
+      `UPDATE pos_tabs SET fiscal_status = 'submitted', fiscal_invoice_number = $2, fiscal_qr_code_url = $3, fiscal_error = NULL, fiscal_error_code = NULL
        WHERE id = $1`,
       [tabId, invoiceNumber, qrUrl || null],
     );
     return 'submitted';
   } catch (err) {
     const kind = err instanceof FiscalError ? err.kind : 'unavailable';
-    // A rejection (bad data) won't succeed on retry — park it at the cap so
-    // it shows as failed for a person to look at instead of looping.
-    // Not configured: give the attempt back, so once the provider is set up
-    // these bills still go through instead of having used up their retries.
+    const message = String(err.message).slice(0, 500);
+    const code = err instanceof FiscalError && err.code ? String(err.code).slice(0, 20) : null;
+    if (kind === 'unknown') {
+      // May already be recorded by the authority: never resubmitted
+      // automatically (the sweep only picks up pending/failed). A manager
+      // checks and either marks it reported or explicitly resubmits.
+      await query(
+        `UPDATE pos_tabs SET fiscal_status = 'unknown', fiscal_error = $2, fiscal_error_code = $3 WHERE id = $1`,
+        [tabId, message, code],
+      );
+      console.error(`[fiscal] tab ${tabId} outcome unknown:`, message);
+      return 'unknown';
+    }
+    // Rejected (bad data) or unauthorized (bad token) won't succeed on a
+    // retry — park at the cap so a person looks at it instead of looping.
+    // Not configured / config: give the attempt back, so once the setup is
+    // fixed these bills still go through instead of having used up retries.
+    const park = kind === 'rejected' || kind === 'unauthorized';
+    const giveBack = kind === 'not_configured' || kind === 'config';
     await query(
-      `UPDATE pos_tabs SET fiscal_status = 'failed', fiscal_error = $2,
+      `UPDATE pos_tabs SET fiscal_status = 'failed', fiscal_error = $2, fiscal_error_code = $6,
               fiscal_attempts = CASE WHEN $3 THEN GREATEST(fiscal_attempts, $4)
                                      WHEN $5 THEN GREATEST(fiscal_attempts - 1, 0)
                                      ELSE fiscal_attempts END
        WHERE id = $1`,
-      [tabId, String(err.message).slice(0, 500), kind === 'rejected', MAX_ATTEMPTS, kind === 'not_configured'],
+      [tabId, message, park, MAX_ATTEMPTS, giveBack, code],
     );
-    console.error(`[fiscal] tab ${tabId} submission failed (${kind}):`, err.message);
+    if (kind === 'unauthorized') alertOwnerTokenRefused(tab.tenant_id, tab.fiscal_provider).catch(() => {});
+    console.error(`[fiscal] tab ${tabId} submission failed (${kind}):`, message);
     return 'failed';
+  }
+}
+
+// ── Owner alert when the authority refuses our token (at most hourly) ──
+const lastTokenAlert = new Map(); // tenantId -> ms
+async function alertOwnerTokenRefused(tenantId, provider) {
+  const last = lastTokenAlert.get(tenantId) || 0;
+  if (Date.now() - last < 60 * 60 * 1000) return;
+  lastTokenAlert.set(tenantId, Date.now());
+  await posAudit(tenantId, null, 'fiscal_token_refused', { provider });
+  const phoneRes = await query(
+    `SELECT COALESCE(
+       (SELECT phone FROM users WHERE tenant_id = $1 AND role = 'owner' AND phone IS NOT NULL AND deactivated_at IS NULL ORDER BY created_at LIMIT 1),
+       (SELECT phone FROM tenants WHERE id = $1)) AS phone`,
+    [tenantId],
+  );
+  const phone = phoneRes.rows[0]?.phone;
+  if (phone) {
+    await sendReply(phone, `⚠️ ${provider.toUpperCase()} is refusing RestoAI's access token for your restaurant, so tax invoices are not being reported. Your sales are recorded as normal. Please contact RestoAI support to renew the token.`, tenantId);
   }
 }
 
@@ -195,13 +237,13 @@ export async function listFiscalQueue(tenantId) {
   const [tenantRes, rows] = await Promise.all([
     query('SELECT fiscal_provider FROM tenants WHERE id = $1', [tenantId]),
     query(
-      `SELECT pt.id AS tab_id, pt.bill_number, pt.settled_at, pt.fiscal_status, pt.fiscal_attempts, pt.fiscal_error,
+      `SELECT pt.id AS tab_id, pt.bill_number, pt.settled_at, pt.fiscal_status, pt.fiscal_attempts, pt.fiscal_error, pt.fiscal_error_code,
               pt.fiscal_issued_offline, pt.fiscal_last_attempt_at, b.name AS branch_name,
               (SELECT o.id FROM orders o WHERE o.pos_tab_id = pt.id ORDER BY o.created_at LIMIT 1) AS primary_order_id,
               (SELECT COALESCE(SUM(o.total), 0) FROM orders o WHERE o.pos_tab_id = pt.id) AS total,
               EXTRACT(EPOCH FROM (NOW() - pt.settled_at)) / 3600 AS age_hours
        FROM pos_tabs pt JOIN branches b ON b.id = pt.branch_id
-       WHERE pt.tenant_id = $1 AND pt.status = 'settled' AND pt.fiscal_status IN ('pending', 'failed')
+       WHERE pt.tenant_id = $1 AND pt.status = 'settled' AND pt.fiscal_status IN ('pending', 'failed', 'unknown')
        ORDER BY pt.settled_at`,
       [tenantId],
     ),
@@ -224,8 +266,36 @@ export async function listFiscalQueue(tenantId) {
         attempts: r.fiscal_attempts,
         last_attempt_at: r.fiscal_last_attempt_at,
         error: r.fiscal_error,
+        error_code: r.fiscal_error_code,
         issued_offline: r.fiscal_issued_offline,
       };
     }),
   };
+}
+
+/**
+ * Manager action on one bill (impl-34):
+ *  - resubmit: try again now (after fixing settings for a rejected bill).
+ *    For an 'unknown' bill the manager must confirm they checked it was NOT
+ *    recorded by the authority — otherwise this could create a duplicate.
+ *  - markReported: an 'unknown' bill the manager found recorded; store its number.
+ * Neither touches the sale itself.
+ */
+export async function resubmitFiscal(tenantId, tabId, { confirmNotReported = false } = {}) {
+  const res = await query("SELECT fiscal_status FROM pos_tabs WHERE id = $1 AND tenant_id = $2 AND status = 'settled'", [tabId, tenantId]);
+  const status = res.rows[0]?.fiscal_status;
+  if (!status) return { error: 'not_found' };
+  if (status === 'submitted' || status === 'not_required') return { error: 'nothing_to_do' };
+  if (status === 'unknown' && !confirmNotReported) return { error: 'confirm_required' };
+  await query("UPDATE pos_tabs SET fiscal_status = 'pending', fiscal_attempts = 0, fiscal_last_attempt_at = NULL WHERE id = $1", [tabId]);
+  return { outcome: await processFiscalForTab(tabId) };
+}
+
+export async function markFiscalReported(tenantId, tabId, invoiceNumber) {
+  const res = await query(
+    `UPDATE pos_tabs SET fiscal_status = 'submitted', fiscal_invoice_number = $3, fiscal_error = NULL, fiscal_error_code = NULL
+     WHERE id = $1 AND tenant_id = $2 AND fiscal_status = 'unknown' RETURNING id`,
+    [tabId, tenantId, invoiceNumber],
+  );
+  return res.rows.length > 0;
 }

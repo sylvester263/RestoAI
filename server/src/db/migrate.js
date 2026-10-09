@@ -1138,6 +1138,40 @@ async function migrate() {
     // offline, with settled_at holding the original sale time from the device.
     await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_issued_offline BOOLEAN NOT NULL DEFAULT false;`);
 
+    // ── FBR Digital Invoicing adapter (impl-34) ──
+    // 'unknown' = the gateway may or may not have accepted the invoice (timeout
+    // after sending). Never auto-resubmitted: a manager decides.
+    await client.query(`ALTER TABLE pos_tabs DROP CONSTRAINT IF EXISTS pos_tabs_fiscal_status_check;`);
+    await client.query(`ALTER TABLE pos_tabs ADD CONSTRAINT pos_tabs_fiscal_status_check CHECK (fiscal_status IN ('not_required','pending','submitted','failed','unknown'));`);
+    await client.query(`ALTER TABLE pos_tabs ADD COLUMN IF NOT EXISTS fiscal_error_code VARCHAR(20);`);
+    // Per-tenant FBR DI settings. Tokens are AES-256-GCM encrypted
+    // (services/encryption.js) and never returned to any client.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS tenant_fbr_settings (
+        tenant_id                   UUID PRIMARY KEY REFERENCES tenants(id) ON DELETE CASCADE,
+        environment                 VARCHAR(20) NOT NULL DEFAULT 'sandbox' CHECK (environment IN ('sandbox','production')),
+        sandbox_token_encrypted     TEXT,
+        production_token_encrypted  TEXT,
+        seller_ntn_cnic             VARCHAR(13),
+        seller_business_name        VARCHAR(255),
+        seller_province             VARCHAR(100),
+        seller_address              TEXT,
+        business_activity           VARCHAR(100),
+        sector                      VARCHAR(100),
+        sandbox_scenario_id         VARCHAR(10),
+        test_scenario_ids           TEXT[] NOT NULL DEFAULT '{}',
+        hs_code                     VARCHAR(20),
+        uom                         VARCHAR(100),
+        sale_type                   VARCHAR(150),
+        rate_desc                   VARCHAR(100),
+        rate_value                  NUMERIC(6,2),
+        walkin_buyer_name           VARCHAR(255) NOT NULL DEFAULT 'Walk-in Customer',
+        walkin_buyer_province       VARCHAR(100),
+        walkin_buyer_address        TEXT,
+        updated_at                  TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+
     // ── Offline POS, Level 1 (impl-33 Part 4) ──
     // Idempotency: a client-generated UUID per action, unique per tenant, so a
     // replayed tab-open / add-items / settle returns the original result.

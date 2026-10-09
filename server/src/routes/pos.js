@@ -17,7 +17,7 @@ import {
   findOpenShift, buildZReport, buildReceiptData,
 } from '../services/pos-billing.js';
 import { emit } from '../services/event-bus.js';
-import { scheduleFiscal, listFiscalQueue, retryPendingFiscal } from '../services/fiscal.js';
+import { scheduleFiscal, listFiscalQueue, retryPendingFiscal, resubmitFiscal, markFiscalReported } from '../services/fiscal.js';
 import { openTab, addItems, settleTab, PosError } from '../services/pos-tabs.js';
 import { posAudit } from '../services/pos-audit.js';
 
@@ -555,6 +555,44 @@ router.post('/fiscal-invoices/retry', requireManagerOrOwner, async (req, res, ne
     const result = await retryPendingFiscal({ tenantId: req.user.tenant_id, limit: 50 });
     res.json({ ...result, ...(await listFiscalQueue(req.user.tenant_id)) });
   } catch (err) {
+    next(err);
+  }
+});
+
+// impl-34: one bill — resubmit (after fixing data), or settle an 'unknown'
+// outcome. An unknown bill may already be recorded by the authority, so a
+// resubmit needs explicit confirmation that it was checked and is not.
+const resubmitSchema = z.object({ confirm_not_reported: z.boolean().optional() });
+router.post('/fiscal-invoices/:tabId/resubmit', requireManagerOrOwner, async (req, res, next) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.tabId).success) return res.status(404).json({ error: { message: 'Bill not found' } });
+    const { confirm_not_reported: confirm } = resubmitSchema.parse(req.body || {});
+    const result = await resubmitFiscal(req.user.tenant_id, req.params.tabId, { confirmNotReported: !!confirm });
+    if (result.error === 'not_found') return res.status(404).json({ error: { message: 'Bill not found' } });
+    if (result.error === 'nothing_to_do') return res.status(400).json({ error: { message: 'This bill has nothing to report' } });
+    if (result.error === 'confirm_required') {
+      return res.status(409).json({ error: { message: 'The tax authority may already have this invoice. Check first, then confirm it is not recorded before resubmitting.', code: 'confirm_required' } });
+    }
+    await posAudit(req.user.tenant_id, req.user.id, 'fiscal_resubmitted', { tab_id: req.params.tabId, confirmed_not_reported: !!confirm, outcome: result.outcome });
+    res.json({ outcome: result.outcome, ...(await listFiscalQueue(req.user.tenant_id)) });
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: { message: err.errors[0].message } });
+    next(err);
+  }
+});
+
+const markReportedSchema = z.object({ invoice_number: z.string().trim().min(5).max(100) });
+router.post('/fiscal-invoices/:tabId/mark-reported', requireManagerOrOwner, async (req, res, next) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.tabId).success) return res.status(404).json({ error: { message: 'Bill not found' } });
+    const { invoice_number: invoiceNumber } = markReportedSchema.parse(req.body);
+    if (!(await markFiscalReported(req.user.tenant_id, req.params.tabId, invoiceNumber))) {
+      return res.status(400).json({ error: { message: 'Only a bill whose outcome is unknown can be marked as reported' } });
+    }
+    await posAudit(req.user.tenant_id, req.user.id, 'fiscal_marked_reported', { tab_id: req.params.tabId, invoice_number: invoiceNumber });
+    res.json(await listFiscalQueue(req.user.tenant_id));
+  } catch (err) {
+    if (err instanceof z.ZodError) return res.status(400).json({ error: { message: err.errors[0].message } });
     next(err);
   }
 });

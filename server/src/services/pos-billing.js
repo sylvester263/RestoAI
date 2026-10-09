@@ -143,10 +143,11 @@ export async function buildReceiptData(tenantId, orderId) {
   const orderRes = await query(
     `SELECT o.*, b.name as branch_name, b.address as branch_address, b.phone as branch_phone,
             pt.fiscal_invoice_number, pt.fiscal_qr_code_url, pt.fiscal_status,
-            pt.bill_number, pt.sync_flags
+            pt.bill_number, pt.sync_flags, t.fiscal_provider
      FROM orders o
      JOIN branches b ON b.id = o.branch_id
      LEFT JOIN pos_tabs pt ON pt.id = o.pos_tab_id
+     JOIN tenants t ON t.id = o.tenant_id
      WHERE o.id = $1 AND o.tenant_id = $2`,
     [orderId, tenantId],
   );
@@ -199,6 +200,7 @@ export async function buildReceiptData(tenantId, orderId) {
     fiscal_invoice_number: order.fiscal_invoice_number || null,
     fiscal_qr_code_url: order.fiscal_qr_code_url || null,
     fiscal_status: order.fiscal_status || null,
+    fiscal_provider: order.fiscal_provider || 'none',
     sync_flags: order.sync_flags || [],
   };
 }

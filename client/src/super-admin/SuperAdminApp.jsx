@@ -13,7 +13,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { superAdminApi } from './superAdminApi';
-import { NeedsActionStrip, PaymentsView, RevenueView, TenantPlanPanel, TenantModulesPanel } from './BillingViews';
+import { NeedsActionStrip, PaymentsView, RevenueView, TenantPlanPanel, TenantModulesPanel, FbrSettingsPanel } from './BillingViews';
 import {
   Building2, FileText, LogOut, Search, AlertTriangle, CheckCircle,
   XCircle, Clock, ChevronLeft, RefreshCw, Shield, Calendar, Wallet, TrendingUp, Sparkles,
@@ -358,6 +358,8 @@ function TenantDetailView({ tenant, loading, onBack, onRefresh, statusColor, onA
       <TenantPlanPanel tenant={t} payments={tenant.payments || []} onChanged={() => { onRefresh(); onAction(); }} />
 
       <TenantModulesPanel tenantId={t.id} modules={tenant.modules} labels={tenant.module_labels} fiscalProvider={t.fiscal_provider} onChanged={onRefresh} />
+
+      {t.fiscal_provider === 'fbr' && <FbrSettingsPanel tenantId={t.id} />}
 
       {/* Subscription Info */}
       <div className="bg-gray-800 rounded-lg border border-gray-700 p-4 mb-6">

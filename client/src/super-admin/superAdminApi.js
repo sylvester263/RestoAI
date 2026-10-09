@@ -105,6 +105,10 @@ export const superAdminApi = {
   rejectPayment: (id, reason) =>
     request(`/super-admin/payments/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
   getRevenue: () => request('/super-admin/revenue'),
+  getFbrSettings: (id) => request(`/super-admin/tenants/${id}/fbr-settings`),
+  saveFbrSettings: (id, body) => request(`/super-admin/tenants/${id}/fbr-settings`, { method: 'PUT', body: JSON.stringify(body) }),
+  getFbrReference: (id, kind) => request(`/super-admin/tenants/${id}/fbr/reference/${kind}`),
+  validateFbr: (id) => request(`/super-admin/tenants/${id}/fbr/validate`, { method: 'POST', body: '{}' }),
   setFiscalProvider: (id, provider, reason) =>
     request(`/super-admin/tenants/${id}/fiscal-provider`, { method: 'POST', body: JSON.stringify({ provider, reason }) }),
   setTenantModule: (id, module, enabled, reason) =>

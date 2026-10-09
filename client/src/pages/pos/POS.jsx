@@ -916,12 +916,14 @@ function ReceiptModal({ orderId, canRefund, onClose }) {
             {/* impl-33: fiscal invoice, only for tenants with a fiscal provider */}
             {receipt.fiscal_invoice_number && (
               <div className="mt-3 flex flex-col items-center gap-1 border-t border-dashed border-gray-400 pt-2">
-                <p>Invoice # {receipt.fiscal_invoice_number}</p>
-                {receipt.fiscal_qr_code_url && <QRCodeSVG value={receipt.fiscal_qr_code_url} size={88} />}
+                <p>{receipt.fiscal_provider === 'fbr' ? 'FBR Invoice No.' : receipt.fiscal_provider === 'pra' ? 'PRA Invoice No.' : 'Invoice #'} {receipt.fiscal_invoice_number}</p>
+                {/* impl-34: FBR specifies a 1.0 × 1.0 inch QR (section 6). What it encodes is still to be
+                    confirmed, so the FBR adapter supplies none yet; the FBR logo must come from FBR/PRAL. */}
+                {receipt.fiscal_qr_code_url && <QRCodeSVG value={receipt.fiscal_qr_code_url} style={{ width: '1in', height: '1in' }} />}
               </div>
             )}
-            {!receipt.fiscal_invoice_number && (receipt.fiscal_status === 'pending' || receipt.fiscal_status === 'failed') && (
-              <p className="mt-3 text-center text-[10px]">Tax invoice number pending, reprint later for the invoice number.</p>
+            {!receipt.fiscal_invoice_number && ['pending', 'failed', 'unknown'].includes(receipt.fiscal_status) && (
+              <p className="mt-3 text-center text-[10px]">Fiscal invoice pending — reprint later for the invoice number.</p>
             )}
             <p className="mt-3 text-center text-[10px]">Thank you for dining with us!</p>
           </div>

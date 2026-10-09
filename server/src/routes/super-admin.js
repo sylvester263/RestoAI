@@ -15,7 +15,10 @@ import { sendReply } from '../services/whatsapp.js';
 import { PLANS, BILLING_PERIOD_MONTHS, invalidateAgentPack } from '../services/billing.js';
 import { periodStartSql } from '../utils/business-time.js';
 import { authenticateSuperAdmin } from '../middleware/auth.js';
-import { FISCAL_PROVIDERS } from '../services/fiscal.js';
+import { FISCAL_PROVIDERS, FiscalError, loadBillForFiscal } from '../services/fiscal.js';
+import { loadFbrSettings, fetchReference, validate as validateFbrInvoice } from '../services/fiscal-providers/fbr.js';
+import { missingSettings } from '../services/fiscal-providers/fbr-payload.js';
+import { encrypt } from '../services/encryption.js';
 import { MODULES, MODULE_LABELS, loadTenantModules, setTenantModule, applyPlanPreset, invalidateModules } from '../services/modules.js';
 import { loginStep1, loginStep2, setupTotp } from '../services/super-admin-auth.js';
 
@@ -733,6 +736,127 @@ router.post(
       if (result.rows.length === 0) return res.status(404).json({ error: { message: 'Tenant not found' } });
       res.json({ tenant: result.rows[0] });
     } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ── impl-34: FBR Digital Invoicing settings per tenant ──
+// Tokens are write-only: stored encrypted, never returned (only has_* flags),
+// and replaced by "[redacted]" in the audit log. A production token is
+// refused outside a production deployment.
+const FBR_TEXT_FIELDS = ['seller_ntn_cnic', 'seller_business_name', 'seller_province', 'seller_address', 'business_activity', 'sector',
+  'sandbox_scenario_id', 'hs_code', 'uom', 'sale_type', 'rate_desc', 'walkin_buyer_name', 'walkin_buyer_province', 'walkin_buyer_address'];
+const fbrSettingsSchema = z.object({
+  environment: z.enum(['sandbox', 'production']).optional(),
+  sandbox_token: z.string().trim().min(10).max(4000).optional(),
+  production_token: z.string().trim().min(10).max(4000).optional(),
+  seller_ntn_cnic: z.string().regex(/^(\d{7}|\d{13})$/, 'Seller NTN/CNIC must be 7 or 13 digits').optional(),
+  seller_business_name: z.string().trim().max(255).optional(),
+  seller_province: z.string().trim().max(100).optional(),
+  seller_address: z.string().trim().max(1000).optional(),
+  business_activity: z.string().trim().max(100).optional(),
+  sector: z.string().trim().max(100).optional(),
+  sandbox_scenario_id: z.string().regex(/^SN\d{3}$/, 'Scenario id looks like SN019').optional(),
+  test_scenario_ids: z.array(z.string().regex(/^SN\d{3}$/)).max(30).optional(),
+  hs_code: z.string().trim().max(20).optional(),
+  uom: z.string().trim().max(100).optional(),
+  sale_type: z.string().trim().max(150).optional(),
+  rate_desc: z.string().trim().max(100).optional(),
+  rate_value: z.number().min(0).max(100).optional(),
+  walkin_buyer_name: z.string().trim().min(1).max(255).optional(),
+  walkin_buyer_province: z.string().trim().max(100).optional(),
+  walkin_buyer_address: z.string().trim().max(1000).optional(),
+  reason: z.string().trim().min(1).max(500),
+}).strict();
+
+function publicFbrSettings(row) {
+  if (!row) return null;
+  const { sandbox_token_encrypted: sb, production_token_encrypted: prod, ...rest } = row;
+  return { ...rest, rate_value: rest.rate_value == null ? null : Number(rest.rate_value), has_sandbox_token: !!sb, has_production_token: !!prod };
+}
+
+router.get('/tenants/:id/fbr-settings', auditLog('view_fbr_settings', (req) => ({ targetTenantId: req.params.id })), async (req, res, next) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: { message: 'Tenant not found' } });
+  try {
+    const row = await loadFbrSettings(req.params.id);
+    res.json({ settings: publicFbrSettings(row), missing: row ? missingSettings(row) : ['all'] });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.put(
+  '/tenants/:id/fbr-settings',
+  auditLog('update_fbr_settings', (req) => ({
+    targetTenantId: req.params.id,
+    details: Object.fromEntries(Object.entries(req.body || {}).map(([k, v]) => [k, /token/i.test(k) ? '[redacted]' : v])),
+  })),
+  async (req, res, next) => {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: { message: 'Tenant not found' } });
+    try {
+      const parsed = fbrSettingsSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: { message: parsed.error.errors[0].message } });
+      const d = parsed.data;
+      if ((d.production_token || d.environment === 'production') && process.env.NODE_ENV !== 'production') {
+        return res.status(400).json({ error: { message: 'Production FBR tokens and production mode are refused outside a production deployment. Use sandbox.' } });
+      }
+      const tenant = await query('SELECT id FROM tenants WHERE id = $1', [req.params.id]);
+      if (!tenant.rows[0]) return res.status(404).json({ error: { message: 'Tenant not found' } });
+
+      const cols = {};
+      for (const f of FBR_TEXT_FIELDS) if (d[f] !== undefined) cols[f] = d[f];
+      if (d.environment) cols.environment = d.environment;
+      if (d.test_scenario_ids) cols.test_scenario_ids = d.test_scenario_ids;
+      if (d.rate_value !== undefined) cols.rate_value = d.rate_value;
+      if (d.sandbox_token) cols.sandbox_token_encrypted = encrypt(d.sandbox_token);
+      if (d.production_token) cols.production_token_encrypted = encrypt(d.production_token);
+      const names = Object.keys(cols);
+      await query('INSERT INTO tenant_fbr_settings (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING', [req.params.id]);
+      if (names.length) {
+        await query(
+          `UPDATE tenant_fbr_settings SET ${names.map((c, i) => `${c} = $${i + 2}`).join(', ')}, updated_at = NOW() WHERE tenant_id = $1`,
+          [req.params.id, ...names.map((c) => cols[c])],
+        );
+      }
+      const row = await loadFbrSettings(req.params.id);
+      res.json({ settings: publicFbrSettings(row), missing: missingSettings(row) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// Reference lists from the tenant's own token (provinces, uom, doctypecode, transtypecode)
+router.get(
+  '/tenants/:id/fbr/reference/:kind',
+  auditLog('view_fbr_reference', (req) => ({ targetTenantId: req.params.id, details: { kind: req.params.kind } })),
+  async (req, res, next) => {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: { message: 'Tenant not found' } });
+    try {
+      res.json(await fetchReference(req.params.id, req.params.kind));
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(502).json({ error: { message: err.message, code: err.kind } });
+      next(err);
+    }
+  },
+);
+
+// Pilot step: validate (not post) the tenant's latest settled bill
+router.post(
+  '/tenants/:id/fbr/validate',
+  auditLog('validate_fbr_invoice', (req, res) => ({ targetTenantId: req.params.id, details: { ok: res.locals.fbrOk } })),
+  async (req, res, next) => {
+    if (!UUID_RE.test(req.params.id)) return res.status(404).json({ error: { message: 'Tenant not found' } });
+    try {
+      const tabRes = await query(`SELECT id FROM pos_tabs WHERE tenant_id = $1 AND status = 'settled' ORDER BY settled_at DESC LIMIT 1`, [req.params.id]);
+      if (!tabRes.rows[0]) return res.status(400).json({ error: { message: 'This restaurant has no settled bill to validate yet' } });
+      const bill = await loadBillForFiscal(tabRes.rows[0].id);
+      const result = await validateFbrInvoice(bill);
+      res.locals.fbrOk = result.ok;
+      res.json(result);
+    } catch (err) {
+      if (err instanceof FiscalError) return res.status(400).json({ error: { message: err.message, code: err.kind } });
       next(err);
     }
   },

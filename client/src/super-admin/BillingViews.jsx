@@ -423,3 +423,117 @@ export function TenantModulesPanel({ tenantId, modules, labels, fiscalProvider, 
     </div>
   );
 }
+
+// ── impl-34: FBR Digital Invoicing settings (per tenant) ──
+// Tokens are write-only: the server only says whether one is set. Production
+// mode/tokens are refused outside a production deployment. HS code, UOM, sale
+// type and rate are left blank on purpose — they must come from FBR / a tax
+// adviser for this restaurant (see impl-34).
+const FBR_FIELDS = [
+  ['seller_ntn_cnic', 'Seller NTN / CNIC (7 or 13 digits)'],
+  ['seller_business_name', 'Seller business name'],
+  ['seller_province', 'Seller province (as in FBR provinces list)'],
+  ['seller_address', 'Seller address'],
+  ['business_activity', 'Business activity (FBR profile)'],
+  ['sector', 'Sector (FBR profile)'],
+  ['sandbox_scenario_id', 'Sandbox scenario (e.g. SN019)'],
+  ['hs_code', 'HS code'],
+  ['uom', 'UOM (from FBR UOM list)'],
+  ['sale_type', 'Sale type'],
+  ['rate_desc', 'Rate description (from FBR, e.g. "16%")'],
+  ['rate_value', 'Rate % (must equal the branch tax rate)'],
+  ['walkin_buyer_name', 'Walk-in buyer name'],
+  ['walkin_buyer_province', 'Walk-in buyer province (blank = seller\'s)'],
+  ['walkin_buyer_address', 'Walk-in buyer address (blank = seller\'s)'],
+];
+
+export function FbrSettingsPanel({ tenantId }) {
+  const [settings, setSettings] = useState(null);
+  const [missing, setMissing] = useState([]);
+  const [form, setForm] = useState({});
+  const [token, setToken] = useState('');
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [result, setResult] = useState(null);
+
+  const load = useCallback(() => {
+    superAdminApi.getFbrSettings(tenantId).then((r) => {
+      setSettings(r.settings);
+      setMissing(r.missing || []);
+      setForm(Object.fromEntries(FBR_FIELDS.map(([k]) => [k, r.settings?.[k] ?? ''])));
+    }).catch((err) => setMessage(err.message));
+  }, [tenantId]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save(e) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      const body = { reason };
+      for (const [k] of FBR_FIELDS) {
+        const v = typeof form[k] === 'string' ? form[k].trim() : form[k];
+        if (v === '' || v == null) continue;
+        body[k] = k === 'rate_value' ? Number(v) : v;
+      }
+      if (token.trim()) body.sandbox_token = token.trim();
+      const r = await superAdminApi.saveFbrSettings(tenantId, body);
+      setSettings(r.settings);
+      setMissing(r.missing || []);
+      setToken('');
+      setReason('');
+      setMessage('Saved');
+    } catch (err) {
+      setMessage(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function run(fn) {
+    setBusy(true);
+    setResult(null);
+    try {
+      setResult(await fn());
+    } catch (err) {
+      setResult({ error: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mb-6 rounded-lg border border-gray-700 bg-gray-800 p-4" data-testid="fbr-settings">
+      <h3 className="mb-1 text-sm font-medium text-gray-300">FBR Digital Invoicing (sandbox)</h3>
+      <p className="mb-3 text-xs text-gray-500">
+        Sandbox token: {settings?.has_sandbox_token ? 'set' : 'not set'} · Environment: {settings?.environment || 'sandbox'} ·{' '}
+        {missing.length ? <span className="text-amber-400">Missing: {missing.join(', ')}</span> : <span className="text-emerald-400">Complete</span>}
+      </p>
+      <form onSubmit={save} className="grid gap-2 sm:grid-cols-2">
+        {FBR_FIELDS.map(([k, label]) => (
+          <label key={k} className="text-xs text-gray-400">
+            {label}
+            <input value={form[k] ?? ''} onChange={(e) => setForm({ ...form, [k]: e.target.value })}
+              className="mt-0.5 w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white" />
+          </label>
+        ))}
+        <label className="text-xs text-gray-400 sm:col-span-2">
+          Sandbox token (write-only — leave blank to keep the current one)
+          <input type="password" autoComplete="off" value={token} onChange={(e) => setToken(e.target.value)}
+            className="mt-0.5 w-full rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white" />
+        </label>
+        <input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason for this change" required maxLength={500}
+          className="rounded border border-gray-600 bg-gray-700 px-2 py-1 text-sm text-white sm:col-span-2" />
+        <div className="flex flex-wrap gap-2 sm:col-span-2">
+          <button type="submit" disabled={busy} className="rounded bg-red-600 px-3 py-1.5 text-sm text-white hover:bg-red-700 disabled:opacity-50">Save settings</button>
+          <button type="button" disabled={busy} onClick={() => run(() => superAdminApi.getFbrReference(tenantId, 'provinces'))} className="rounded border border-gray-600 px-3 py-1.5 text-sm text-gray-300">Load provinces</button>
+          <button type="button" disabled={busy} onClick={() => run(() => superAdminApi.getFbrReference(tenantId, 'uom'))} className="rounded border border-gray-600 px-3 py-1.5 text-sm text-gray-300">Load UOM list</button>
+          <button type="button" disabled={busy} onClick={() => run(() => superAdminApi.validateFbr(tenantId))} className="rounded border border-gray-600 px-3 py-1.5 text-sm text-gray-300">Validate latest bill (no posting)</button>
+        </div>
+      </form>
+      {message && <p className="mt-2 text-sm text-gray-300">{message}</p>}
+      {result && <pre className="mt-3 max-h-64 overflow-auto rounded bg-gray-900 p-2 text-xs text-gray-300">{JSON.stringify(result, null, 2)}</pre>}
+    </div>
+  );
+}
